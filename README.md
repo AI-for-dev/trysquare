@@ -18,7 +18,7 @@ library. A measurement tool that needs an install step is a measurement tool peo
 work around.
 
 ```bash
-uv run python -m unittest discover -s tests -t .     # 142 tests, no network
+uv run python -m unittest discover -s tests -t .     # 174 tests, no network
 ```
 
 Measuring anything also needs the agent binary (`pi`) on PATH and a provider you
@@ -69,12 +69,12 @@ experiment to choose between, which is optional stopping through the back door.
 [scenario]
 name = "2x3"
 title = "A project rule against a well written ticket"
-hypothesis = "hypotheses/2x3.md"     # declared before measuring
+hypothesis = "../hypotheses/2x3.md"     # declared before measuring
 
 [task]
 repo = "neon"                # a logical name, resolved by the config file
 etalon = "etalon-v1"         # a tag, cloned; never the working tree
-prompt = "bricks/vague-ticket.md"
+prompt = "../bricks/vague-ticket.md"
 
 [agent]
 provider = "ilaas"           # mandatory, never inherited
@@ -91,14 +91,14 @@ context = ["nothing", "rule", "careful ticket"]
 thinking = ["off", "high"]
 
 [values.context.rule]        # only the delta from [agent] / [task]
-context = "bricks/AGENTS.md"
+context = "../bricks/AGENTS.md"
 
 [values.thinking.high]
 thinking = "high"
 
 [[validation]]
 mode = "script"
-command = "validators/neon.py"
+command = "../validators/neon.py"
 metrics = ["overflow", "delivered", "tests"]     # a contract, not a comment
 
 [verdict]
@@ -121,7 +121,7 @@ of the baseline that would be published twice under two names.
 Any executable in any language:
 
 ```
-validators/neon.py <path to context.json>
+../validators/neon.py <path to context.json>
   -> {"metrics": {...}, "reasons": {...}} on stdout, exit 0
 ```
 
