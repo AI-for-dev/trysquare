@@ -2,6 +2,33 @@
 
 Declared before measuring.
 
+## The task was changed after a first pass, and why
+
+A smoke pass at n=2 gave **2/2 usable notes in every cell, including the baseline**.
+That is one of the falsification conditions below - if `nothing` already scores high
+there is nothing to demonstrate - but the cause turned out to be a defect in the task
+rather than a finding about subagents.
+
+The first task enumerated the rubric: *"la note doit dire : ou le changement atterrit,
+ce qui en depend, ce que le ticket ne dit pas, et ce qui ne doit pas bouger"*. Those
+are, almost word for word, the three things the rubric scores. So the cell measured
+**obedience to an explicit instruction**, not whether a toolkit produces better
+analysis - and it saturated the scale, as a prompt containing the answer to its own
+criterion always does. The sister effort had already paid for this exact mistake once.
+
+The task is now a maintainer's real question - *what will this break, tell me what you
+found in the code that the ticket does not say* - with no format prescribed. An answer
+that paraphrases the ticket now fails `note_usable`, because the rubric marks a
+restatement as unusable.
+
+**Only the task changed.** The rubric is untouched, deliberately: changing both at once
+would make the difference impossible to attribute.
+
+A consequence worth recording: the task is part of what is measured but is **not** part
+of the output directory name, so results from before and after this change would share
+a name while not being comparable. The n=2 directory from the first pass was deleted
+rather than kept.
+
 ## What is predicted
 
 A read-only subagent with a purpose-written definition produces an impact note a
