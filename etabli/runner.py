@@ -63,6 +63,19 @@ def resolve(
 
     repo_path = config.repo(scenario.task["repo"])
 
+    # Every brick must be where the scenario says, checked before anything is
+    # spent. A missing brick used to surface as a validator failure after a matrix
+    # had been paid for, or worse, as a prompt path silently sent to the agent as
+    # literal text.
+    base = scenario.path.parent if scenario.path else Path.cwd()
+    missing = preflight(scenario, base)
+    if missing:
+        raise RuntimeError(
+            "these files the scenario references do not exist:\n  "
+            + "\n  ".join(missing)
+            + "\nPaths are relative to the scenario file."
+        )
+
     # A subagent's thinking level cannot be declared anywhere, so it is verified.
     uses_subagents = "agents" in scenario.bricks
     refusal = validation_mod.check_thinking_precondition(
@@ -148,14 +161,80 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
     }
 
 
+PATH_SUFFIXES = (".md", ".txt", ".json", ".toml")
+
+
+def looks_like_path(value: str) -> bool:
+    return "/" in value or value.endswith(PATH_SUFFIXES)
+
+
 def read_brick(base: Path, value: str | None) -> str | None:
-    """A scenario value that may be inline text or a path to a file."""
+    """A scenario value that may be inline text or a path to a file.
+
+    A value that looks like a path and does not exist **raises**. It used to fall
+    back to being treated as inline text, and that silent fallback is exactly the
+    defect this project keeps paying for: a mistyped prompt path became the literal
+    string "bricks/vague-ticket.md" sent to the agent as its task, and the runs
+    looked entirely normal while measuring nothing.
+    """
     if not value:
         return None
     candidate = (base / value).resolve()
     if candidate.is_file():
         return candidate.read_text()
+    if looks_like_path(value):
+        raise RuntimeError(f"referenced file does not exist: {candidate} (declared as {value!r})")
     return value
+
+
+def referenced_paths(scenario: Scenario, base: Path) -> list[tuple[str, Path]]:
+    """Every file the scenario points at, with where it was declared.
+
+    Collected so a missing brick is refused **before the first token**, not
+    discovered by a validator failure after a matrix has been paid for.
+    """
+    out: list[tuple[str, Path]] = []
+
+    def add(label: str, value, always: bool = False) -> None:
+        """`always` for keys that are paths by definition.
+
+        A validator command and a rubric are never inline text, so they must be
+        checked whatever they look like - otherwise a command written `neon.py`,
+        with no separator to give it away, slips past preflight and only fails once
+        a run has been paid for.
+        """
+        if isinstance(value, str) and (always or looks_like_path(value)):
+            out.append((label, (base / value).resolve()))
+
+    add("task.prompt", scenario.task.get("prompt"))
+    if scenario.hypothesis:
+        add("scenario.hypothesis", scenario.hypothesis, always=True)
+
+    # These three may legitimately be inline text, so the heuristic applies.
+    for cell in scenario.cells:
+        for key in ("prompt", "context", "system"):
+            add(f"cell {cell.name!r} -> {key}", cell.delta.get(key))
+
+    for validator in scenario.validators:
+        add(f"validation[{validator.mode}].command", validator.config.get("command"), always=True)
+        add(f"validation[{validator.mode}].rubric", validator.config.get("rubric"), always=True)
+
+    for name, brick in scenario.bricks.items():
+        if not isinstance(brick, dict):
+            continue
+        if "repo" not in brick:
+            add(f"harness.{name}.load", brick.get("load"), always=True)
+        for path in brick.get("paths", []):
+            add(f"harness.{name}.paths", path, always=True)
+    return out
+
+
+def preflight(scenario: Scenario, base: Path) -> list[str]:
+    """Refuses a scenario whose bricks are not where it says they are."""
+    missing = [
+        f"{label}: {path}" for label, path in referenced_paths(scenario, base) if not path.exists()
+    ]
+    return missing
 
 
 def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
@@ -241,12 +320,13 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
             )
             if validator.mode == "script":
                 result = validation_mod.run_script(validator, context_file, timeout, cwd=base)
+            elif validator.mode == "judge":
+                result = judge(plan, validator, directory, base, prompt, outcome, clone, attempts)
             else:
-                # A judge needs the agent invocation, which the CLI wires once the
-                # rubric brick exists. Recorded as a failure rather than silently
-                # skipped: an unimplemented validator must not read as a verdict.
+                # Recorded as a failure rather than silently skipped: an
+                # unimplemented validator must not read as a verdict.
                 result = validation_mod.Result(
-                    validator.mode, None, detail=f"{validator.mode} validator not wired yet"
+                    validator.mode, None, detail=f"{validator.mode} validator not implemented"
                 )
             plan.output.write_validation(run_id, validator.mode, result.payload, result.stderr)
             results.append((validator.mode, result.payload))
@@ -263,6 +343,58 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         run.state = EMPTY if run.state == VALID and not run.usage else run.state
         run.detail = f"{type(e).__name__}: {e}"
     return run
+
+
+JUDGE_BRICK = "bricks/judge-tool.ts"
+
+
+def judge(
+    plan: Plan,
+    validator,
+    directory: Path,
+    base: Path,
+    prompt: str,
+    outcome,
+    clone: Path,
+    attempts: int,
+):
+    """Assembles the judge's dossier and runs it.
+
+    The pieces are whatever the scenario declared, and nothing else - certainly not
+    the cell. `response` is the agent's final prose rather than its transcript: a
+    judge asked whether a note is usable must score the note, not the work behind it.
+    """
+    from . import measure as measure_mod
+
+    rubric_path = validator.config.get("rubric")
+    rubric = read_brick(base, rubric_path) or ""
+
+    available = {
+        "prompt": prompt,
+        "response": measure_mod.final_text(outcome.stream),
+        "diff": repo_mod.diff(clone),
+    }
+    declared = validator.config.get("pieces") or list(available)
+    unknown = [p for p in declared if p not in available]
+    if unknown:
+        return validation_mod.Result(
+            validator.mode, None, detail=f"unknown judge pieces: {', '.join(unknown)}"
+        )
+    pieces = {name: available[name] for name in declared}
+
+    # The brick ships with the tool, so it is resolved against the package rather
+    # than the scenario: it is not a per-experiment choice.
+    brick = Path(__file__).resolve().parent.parent / JUDGE_BRICK
+    if not brick.is_file():
+        return validation_mod.Result(validator.mode, None, detail=f"judge brick missing: {brick}")
+
+    work, judge_prompt = validation_mod.judge_dossier(
+        directory / "judge", validator, rubric, pieces
+    )
+    timeout = plan.overrides.get("timeout") or plan.scenario.protocol.get(
+        "timeout", plan.config.fallback("timeout")
+    )
+    return validation_mod.run_judge(validator, work, judge_prompt, brick, timeout, attempts)
 
 
 def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking: str) -> None:

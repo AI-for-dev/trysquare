@@ -214,6 +214,95 @@ def layer2(
     return problems
 
 
+def layer4(experiment: str | Path, workdir: str | Path | None = None) -> list[str]:
+    """The smoke pass: mechanical criteria that do not depend on the sample.
+
+    Layer 4 launches the agent, so its rates are a different sample and can never
+    demonstrate parity. What it *can* demonstrate is that the harness is wired, and
+    every criterion here is checkable without any statistical claim:
+
+      - every run valid, meaning every run consumed tokens
+      - the outputs a complete matrix owes are present
+      - each run's directory holds its context, configuration, diff and validation
+      - **the thinking level each session recorded equals the level its cell
+        declared** - the check that makes the defect which rendered the thinking
+        cell identical to the baseline unable to recur
+
+    Returns the failures, empty when the pass holds.
+    """
+    from .measure import VALID, thinking_levels
+
+    experiment = Path(experiment)
+    problems: list[str] = []
+
+    state_path = experiment / "state.json"
+    if not state_path.is_file():
+        return [f"no state.json in {experiment}"]
+    state = json.loads(state_path.read_text())
+    runs = state.get("runs", {})
+
+    invalid = {rid: m for rid, m in runs.items() if m.get("state") != VALID}
+    if invalid:
+        problems.append(
+            f"{len(invalid)} of {len(runs)} runs are not valid: "
+            + ", ".join(f"{m['cell']} ({m['state']})" for m in list(invalid.values())[:4])
+        )
+    if not state.get("complete"):
+        problems.append("the matrix is not complete")
+
+    for name in ("measures.json", "synthesis.md"):
+        if not (experiment / name).is_file():
+            problems.append(f"missing output: {name}")
+
+    for rid, meta in runs.items():
+        directory = experiment / "runs" / rid
+        for name in ("configuration.json", "diff.patch"):
+            if not (directory / name).is_file():
+                problems.append(f"{meta['cell']}: missing {name}")
+        if not (directory / "validation").is_dir():
+            problems.append(f"{meta['cell']}: no validation output")
+
+    # The thinking check needs the sessions, which live in the work directory
+    # because they are written while the agent runs and must stay out of the
+    # measured repository.
+    if workdir is None:
+        problems.append("no workdir given: the thinking level check was skipped")
+        return problems
+
+    work = Path(workdir) / experiment.name
+    checked = 0
+    for rid, meta in runs.items():
+        declared = _declared_thinking(meta["cell"], state.get("thinking"))
+        session_dir = work / rid / "session"
+        sessions = sorted(session_dir.glob("*.jsonl")) if session_dir.is_dir() else []
+        if not sessions:
+            problems.append(f"{meta['cell']}: no session to read the thinking level from")
+            continue
+        text = "\n".join(p.read_text(errors="replace") for p in sessions)
+        levels = thinking_levels(text)
+        got = levels[-1] if levels else None
+        checked += 1
+        if got != declared:
+            problems.append(
+                f"{meta['cell']}: declared thinking {declared!r}, session recorded {got!r}"
+            )
+    if checked:
+        problems.insert(0, f"{checked} sessions checked for the declared thinking level")
+    return problems
+
+
+def _declared_thinking(cell: str, default: str | None) -> str | None:
+    """The level a cell asked for, read from its name when it names one.
+
+    A cell name is built from its axis values, so a grid over a `thinking` axis
+    carries the level in the name. Falls back to the scenario's declared level.
+    """
+    for part in reversed(cell.split(" / ")):
+        if part in ("off", "minimal", "low", "medium", "high", "xhigh", "max"):
+            return part
+    return default
+
+
 def compare(rows: list[dict], expected: dict[str, dict[str, str]]) -> list[str]:
     """Checks recomputed rows against the values the bench published.
 

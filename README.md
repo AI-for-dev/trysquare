@@ -142,6 +142,41 @@ Validators are **independent**: each gets the same context and cannot see what t
 others found. A judge told the script's verdict is anchored on it, and its agreement
 stops being an independent signal.
 
+A path is checked **before the first token**. A missing brick used to surface as a
+validator failure after a matrix had been paid for - or worse, a mistyped prompt path
+became the literal string `bricks/vague-ticket.md` sent to the agent as its task,
+and every run looked entirely normal.
+
+## An LLM judge
+
+For what no script can score, a scenario declares a judge:
+
+```toml
+[[validation]]
+mode = "judge"
+provider = "ilaas"                  # pinned, and distinct from the model under test
+model = "gemma-4-31b"               # a judge that is the model being judged is not a judge
+thinking = "off"
+rubric = "../rubrics/impact-note.md"
+pieces = ["prompt", "response", "diff"]
+metrics = ["note_usable", "cites_paths", "says_what_is_missing"]
+```
+
+There is no schema option or response format in the agent, so **the verdict is a
+tool**, not parsed prose. `bricks/judge-tool.ts` registers a `verdict` tool whose
+parameters are built from the metrics the scenario declared, and the runtime
+validates the call before it reaches the harness. The format is therefore guaranteed;
+whether the tool is called at all still depends on the model, and a judge that never
+calls it leaves the run **invalid** rather than scoring zero.
+
+`pieces` is declared because what the judge is given to read is half of what it
+measures. `response` is the agent's final prose, not its transcript: a judge asked
+whether a note is usable must score the note, not the work behind it.
+
+The judge is **blind** - no cell name, no configuration. Where blinding is impossible
+the harness says so at launch instead of pretending: when the treatment *is* the
+prompt, handing the judge the prompt reveals the cell.
+
 ## The invariants, and why
 
 These are not style preferences. Each one is a defect that was paid for.
@@ -185,7 +220,14 @@ Parity is demonstrated in layers, and three of them are exact, at zero tokens:
 
 ```bash
 uv run python -m etabli parity <bench measures.json> --archive <bench traces dir>
+uv run python -m etabli parity --smoke <experiment dir>          # layer 4
 ```
+
+Layer 4 checks only what does not depend on the sample: every run valid, the outputs
+complete, each run's directory whole, and - the one that matters most - **the thinking
+level each session recorded equals the level its cell declared.** That check is what
+makes the defect which rendered the thinking cell identical to the baseline unable to
+recur. It concludes nothing about any configuration, and says so.
 
 **Neither tool is the reference.** Two computations are compared over the same
 archived material, and the material arbitrates. A gap on an exact layer has three
@@ -217,6 +259,22 @@ etabli/
 The split is by whether code touches the world. Everything in the pure half is
 testable without a network, a clone, or an API key - which is why the
 methodological invariants have tests at all.
+
+## Not implemented yet
+
+Stated rather than left to be discovered:
+
+- **HTML output.** `synthesis.html` and a `pages` command to regenerate readable
+  transcripts are designed but not written; only `synthesis.md` is produced.
+- **`compare` reports, it does not tabulate.** It applies the refusals - different
+  etalons, contaminated cost columns - and prints what differs, but does not yet
+  render a side-by-side table.
+- **`replay` reconstitutes, it does not re-score.** It rebuilds the trees from the
+  tag and the archived diff; running the scenario's validators over them and
+  rewriting the measures is the remaining step.
+- **Parity layer 2 has been demonstrated but is not a command.** Two archived runs
+  were reconstituted and re-scored by hand, and matched exactly; `parity --archive`
+  currently runs layers 3 and 1 only.
 
 ## Licence
 

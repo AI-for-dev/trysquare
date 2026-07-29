@@ -143,6 +143,45 @@ def thinking_levels(session: str) -> list[str]:
     return levels
 
 
+def final_text(stream: str) -> str:
+    """The agent's last piece of prose, which is what a judge scores.
+
+    Read from the stream rather than reconstructed: the last assistant message
+    carrying text is the answer the agent stood behind. Tool calls and reasoning
+    are deliberately excluded - a judge asked "is this impact note usable" must
+    score the note, not the work that produced it.
+    """
+    last = ""
+    for line in stream.split("\n"):
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "message_end":
+            continue
+        message = event.get("message") or {}
+        if message.get("role") != "assistant":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            if content.strip():
+                last = content
+            continue
+        if not isinstance(content, list):
+            continue
+        pieces = [
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        ]
+        joined = "\n".join(p for p in pieces if p.strip())
+        if joined.strip():
+            last = joined
+    return last
+
+
 def consumed_tokens(usage: dict) -> bool:
     """The one thing that distinguishes a measurement from an incident."""
     return bool(usage.get("turns")) and bool(usage.get("input")) and bool(usage.get("output"))

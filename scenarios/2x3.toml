@@ -18,7 +18,7 @@ name = "2x3"
 title = "A project rule against a well written ticket, at two reasoning budgets"
 # Declared before measuring, and versioned. A hypothesis written afterwards is a
 # conclusion wearing a disguise.
-hypothesis = "hypotheses/2x3.md"
+hypothesis = "../hypotheses/2x3.md"
 
 [task]
 # A logical name, resolved by [repos] in the config file. A scenario carries no
@@ -28,7 +28,7 @@ repo = "neon"
 # A tag, cloned. Never the working tree: main moves on, a classroom fixes issue
 # #1, and yesterday's measures stop comparing with tomorrow's.
 etalon = "etalon-v1"
-prompt = "bricks/vague-ticket.md"
+prompt = "../bricks/vague-ticket.md"
 
 [agent]
 provider = "ilaas"
@@ -62,10 +62,10 @@ thinking = ["off", "high"]
 # delta, so a misspelling raises instead of silently producing a duplicate of the
 # baseline.
 [values.context.rule]
-context = "bricks/AGENTS.md"
+context = "../bricks/AGENTS.md"
 
 [values.context."careful ticket"]
-prompt = "bricks/careful-ticket.md"
+prompt = "../bricks/careful-ticket.md"
 
 [values.thinking.high]
 thinking = "high"
@@ -76,7 +76,7 @@ thinking = "high"
 # invalid, rather than having the missing key read as false.
 [[validation]]
 mode = "script"
-command = "validators/neon.py"
+command = "../validators/neon.py"
 metrics = ["overflow", "issues", "delivered", "in_scope", "tests", "api_stable", "touched"]
 
 # --- Verdict --------------------------------------------------------------

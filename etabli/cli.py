@@ -101,10 +101,15 @@ def build_parser() -> argparse.ArgumentParser:
     compare.set_defaults(func=cmd_compare)
 
     parity = sub.add_parser("parity", help="check this harness against the previous bench")
-    parity.add_argument("measures", type=Path, help="the bench's published measures JSON")
+    parity.add_argument("measures", nargs="?", type=Path, help="the bench's published measures JSON")
     parity.add_argument("--archive", type=Path, help="the bench's archived run directories")
     parity.add_argument("--reference", default="base")
     parity.add_argument("--criterion", default="overflow")
+    parity.add_argument(
+        "--smoke", type=Path, help="an experiment directory: run layer 4's mechanical checks"
+    )
+    parity.add_argument("--workdir", type=Path, help="where sessions live, for the thinking check")
+    parity.add_argument("--config", type=Path)
     parity.set_defaults(func=cmd_parity)
 
     form = with_common(sub.add_parser("form", help="generate or ingest a manual scoring form"))
@@ -337,7 +342,25 @@ def _retries(experiment: dict) -> int:
 
 
 def cmd_parity(args) -> int:
-    """Layer 3 always; layers 1 and 2 when an archive is given."""
+    """Layer 3 always; layer 1 with an archive; layer 4 with --smoke."""
+    if args.smoke:
+        workdir = args.workdir
+        if workdir is None:
+            workdir = config_mod.load(args.config).workdir()
+        print(f"layer 4 - smoke pass over {args.smoke.name}")
+        problems = parity_mod.layer4(args.smoke, workdir)
+        failures = [p for p in problems if not p.endswith("declared thinking level")]
+        for line in problems:
+            print(f"  {line}")
+        if not failures:
+            print("\n  every mechanical criterion holds. No statistical claim: a smoke")
+            print("  pass at small n concludes nothing about any configuration.")
+        return 0 if not failures else 1
+
+    if not args.measures:
+        print("error: give a measures file, or --smoke <experiment dir>", file=sys.stderr)
+        return 2
+
     print("layer 3 - aggregation and verdict, from the published per-run rows")
     rows = parity_mod.layer3(args.measures, args.reference, args.criterion)
     for row in rows:

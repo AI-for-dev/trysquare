@@ -7,12 +7,12 @@
 [scenario]
 name = "subagents-judge"
 title = "Does a read-only subagent produce a usable impact note?"
-hypothesis = "hypotheses/subagents-judge.md"
+hypothesis = "../hypotheses/subagents-judge.md"
 
 [task]
 repo = "neon"
 etalon = "etalon-v1"
-prompt = "bricks/impact-note-task.md"
+prompt = "../bricks/impact-note-task.md"
 
 [agent]
 provider = "ilaas"
@@ -43,12 +43,12 @@ load = "extension"
 # them - and the failure is a silent substitution, not an absence. See the
 # comments in the brick itself.
 [harness.agent-gate]
-load = "bricks/agent-gate.ts"
+load = "../bricks/agent-gate.ts"
 
 # Copied into the clone's `.pi/agents/` and added to `.git/info/exclude`, so scope
 # scoring does not count our own configuration as the agent's work.
 [harness.agents]
-paths = ["agents/explorer.md", "agents/tester.md"]
+paths = ["../agents/explorer.md", "../agents/tester.md"]
 # Optional override. Absent, each file decides its own model, which keeps a cheap
 # explorer alongside an expensive coder expressible. Present, it overrides every
 # file. Either way the harness refuses to inject an agent that would end up with
@@ -62,7 +62,7 @@ model = "ilaas/gemma-4-31b"
 # gate still blocks, but it hands the model an error message instead of the numbers
 # it was supposed to put in front of it.
 [harness.skills]
-paths = ["skills/profile"]
+paths = ["../skills/profile"]
 
 # --- Cells: named variants, not a grid -------------------------------------
 
@@ -92,7 +92,7 @@ harness = ["extension", "agent-gate", "agents", "skills"]
 #    to argument.
 [[validation]]
 mode = "script"
-command = "validators/neon.py"
+command = "../validators/neon.py"
 metrics = ["overflow", "issues", "delivered", "in_scope", "tests", "api_stable", "touched"]
 
 # 2. What no script can judge: "is this impact note usable?"
@@ -103,7 +103,7 @@ mode = "judge"
 provider = "ilaas"
 model = "gemma-4-31b"
 thinking = "off"
-rubric = "rubrics/impact-note.md"
+rubric = "../rubrics/impact-note.md"
 # What is assembled into the judge's prompt. Declared, because what the judge is
 # given to read is half of what it measures.
 #

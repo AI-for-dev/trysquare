@@ -126,6 +126,101 @@ def run_script(validator: Validator, context: Path, timeout: int, cwd: Path | No
     return Result(validator.mode, payload, stderr=proc.stderr)
 
 
+JUDGE_REQUEST = "judge-request.json"
+JUDGE_VERDICT = "verdict.json"
+JUDGE_BRICK = "bricks/judge-tool.ts"
+
+
+def judge_dossier(
+    directory: Path,
+    validator: Validator,
+    rubric: str,
+    pieces: dict[str, str],
+) -> tuple[Path, str]:
+    """Writes what the judge is given, and returns its working directory and prompt.
+
+    The pieces are declared in the scenario, because what the judge is given to read
+    is half of what it measures. Nothing about the cell is included: the judge must
+    not know which configuration produced the work it scores.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / JUDGE_REQUEST).write_text(
+        json.dumps({"metrics": list(validator.metrics), "rubric": rubric}, indent=2) + "\n"
+    )
+    # A stale verdict from a previous attempt must never be read as this one's.
+    verdict = directory / JUDGE_VERDICT
+    if verdict.exists():
+        verdict.unlink()
+
+    sections = [
+        "You are scoring a piece of work against a rubric. You do not know how it was",
+        "produced, and you must not speculate: score only what is in front of you.",
+        "",
+        "## Rubric",
+        "",
+        rubric.strip(),
+        "",
+    ]
+    for name, text in pieces.items():
+        sections += [f"## {name.replace('_', ' ').title()}", "", (text or "(empty)").strip(), ""]
+    sections += [
+        "## What to do",
+        "",
+        f"Call the `verdict` tool exactly once, with every metric the rubric defines: "
+        f"{', '.join(validator.metrics)}.",
+        "Give a short reason for each. Prose outside the tool call is discarded.",
+    ]
+    return directory, "\n".join(sections)
+
+
+def run_judge(
+    validator: Validator,
+    directory: Path,
+    prompt: str,
+    brick: Path,
+    timeout: int,
+    attempts: int = 1,
+) -> Result:
+    """Runs the judge, and reads back the verdict its tool call recorded.
+
+    Retried only while there is **no** usable answer, which is not optional
+    stopping: an absent verdict is not a verdict one could have preferred. Once a
+    verdict exists it is kept, whatever it says.
+    """
+    from . import agent as agent_mod
+
+    verdict_path = directory / JUDGE_VERDICT
+    detail = ""
+
+    for attempt in range(1, max(1, attempts) + 1):
+        args = agent_mod.argv(
+            prompt=prompt,
+            provider=validator.config.get("provider", ""),
+            model=validator.config.get("model", ""),
+            thinking=validator.config.get("thinking", "off"),
+            session_dir=directory / "session",
+            extensions=[brick],
+        )
+        outcome = agent_mod.run(directory, args, timeout)
+
+        if verdict_path.is_file():
+            try:
+                payload = json.loads(verdict_path.read_text())
+            except json.JSONDecodeError as e:
+                detail = f"judge wrote an unreadable verdict: {e}"
+                continue
+            return Result(validator.mode, payload, stderr=outcome.stderr)
+
+        detail = (
+            f"judge did not call the verdict tool (attempt {attempt}/{attempts})"
+            if outcome.produced_something
+            else f"judge produced nothing (attempt {attempt}/{attempts}): "
+            f"{agent_mod.first_error(outcome.stream) or outcome.stderr[:200]}"
+        )
+
+    return Result(validator.mode, None, detail=detail)
+
+
 def blindness(scenario: Scenario) -> dict:
     """How blind a judge actually is in this scenario, piece by piece.
 
