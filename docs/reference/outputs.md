@@ -146,6 +146,31 @@ is lost because `replay` rebuilds a tree from a tag and a diff.
 
 Sessions live there too, which is why `parity --smoke` takes a `--workdir`.
 
+(naming-gap)=
+## A known gap in the naming scheme
+
+The directory name carries the scenario name, etalon, provider, model and repetition
+count. It does **not** carry the task, the cell definitions, or the rubric.
+
+So editing a prompt - which is unquestionably part of what is measured - produces
+results sharing a name with the previous ones while not being comparable to them. That
+contradicts the principle the naming scheme exists to serve: *anything that changes what
+is measured changes the name.*
+
+This was found the hard way. A scenario's task had to be rewritten between two passes,
+because the first version enumerated its own rubric and so measured instruction-following
+rather than analysis. Only the repetition count kept the two sets of results apart.
+
+:::{warning}
+Until it is fixed: when you change a task, a cell definition or a rubric, **delete the
+old output directory** rather than letting a later run overwrite part of it. Two
+half-matrices under one name are worse than one missing matrix.
+
+A fix would add a short digest of the resolved experiment - the brick contents that
+actually reach the agent, plus the cells, validators and verdict - to the directory name,
+so that a prompt edit lands somewhere new on its own.
+:::
+
 (not-implemented)=
 ## Not implemented yet
 

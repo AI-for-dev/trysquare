@@ -49,7 +49,10 @@ napoleon_numpy_docstring = False
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+# README.md documents how to *build* these docs, for someone browsing the repository.
+# It is not a page of the documentation, so Sphinx must not collect it - otherwise it
+# is an orphan in every toctree, and with -W that is a build failure.
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md", "requirements.txt"]
 
 html_theme = "furo"
 html_static_path = ["_static"]
