@@ -1,0 +1,19 @@
+[project]
+name = "etabli"
+version = "0.1.0"
+description = "A scenario harness for measuring coding agents reproducibly."
+requires-python = ">=3.11"
+# No runtime dependencies, on purpose. TOML parsing is `tomllib` from the
+# standard library, which is why the floor is 3.11. A measurement tool that
+# needs an install step is a measurement tool people work around.
+dependencies = []
+
+[project.scripts]
+etabli = "etabli.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["etabli"]

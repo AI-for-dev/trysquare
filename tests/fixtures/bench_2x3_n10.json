@@ -1,0 +1,1618 @@
+[
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 26918,
+    "cacheRead": 0,
+    "output": 2650,
+    "cout": 0.0,
+    "tours": 6,
+    "duree": 96,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-9"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 38960,
+    "cacheRead": 0,
+    "output": 2415,
+    "cout": 0.0,
+    "tours": 8,
+    "duree": 90,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-0"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 320683,
+    "cacheRead": 0,
+    "output": 25240,
+    "cout": 0.0,
+    "tours": 17,
+    "duree": 832,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-0"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 57239,
+    "cacheRead": 0,
+    "output": 3138,
+    "cout": 0.0,
+    "tours": 8,
+    "duree": 97,
+    "reprises": 0,
+    "essais": 2,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-0"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 64665,
+    "cacheRead": 0,
+    "output": 11633,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 370,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-0"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 50664,
+    "cacheRead": 0,
+    "output": 3557,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 120,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-0"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 19364,
+    "cacheRead": 0,
+    "output": 1947,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 53,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-1"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 41786,
+    "cacheRead": 0,
+    "output": 1557,
+    "cout": 0.0,
+    "tours": 9,
+    "duree": 42,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-1"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 112012,
+    "cacheRead": 0,
+    "output": 11176,
+    "cout": 0.0,
+    "tours": 9,
+    "duree": 361,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-1"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 46422,
+    "cacheRead": 0,
+    "output": 2339,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 63,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-1"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 52598,
+    "cacheRead": 0,
+    "output": 8385,
+    "cout": 0.0,
+    "tours": 6,
+    "duree": 279,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-1"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 52786,
+    "cacheRead": 0,
+    "output": 3801,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 138,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-1"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 19080,
+    "cacheRead": 0,
+    "output": 1803,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 69,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-2"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 31189,
+    "cacheRead": 0,
+    "output": 1763,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 71,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-2"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 46805,
+    "cacheRead": 0,
+    "output": 8285,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 283,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-2"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 32510,
+    "cacheRead": 0,
+    "output": 1753,
+    "cout": 0.0,
+    "tours": 6,
+    "duree": 54,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-2"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 84579,
+    "cacheRead": 0,
+    "output": 8291,
+    "cout": 0.0,
+    "tours": 9,
+    "duree": 283,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-2"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 49542,
+    "cacheRead": 0,
+    "output": 8069,
+    "cout": 0.0,
+    "tours": 6,
+    "duree": 278,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-2"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 19335,
+    "cacheRead": 0,
+    "output": 1972,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 56,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-3"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 31713,
+    "cacheRead": 0,
+    "output": 1970,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 101,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-3"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 81030,
+    "cacheRead": 0,
+    "output": 9787,
+    "cout": 0.0,
+    "tours": 9,
+    "duree": 301,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-3"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 32850,
+    "cacheRead": 0,
+    "output": 1885,
+    "cout": 0.0,
+    "tours": 6,
+    "duree": 61,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-3"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 173005,
+    "cacheRead": 0,
+    "output": 8030,
+    "cout": 0.0,
+    "tours": 13,
+    "duree": 250,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-3"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 55957,
+    "cacheRead": 0,
+    "output": 4672,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 146,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-3"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 38057,
+    "cacheRead": 0,
+    "output": 2380,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 73,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-4"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 38698,
+    "cacheRead": 0,
+    "output": 2363,
+    "cout": 0.0,
+    "tours": 8,
+    "duree": 80,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-4"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 62266,
+    "cacheRead": 0,
+    "output": 7442,
+    "cout": 0.0,
+    "tours": 8,
+    "duree": 224,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-4"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 32537,
+    "cacheRead": 0,
+    "output": 1781,
+    "cout": 0.0,
+    "tours": 6,
+    "duree": 57,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-4"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 29407,
+    "cacheRead": 0,
+    "output": 7592,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 225,
+    "reprises": 0,
+    "essais": 2,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-4"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 139378,
+    "cacheRead": 0,
+    "output": 7885,
+    "cout": 0.0,
+    "tours": 12,
+    "duree": 231,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-4"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 38485,
+    "cacheRead": 0,
+    "output": 2354,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 67,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-5"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 56912,
+    "cacheRead": 0,
+    "output": 2683,
+    "cout": 0.0,
+    "tours": 9,
+    "duree": 79,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-5"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 169299,
+    "cacheRead": 0,
+    "output": 12299,
+    "cout": 0.0,
+    "tours": 13,
+    "duree": 366,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-5"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 25218,
+    "cacheRead": 0,
+    "output": 1873,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 56,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-5"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 102499,
+    "cacheRead": 0,
+    "output": 5459,
+    "cout": 0.0,
+    "tours": 10,
+    "duree": 163,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-5"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 63729,
+    "cacheRead": 0,
+    "output": 10464,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 314,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-5"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 38639,
+    "cacheRead": 0,
+    "output": 2762,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 81,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-6"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 31160,
+    "cacheRead": 0,
+    "output": 1726,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 55,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-6"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 30117,
+    "cacheRead": 0,
+    "output": 4329,
+    "cout": 0.0,
+    "tours": 6,
+    "duree": 130,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-6"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 48256,
+    "cacheRead": 0,
+    "output": 3413,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 105,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-6"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 29465,
+    "cacheRead": 0,
+    "output": 5705,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 176,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-6"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 65268,
+    "cacheRead": 0,
+    "output": 9229,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 295,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-6"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 19173,
+    "cacheRead": 0,
+    "output": 1821,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 60,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-7"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 31058,
+    "cacheRead": 0,
+    "output": 1724,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 61,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-7"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 356754,
+    "cacheRead": 0,
+    "output": 16727,
+    "cout": 0.0,
+    "tours": 18,
+    "duree": 556,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-7"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 24950,
+    "cacheRead": 0,
+    "output": 1686,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 56,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-7"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 207693,
+    "cacheRead": 0,
+    "output": 21060,
+    "cout": 0.0,
+    "tours": 13,
+    "duree": 670,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-7"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 100795,
+    "cacheRead": 0,
+    "output": 5975,
+    "cout": 0.0,
+    "tours": 10,
+    "duree": 193,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-7"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 19135,
+    "cacheRead": 0,
+    "output": 1783,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 50,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-8"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 68551,
+    "cacheRead": 0,
+    "output": 3328,
+    "cout": 0.0,
+    "tours": 10,
+    "duree": 119,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-8"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 67428,
+    "cacheRead": 0,
+    "output": 6234,
+    "cout": 0.0,
+    "tours": 9,
+    "duree": 224,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-8"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 32654,
+    "cacheRead": 0,
+    "output": 1830,
+    "cout": 0.0,
+    "tours": 6,
+    "duree": 59,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-8"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 110144,
+    "cacheRead": 0,
+    "output": 9506,
+    "cout": 0.0,
+    "tours": 10,
+    "duree": 325,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-8"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 94938,
+    "cacheRead": 0,
+    "output": 4503,
+    "cout": 0.0,
+    "tours": 10,
+    "duree": 164,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-8"
+  },
+  {
+    "cellule": "base",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 23136,
+    "cacheRead": 0,
+    "output": 3018,
+    "cout": 0.0,
+    "tours": 5,
+    "duree": 96,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "base-0"
+  },
+  {
+    "cellule": "+ticket soigné",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 35660,
+    "cacheRead": 0,
+    "output": 1492,
+    "cout": 0.0,
+    "tours": 8,
+    "duree": 46,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-9"
+  },
+  {
+    "cellule": "+ticket soigné +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 41716,
+    "cacheRead": 0,
+    "output": 5501,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 162,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-ticket-soigne-plus-thinking-9"
+  },
+  {
+    "cellule": "+AGENTS.md",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 46140,
+    "cacheRead": 0,
+    "output": 2321,
+    "cout": 0.0,
+    "tours": 7,
+    "duree": 71,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-9"
+  },
+  {
+    "cellule": "+thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 185083,
+    "cacheRead": 0,
+    "output": 17316,
+    "cout": 0.0,
+    "tours": 11,
+    "duree": 428,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": true,
+      "issues": [
+        "#1"
+      ],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-thinking-9"
+  },
+  {
+    "cellule": "+AGENTS.md +thinking",
+    "modele": "gemma-4-31b",
+    "fournisseur": "test-ilaas",
+    "etalon": "etalon-v1",
+    "input": 170733,
+    "cacheRead": 0,
+    "output": 15289,
+    "cout": 0.0,
+    "tours": 11,
+    "duree": 376,
+    "reprises": 0,
+    "essais": 1,
+    "note": {
+      "tests": true,
+      "apiStable": true,
+      "livre": true,
+      "perimetre": true,
+      "debordement": false,
+      "issues": [],
+      "touches": [
+        "game/neon.js"
+      ]
+    },
+    "identifiant": "plus-AGENTS-md-plus-thinking-9"
+  }
+]

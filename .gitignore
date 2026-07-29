@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Measurement output lands wherever --output points. Nothing forces it into the
+# repository, and nothing should be committed by accident.
+out/
+runs/
