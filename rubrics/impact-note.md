@@ -25,7 +25,7 @@ repository.
 
 A note may be short and still be usable. Brevity is not a fault; vagueness is.
 
-### `cites_paths`
+### `cites_paths_judged`
 
 `true` when the note points at concrete locations - a file path, or a path with a
 line or a symbol name. One accurate citation is enough.

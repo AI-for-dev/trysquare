@@ -56,8 +56,15 @@ def write_context(
     cell: str,
     repetition: int,
     blind: bool = False,
+    response_file: Path | None = None,
 ) -> Path:
-    """Writes the context file a validator is handed."""
+    """Writes the context file a validator is handed.
+
+    `response` is the agent's final prose, extracted once by the harness. A
+    validator that needed it would otherwise have to reimplement stream parsing,
+    and every validator reimplementing it is every validator getting it slightly
+    differently.
+    """
     context = {
         "repo": str(repo),
         "etalon": {"tag": etalon, "checkout": str(etalon_checkout)},
@@ -66,6 +73,8 @@ def write_context(
         "cell": cell,
         "repetition": repetition,
     }
+    if response_file is not None:
+        context["response"] = str(response_file)
     if trace is not None:
         context["trace"] = str(trace)
     if blind:

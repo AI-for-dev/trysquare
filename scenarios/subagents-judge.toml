@@ -101,7 +101,28 @@ mode = "script"
 command = "../validators/neon.py"
 metrics = ["overflow", "issues", "delivered", "in_scope", "tests", "api_stable", "touched"]
 
-# 2. What no script can judge: "is this impact note usable?"
+# 2. The criterion, counted rather than judged.
+#
+# This carries the verdict because the judge could not. Scored over two matrices,
+# `note_usable` saturated at 10/10 in every cell as soon as the task got easier, and
+# all three of the judge's metrics came out identical in **40 runs out of 40** - it
+# decided "good note" once and answered everything alike. On the narrower task it had
+# discriminated (19 of 40 runs had mixed verdicts), so the halo was induced by the
+# task rather than fixed. An instrument that stops discriminating exactly when its
+# subject gets easy is not an instrument.
+#
+# A count has no ceiling and no halo. `bogus_paths` is what makes it worth more than
+# a boolean: a note inventing `game/score.js` is worse than one citing nothing, and
+# "does it cite paths" scores those two the same. Existence is checked against the
+# etalon tag, so citing a file the agent itself created earns nothing.
+[[validation]]
+mode = "script"
+command = "../validators/citations.py"
+metrics = ["cited_paths", "exact_paths", "bogus_paths", "cites_paths"]
+
+# 3. The judge, kept for comparison but no longer carrying the verdict.
+#    Its metrics are still declared, so they are recorded and could be scored
+#    again; drop this block to halve the cost of a run.
 [[validation]]
 mode = "judge"
 # Pinned like everything else, and deliberately distinct from the model under
@@ -118,14 +139,18 @@ rubric = "../rubrics/impact-note.md"
 # where the treatment *is* the prompt it would not be, and the harness says so at
 # launch rather than pretending.
 pieces = ["prompt", "response", "diff"]
-metrics = ["note_usable", "cites_paths", "says_what_is_missing"]
+# `cites_paths_judged`, not `cites_paths`: the counted metric owns that name now,
+# and two validators may not declare one metric - the loader refuses it at load,
+# before any measurement. Having both is the point: it is a direct comparison of
+# the two instruments on identical runs.
+metrics = ["note_usable", "cites_paths_judged", "says_what_is_missing"]
 
 # No `on_failure` key here: the rule is general. Any validator that crashes, times
 # out, returns unreadable JSON or omits a declared metric makes the run invalid,
 # never false. A broken judge must not read as a negative verdict.
 
 [verdict]
-criterion = "note_usable"
+criterion = "cited_paths"
 reference = "nothing"
 # **No validity condition here, and that is deliberate.**
 #

@@ -360,6 +360,13 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         prompt_file = work / "prompt.txt"
         prompt_file.write_text(prompt)
 
+        # The agent's final prose, extracted once here so no validator has to
+        # reimplement stream parsing to get at it.
+        from .measure import final_text
+
+        response_file = work / "response.txt"
+        response_file.write_text(final_text(outcome.stream))
+
         results = []
         for validator in scenario.validators:
             blind = validator.mode == "judge"
@@ -375,6 +382,7 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
                 cell=cell.name,
                 repetition=meta["repetition"],
                 blind=blind,
+                response_file=response_file,
             )
             if validator.mode == "script":
                 result = validation_mod.run_script(validator, context_file, timeout, cwd=base)
