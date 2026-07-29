@@ -2,7 +2,40 @@
 
 Declared before measuring.
 
-## The task was changed after a first pass, and why
+## Second change: a task with breadth (issue #3 instead of #4)
+
+The n=10 pass on issue #4 de-saturated the criterion - 60 to 80% usable, against 100%
+everywhere before - so removing the rubric from the task worked. But **nothing was
+established**, and the point estimates went the wrong way: the baseline tied for
+highest at 8/10, `+subagents` was lowest at 6/10, every interval straddling zero.
+
+The falsification condition that fired is the first one below: `+extension`, the witness
+loading the extension with nobody to delegate to, scored the same as `+subagents`. All
+three equipped cells sat within noise of the baseline.
+
+The diagnosis is the task, not the mechanism. **Issue #4's impact is confined to
+essentially one file.** A subagent pays off when a task needs *broad* reading that would
+otherwise flood the main context, and there was no breadth for delegation to buy.
+
+Issue #3 (night mode) has it, verified in the repository before choosing it rather than
+assumed:
+
+- `game/theme.js` holds 9 of the 11 hard-coded colours and both palette exports;
+- `game/neon.js` carries 5 theme references, the other 2 colours, and 22 exports;
+- `game/bloom.js` consumes the theme and is the contrast-sensitive glow;
+- `game/index.html` has 6 style lines and is where a toggle would live;
+- `game/neon.test.js` references the theme **zero times** - nothing tests colours at
+  all, which is a real risk the ticket does not mention;
+- and it cannot land before #6 routes the hard-coded colours, a cross-issue dependency.
+
+So four files to change, five to read, one untested area, one blocking dependency.
+
+**Only the issue changed.** The wording, the rubric and the criterion are untouched, so
+the difference stays attributable to breadth alone. `cites_paths` and
+`says_what_is_missing` remain declared, so either can be scored from the same measures
+afterwards with `render`, without remeasuring.
+
+## The first change: removing the rubric from the task, and why
 
 A smoke pass at n=2 gave **2/2 usable notes in every cell, including the baseline**.
 That is one of the falsification conditions below - if `nothing` already scores high

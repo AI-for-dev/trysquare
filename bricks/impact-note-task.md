@@ -1,4 +1,4 @@
-Je dois decider si on prend l'issue #4 de ISSUES.md dans le prochain sprint. Avant
+Je dois decider si on prend l'issue #3 de ISSUES.md dans le prochain sprint. Avant
 de m'engager, je veux savoir ce que ca va casser.
 
 Regarde le code et dis-moi ce que je risque reellement. Je n'ai pas besoin qu'on me
