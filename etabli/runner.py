@@ -12,6 +12,7 @@ table, and the runs already paid for are the ones being protected.
 from __future__ import annotations
 
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -135,11 +136,10 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
             raise RuntimeError(f"cell {cell.name!r} wants brick {name!r}, which is not declared")
 
         if "repo" in brick:
-            # A pinned repository: clone it at its tag and load from inside.
-            source = config.harness_repo(brick["repo"])
-            clone_dir = config.workdir() / "harness" / f"{brick['repo']}-{brick['tag']}"
-            if not clone_dir.exists():
-                repo_mod.clone(source, brick["tag"], clone_dir)
+            # A pinned repository: cloned once at its tag, so every cell loads the
+            # same pinned state - an experiment that pins the measured repository
+            # and lets the harness float is measuring the operator.
+            clone_dir = prepare_harness(config, brick["repo"], brick["tag"])
             extensions.append(clone_dir / brick.get("load", "."))
         elif "load" in brick:
             extensions.append((base / brick["load"]).resolve())
@@ -166,6 +166,64 @@ PATH_SUFFIXES = (".md", ".txt", ".json", ".toml")
 
 def looks_like_path(value: str) -> bool:
     return "/" in value or value.endswith(PATH_SUFFIXES)
+
+
+_HARNESS_LOCK = threading.Lock()
+READY = ".etabli-ready"
+
+
+def prepare_harness(config: Config, name: str, tag: str) -> Path:
+    """Clones a pinned harness repository once, and installs it, exactly once.
+
+    Serialised, because cells run concurrently and every cell that loads this brick
+    reaches here at the same moment. Checking `exists()` and then cloning is not
+    atomic: the first real run of a scenario with four concurrent cells had two of
+    them fail on `destination path already exists`, and a third succeeded only by
+    winning the race - which meant it may have loaded an extension whose
+    dependencies were never installed.
+
+    A readiness marker rather than mere existence, so a clone left half-written by
+    an interrupted attempt is redone instead of silently reused. Reusing a partial
+    harness is the kind of failure that produces a plausible measurement.
+    """
+    clone_dir = config.workdir() / "harness" / f"{name}-{tag}"
+    with _HARNESS_LOCK:
+        if (clone_dir / READY).is_file():
+            return clone_dir
+        source = config.harness_repo(name)
+        repo_mod.clone(source, tag, clone_dir)
+        install_dependencies(clone_dir)
+        (clone_dir / READY).write_text(f"{name}@{tag}\n")
+    return clone_dir
+
+
+def install_dependencies(clone_dir: Path, timeout: int = 300) -> None:
+    """Installs a harness repository's runtime dependencies, once per pinned clone.
+
+    A freshly cloned extension is not loadable as it stands: `pi-subagent` declares
+    `@earendil-works/pi-coding-agent` as a runtime dependency, and the agent resolves
+    imports from `node_modules` next to the extension or above it. Without this the
+    extension fails to load, and a cell that was supposed to measure a toolkit
+    measures its absence.
+
+    A missing `package.json` is not an error: a brick may be a single file.
+    """
+    import subprocess
+
+    if not (clone_dir / "package.json").is_file():
+        return
+    proc = subprocess.run(
+        ["npm", "install", "--silent", "--omit=dev"],
+        cwd=clone_dir,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"could not install dependencies for {clone_dir.name}: "
+            f"{(proc.stderr or proc.stdout).strip()[:300]}"
+        )
 
 
 def read_brick(base: Path, value: str | None) -> str | None:

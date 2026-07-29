@@ -17,7 +17,13 @@ prompt = "../bricks/impact-note-task.md"
 [agent]
 provider = "ilaas"
 model = "gemma-4-31b"
-thinking = "off"
+# `high` rather than `off`, and the reason is a constraint rather than a preference.
+# A subagent's thinking level cannot be declared anywhere - the frontmatter has no
+# field for it and the library passes no option - so it always comes from the
+# machine's defaultThinkingLevel. Declaring the ambient level here is what keeps the
+# cell from claiming one thing while its subagents do another. The harness refuses to
+# run when the two disagree, which is how this was noticed.
+thinking = "high"
 
 [protocol]
 repetitions = 10
@@ -121,4 +127,18 @@ metrics = ["note_usable", "cites_paths", "says_what_is_missing"]
 [verdict]
 criterion = "note_usable"
 reference = "nothing"
-validity = ["delivered", "tests"]
+# **No validity condition here, and that is deliberate.**
+#
+# The obvious thing to write is `validity = ["delivered", "tests"]`, copied from the
+# 2x3 matrix. It is wrong, and it was written here once: `delivered` means "a file
+# changed", and this task explicitly instructs the agent to write no code and modify
+# nothing. So every run was correctly `delivered = false`, the filter eliminated the
+# whole matrix, and the reference cell had nothing left to compare against.
+#
+# The lesson is general: **a validity condition must match the task.** For a task
+# that asks for a diff, "changed nothing" means the agent did not work. For a task
+# that asks for prose, changing nothing is compliance. There is no condition that is
+# right for both.
+#
+# What remains enforced without declaring anything: a run counts only if it consumed
+# tokens, and a run whose validator failed is invalid. Those are global.

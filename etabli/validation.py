@@ -281,6 +281,10 @@ def check_thinking_precondition(declared: str | None, ambient: str | None, uses_
         f"defaultThinkingLevel is {ambient!r}.\n"
         f"A subagent cannot declare its thinking level, so subagents would run at "
         f"{ambient!r} while the cell claims {declared!r}.\n"
-        f"Align the setting, or drop `thinking` from the scenario to accept the "
-        f"ambient one."
+        f"Either set defaultThinkingLevel to {declared!r} in "
+        f"~/.pi/agent/settings.json, or declare thinking = {ambient!r} in the "
+        f"scenario so the cell says what will actually run.\n"
+        f"Removing `thinking` is not an option: it is mandatory in a scenario, "
+        f"because a level that is not declared is a level inherited from whoever "
+        f"runs the tool."
     )

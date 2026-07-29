@@ -230,7 +230,19 @@ def _write_synthesis(output: Output, scenario, runs: list[Run] | None = None, su
     sample = next((r for r in runs if criterion in r.metrics), None)
     measures = table_mod.cost_measures() + (table_mod.criterion_measure(criterion, sample),)
 
-    rows = table_mod.gap_rows(by_cell, scenario.reference, measures, validity)
+    try:
+        rows = table_mod.gap_rows(by_cell, scenario.reference, measures, validity)
+    except ValueError as e:
+        # The measures are safe on disk; only the rendering failed. Say so, because
+        # a traceback here reads as "the matrix is lost" when nothing is lost.
+        print(f"\nerror: {e}", file=sys.stderr)
+        print(
+            f"\n  The measures are intact in {output.directory / 'measures.json'}.\n"
+            f"  Fix [verdict].validity and rerun `render` - no remeasuring needed.",
+            file=sys.stderr,
+        )
+        return 1
+
     text = table_mod.gap_table(
         rows,
         scenario.reference,
@@ -248,7 +260,8 @@ def _write_synthesis(output: Output, scenario, runs: list[Run] | None = None, su
     if state.get("overrides"):
         header.append(f"- overrides: {json.dumps(state['overrides'])}")
     header.append("")
-    path = output.write_synthesis("\n".join([*header, text, ""]), suffix)
+    warning = table_mod.retry_warning(by_cell)
+    path = output.write_synthesis("\n".join([*header, text, warning, ""]), suffix)
     print(f"\n  written {path}")
     return 0
 

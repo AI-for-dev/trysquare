@@ -1,0 +1,64 @@
+"""Sphinx configuration.
+
+The documentation is written in MyST Markdown, not reStructuredText: the rest of
+this project's prose is Markdown, and one syntax is easier to keep good than two.
+
+Building the docs needs Sphinx; **using etabli does not**. The tool keeps zero
+runtime dependencies, so these live in the `docs` optional group and are never
+imported by the package.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+project = "etabli"
+author = "Loic Gouarin"
+copyright = "2026, Loic Gouarin"
+release = "0.1.0"
+
+extensions = [
+    "myst_parser",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.intersphinx",
+    "sphinx_copybutton",
+]
+
+myst_enable_extensions = [
+    "colon_fence",      # ::: fences, so admonitions read as Markdown
+    "deflist",          # definition lists for the reference tables
+    "fieldlist",
+    "linkify",          # bare URLs become links
+    "substitution",
+    "tasklist",
+]
+myst_heading_anchors = 3
+
+# The reference pages are generated from docstrings, and the docstrings in this
+# project carry the reasoning behind each rule. Keeping them in source order rather
+# than alphabetical preserves that argument.
+autodoc_member_order = "bysource"
+autodoc_typehints = "description"
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+
+intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+
+templates_path = ["_templates"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
+html_theme = "furo"
+html_static_path = ["_static"]
+html_title = "etabli"
+html_theme_options = {
+    "source_repository": "",
+    "navigation_with_keys": True,
+}
+
+# A warning is a defect in the documentation, and the same standard applies here as
+# to the code: it fails loudly rather than accumulating quietly.
+nitpicky = False
+suppress_warnings: list[str] = []
