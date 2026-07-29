@@ -169,7 +169,7 @@ def looks_like_path(value: str) -> bool:
 
 
 _HARNESS_LOCK = threading.Lock()
-READY = ".etabli-ready"
+READY = ".trysquare-ready"
 
 
 def prepare_harness(config: Config, name: str, tag: str) -> Path:

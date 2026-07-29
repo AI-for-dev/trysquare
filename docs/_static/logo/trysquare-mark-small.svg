@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="trysquare">
+  <title>trysquare</title>
+  <!-- A try square rotated 45 degrees: the two arms meet at exactly 90 degrees,
+       so the mark reads as a check that was measured rather than scribbled.
+       Monochrome: inherits the surrounding text colour. -->
+  <path d="M0 0 H12 V12 H48 V21 H0 Z"
+        transform="translate(7.6 37.3) rotate(-45)"
+        fill="currentColor" />
+</svg>

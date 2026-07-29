@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 64" width="132" height="64" role="img"
+     aria-label="established and inconclusive">
+  <title>established / inconclusive</title>
+  <!-- Status glyphs for the two verdicts, not a logo. Left: the square sits flush on
+       the reference edge - established. Right: the same square three degrees off, and
+       the wedge of light under the stock is the whole point of the tool. -->
+  <g fill="currentColor">
+    <g>
+      <rect x="4" y="54" width="56" height="2.4" opacity="0.4" />
+      <path d="M10 10 H17 V44 H46 V54 H10 Z" />
+    </g>
+    <g transform="translate(68 0)">
+      <rect x="4" y="54" width="56" height="2.4" opacity="0.4" />
+      <path d="M10 10 H17 V44 H46 V54 H10 Z" transform="rotate(-3 46 54)" />
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="trysquare">
+  <title>trysquare</title>
+  <!-- Steel blade, brass stock, right-angle notation in the corner. -->
+  <path d="M8 6 H17 V58 H8 Z" fill="#232B33" />
+  <path d="M8 45 H41 V58 H8 Z" fill="#A97C2A" />
+  <path d="M17 36 H26 V45" fill="none" stroke="#232B33" stroke-width="2.5"
+        stroke-linecap="square" opacity="0.55" />
+</svg>

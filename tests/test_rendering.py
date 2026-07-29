@@ -8,8 +8,8 @@ nothing needs remeasuring.
 
 import unittest
 
-from etabli.measure import VALID, Run
-from etabli.table import COST_MEASURES, cost_measures, criterion_measure, gap_rows, retry_warning
+from trysquare.measure import VALID, Run
+from trysquare.table import COST_MEASURES, cost_measures, criterion_measure, gap_rows, retry_warning
 
 
 def run(cell, overflow=True, delivered=True, tests=True, retries=0, ident="r"):

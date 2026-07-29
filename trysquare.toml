@@ -26,7 +26,7 @@ subagent = "~/Work/Pi/subagent"
 # Clones live in the system temporary directory, which macOS purges on reboot.
 # That is intended: the durable archive keeps only sources, and `replay`
 # reconstitutes a tree from a tag and a diff when one is needed again.
-workdir = "$TMPDIR/etabli"
+workdir = "$TMPDIR/trysquare"
 
 # Fallbacks used only when a scenario is silent. "A plan carries its own load"
 # remains the rule: these condition the retry count and therefore every cost

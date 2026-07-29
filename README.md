@@ -1,4 +1,7 @@
-# etabli
+# trysquare
+
+> A try square tells a joiner whether a joint is true. This one tells you whether a
+> measured difference is.
 
 A scenario harness for measuring coding agents reproducibly.
 
@@ -28,14 +31,14 @@ runs offline.
 ## Getting started
 
 ```bash
-cp etabli.toml my-etabli.toml     # edit [repos] to point at your repository
-uv run python -m etabli run scenarios/2x3.toml --output out --dry-run
+cp trysquare.toml my-trysquare.toml     # edit [repos] to point at your repository
+uv run python -m trysquare run scenarios/2x3.toml --output out --dry-run
 ```
 
 `--dry-run` shows the whole plan and writes nothing. Drop it to measure.
 
 ```bash
-uv run python -m etabli run scenarios/2x3.toml --output out
+uv run python -m trysquare run scenarios/2x3.toml --output out
 ```
 
 ## Commands
@@ -219,8 +222,8 @@ Parity is demonstrated in layers, and three of them are exact, at zero tokens:
     layer 4  launching the agent     not comparable, it samples
 
 ```bash
-uv run python -m etabli parity <bench measures.json> --archive <bench traces dir>
-uv run python -m etabli parity --smoke <experiment dir>          # layer 4
+uv run python -m trysquare parity <bench measures.json> --archive <bench traces dir>
+uv run python -m trysquare parity --smoke <experiment dir>          # layer 4
 ```
 
 Layer 4 checks only what does not depend on the sample: every run valid, the outputs
@@ -242,7 +245,7 @@ established/inconclusive marks.
 ## Layout
 
 ```
-etabli/
+trysquare/
   scenario.py   loads and validates a scenario, expands it into cells   \
   measure.py    what counts as a measurement, how metrics combine        |  pure
   verdict.py    resampling, fixed seed, two states                       |

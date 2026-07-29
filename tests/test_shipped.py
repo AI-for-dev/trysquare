@@ -7,7 +7,7 @@ example, and a broken example is worse than none.
 import unittest
 from pathlib import Path
 
-from etabli import config, outputs, scenario, validation
+from trysquare import config, outputs, scenario, validation
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -90,13 +90,13 @@ class TestShippedScenarios(unittest.TestCase):
 
 class TestShippedConfig(unittest.TestCase):
     def test_the_config_loads_and_resolves_its_names(self):
-        c = config.load(ROOT / "etabli.toml")
+        c = config.load(ROOT / "trysquare.toml")
         self.assertTrue(c.repo("neon").is_absolute())
         self.assertTrue(c.harness_repo("subagent").is_absolute())
 
     def test_every_scenario_repo_is_declared_in_the_config(self):
         """Otherwise the example cannot run on the machine it ships with."""
-        c = config.load(ROOT / "etabli.toml")
+        c = config.load(ROOT / "trysquare.toml")
         for f in sorted((ROOT / "scenarios").glob("*.toml")):
             s = scenario.load(f)
             with self.subTest(scenario=f.name):

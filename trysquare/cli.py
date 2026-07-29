@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="etabli",
+        prog="trysquare",
         description="A scenario harness for measuring coding agents reproducibly.",
     )
     sub = parser.add_subparsers(dest="command")
@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
             type=Path,
             help="directory every output is written under",
         )
-        p.add_argument("--config", type=Path, help="config file (default: nearest etabli.toml)")
+        p.add_argument("--config", type=Path, help="config file (default: nearest trysquare.toml)")
         return p
 
     run = with_common(sub.add_parser("run", help="measure a scenario"))

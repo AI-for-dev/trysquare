@@ -1,10 +1,13 @@
 ---
 myst:
   html_meta:
-    "description": "etabli - a scenario harness for measuring coding agents reproducibly."
+    "description": "trysquare - a scenario harness for measuring coding agents reproducibly."
 ---
 
-# etabli
+# trysquare
+
+> A try square tells a joiner whether a joint is true. This one tells you whether a
+> measured difference is.
 
 A scenario harness for measuring coding agents reproducibly.
 
@@ -93,10 +96,10 @@ reference/api
 
 ```bash
 pip install -e .                                   # or: uv sync
-cp etabli.toml my-etabli.toml                      # point [repos] at your repository
+cp trysquare.toml my-trysquare.toml                      # point [repos] at your repository
 
-uv run python -m etabli run scenarios/2x3.toml -o out --dry-run   # plan, spend nothing
-uv run python -m etabli run scenarios/2x3.toml -o out             # measure
+uv run python -m trysquare run scenarios/2x3.toml -o out --dry-run   # plan, spend nothing
+uv run python -m trysquare run scenarios/2x3.toml -o out             # measure
 ```
 
 ```{code-block} toml

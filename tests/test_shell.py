@@ -10,9 +10,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from etabli import agent, config, outputs, repo, validation
-from etabli.measure import EMPTY, VALID, VALIDATOR_FAILED, Run
-from etabli.scenario import parse
+from trysquare import agent, config, outputs, repo, validation
+from trysquare.measure import EMPTY, VALID, VALIDATOR_FAILED, Run
+from trysquare.scenario import parse
 from tests.test_scenario import GRID, MINIMAL
 
 

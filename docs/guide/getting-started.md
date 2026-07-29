@@ -6,7 +6,7 @@ output.
 ## Install
 
 ```bash
-git clone <this repository> etabli && cd etabli
+git clone <this repository> trysquare && cd trysquare
 uv sync                      # or: pip install -e .
 ```
 
@@ -32,7 +32,7 @@ A scenario never contains a machine path. It names a repository *logically*, and
 config file resolves that name:
 
 ```{code-block} toml
-:caption: etabli.toml
+:caption: trysquare.toml
 [repos]
 neon = "../neon"             # relative paths are relative to this file
 
@@ -40,7 +40,7 @@ neon = "../neon"             # relative paths are relative to this file
 subagent = "~/Work/Pi/subagent"
 
 [defaults]
-workdir = "$TMPDIR/etabli"
+workdir = "$TMPDIR/trysquare"
 concurrency = 5
 timeout = 900
 ```
@@ -57,7 +57,7 @@ to its baseline in every published matrix.
 ## Plan a run without spending anything
 
 ```bash
-uv run python -m etabli run scenarios/2x3.toml --output out --dry-run
+uv run python -m trysquare run scenarios/2x3.toml --output out --dry-run
 ```
 
 ```text
@@ -89,7 +89,7 @@ false, and a dry run against an existing experiment reset its ledger.
 ## Measure
 
 ```bash
-uv run python -m etabli run scenarios/2x3.toml --output out
+uv run python -m trysquare run scenarios/2x3.toml --output out
 ```
 
 ```text
@@ -161,8 +161,8 @@ Measuring and scoring are separate. When you find a scoring defect - and you wil
 fixing it must not cost another matrix:
 
 ```bash
-uv run python -m etabli render scenarios/2x3.toml -o out
-uv run python -m etabli render scenarios/2x3.toml -o out --reference "rule / off"
+uv run python -m trysquare render scenarios/2x3.toml -o out
+uv run python -m trysquare render scenarios/2x3.toml -o out --reference "rule / off"
 ```
 
 The second writes `synthesis_ref-rule-off.md` from the same measures. A reference is

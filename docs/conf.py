@@ -3,7 +3,7 @@
 The documentation is written in MyST Markdown, not reStructuredText: the rest of
 this project's prose is Markdown, and one syntax is easier to keep good than two.
 
-Building the docs needs Sphinx; **using etabli does not**. The tool keeps zero
+Building the docs needs Sphinx; **using trysquare does not**. The tool keeps zero
 runtime dependencies, so these live in the `docs` optional group and are never
 imported by the package.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-project = "etabli"
+project = "trysquare"
 author = "Loic Gouarin"
 copyright = "2026, Loic Gouarin"
 release = "0.1.0"
@@ -52,14 +52,30 @@ templates_path = ["_templates"]
 # README.md documents how to *build* these docs, for someone browsing the repository.
 # It is not a page of the documentation, so Sphinx must not collect it - otherwise it
 # is an orphan in every toctree, and with -W that is a build failure.
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md", "requirements.txt"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "README.md",
+    "requirements.txt",
+    # _static is copied verbatim, not parsed. Its own README.md documents the marks for
+    # whoever reuses them, and Sphinx would otherwise collect it as a document with no
+    # place in any toctree - an orphan, and with -W an orphan is a failed build.
+    "_static/**",
+]
 
 html_theme = "furo"
 html_static_path = ["_static"]
-html_title = "etabli"
+html_title = "trysquare"
+# The mark is monochrome and carries no wordmark, because html_title already sets the
+# word beside it. Two files rather than one: currentColor does not reach an SVG that is
+# referenced as an image, so a single monochrome file would go black in both themes.
+html_favicon = "_static/logo/trysquare-tile.svg"
 html_theme_options = {
     "source_repository": "",
     "navigation_with_keys": True,
+    "light_logo": "logo/trysquare-mark-light.svg",
+    "dark_logo": "logo/trysquare-mark-dark.svg",
 }
 
 # A warning is a defect in the documentation, and the same standard applies here as

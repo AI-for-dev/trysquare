@@ -59,9 +59,9 @@ defects, and freezing them into its successor is exactly what a parity check mus
 ## Running it
 
 ```bash
-etabli parity <measures.json>                          # layer 3
-etabli parity <measures.json> --archive <traces dir>   # layers 3 and 1
-etabli parity --smoke <experiment dir>                 # layer 4
+trysquare parity <measures.json>                          # layer 3
+trysquare parity <measures.json> --archive <traces dir>   # layers 3 and 1
+trysquare parity --smoke <experiment dir>                 # layer 4
 ```
 
 ## Layer 3, in the test suite

@@ -53,7 +53,7 @@ validators/neon.py /path/to/run/validation/script/context.json
 
 ```json
 {
-  "repo": "/tmp/etabli/2x3_.../a7f3/repo",
+  "repo": "/tmp/trysquare/2x3_.../a7f3/repo",
   "etalon": { "tag": "etalon-v1", "checkout": "/path/to/neon" },
   "prompt": "/tmp/.../prompt.txt",
   "session": "/tmp/.../session",

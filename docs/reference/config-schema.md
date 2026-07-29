@@ -1,6 +1,6 @@
 # Config schema
 
-`etabli.toml`, found by walking up from the scenario, or given with `--config`.
+`trysquare.toml`, found by walking up from the scenario, or given with `--config`.
 
 :::{admonition} The hard rule, enforced at load
 :class: danger
@@ -12,7 +12,7 @@ decide what is measured, so they belong to the scenario - otherwise the same sce
 file would measure something different on another machine.
 
 ```text
-etabli.toml: [defaults] may not set thinking, repetitions. These decide what is
+trysquare.toml: [defaults] may not set thinking, repetitions. These decide what is
 measured, so they belong to the scenario and are never inherited: the same file
 must not measure something different on another machine
 ```
@@ -38,7 +38,7 @@ is not part of it.
 An unknown name names what is known:
 
 ```text
-[repos] has no entry 'ghost' (known: neon). Add it to /path/to/etabli.toml
+[repos] has no entry 'ghost' (known: neon). Add it to /path/to/trysquare.toml
 ```
 
 ## `[harness]`
@@ -62,7 +62,7 @@ subagent = "~/Work/Pi/subagent"
   - Default
   - Meaning
 * - `workdir`
-  - `$TMPDIR/etabli`
+  - `$TMPDIR/trysquare`
   - Where clones and sessions live.
 * - `concurrency`
   - `5`

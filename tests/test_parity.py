@@ -14,7 +14,7 @@ published number needs correcting, or the archive is missing something.
 import unittest
 from pathlib import Path
 
-from etabli.parity import compare, layer3, read_bench_measures
+from trysquare.parity import compare, layer3, read_bench_measures
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bench_2x3_n10.json"
 

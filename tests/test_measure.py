@@ -7,7 +7,7 @@ shipped. They exist so it cannot ship again.
 import json
 import unittest
 
-from etabli.measure import (
+from trysquare.measure import (
     EMPTY,
     VALID,
     VALIDATOR_FAILED,

@@ -40,6 +40,6 @@ keeps them in source order, because that order is part of the argument.
 
 ## Documentation dependencies are not tool dependencies
 
-Sphinx and MyST live in the `docs` optional group and are never imported by `etabli/`.
+Sphinx and MyST live in the `docs` optional group and are never imported by `trysquare/`.
 The tool itself keeps **zero runtime dependencies**, which is what makes it usable
 without an install step.

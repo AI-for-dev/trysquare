@@ -1,8 +1,8 @@
 # Command line reference
 
 ```bash
-uv run python -m etabli <command> [options]
-etabli <command> [options]              # if installed
+uv run python -m trysquare <command> [options]
+trysquare <command> [options]              # if installed
 ```
 
 `--output` roots everything that writes. Six commands.
@@ -12,7 +12,7 @@ etabli <command> [options]              # if installed
 Measures a scenario.
 
 ```bash
-etabli run <scenario> --output <dir> [options]
+trysquare run <scenario> --output <dir> [options]
 ```
 
 ```{list-table}
@@ -24,7 +24,7 @@ etabli run <scenario> --output <dir> [options]
 * - `--output`, `-o`
   - **Required.** Directory every output is written under.
 * - `--config`
-  - Config file. Defaults to the nearest `etabli.toml` walking up from the scenario.
+  - Config file. Defaults to the nearest `trysquare.toml` walking up from the scenario.
 * - `--repetitions N`
   - Override. **Stamped into the directory name.**
 * - `--concurrency N`
@@ -83,7 +83,7 @@ its ledger.
 Rebuilds tables from stored measures. Costs nothing.
 
 ```bash
-etabli render <scenario> -o <dir> [--repetitions N] [--reference CELL]
+trysquare render <scenario> -o <dir> [--repetitions N] [--reference CELL]
 ```
 
 Measuring and scoring are separate. When you find a scoring defect - and there were
@@ -93,7 +93,7 @@ wall clock to fix it. Per-run values are persisted for exactly this.
 `--reference` writes a suffixed file from the same measures:
 
 ```bash
-etabli render scenarios/2x3.toml -o out --reference "rule / off"
+trysquare render scenarios/2x3.toml -o out --reference "rule / off"
 # -> synthesis_ref-rule-off.md
 ```
 
@@ -106,7 +106,7 @@ hand-renamed `_ref-thinking` file was a symptom rather than a solution.
 Reconstitutes archived runs so they can be re-scored. Costs no tokens.
 
 ```bash
-etabli replay <experiment dir or run dir> --scenario <scenario> [--config <file>]
+trysquare replay <experiment dir or run dir> --scenario <scenario> [--config <file>]
 ```
 
 Clones the etalon at its tag, applies the archived `diff.patch`, and writes a fresh
@@ -124,7 +124,7 @@ the measures is the remaining step. See {ref}`not-implemented`.
 Compares two experiments, refusing what is not comparable.
 
 ```bash
-etabli compare <left dir> <right dir>
+trysquare compare <left dir> <right dir>
 ```
 
 **Hard refusal** on different etalons - a different baseline means the two measures
@@ -141,8 +141,8 @@ legitimate comparison axis; it just has to be declared rather than hidden.
 Checks this harness against the tool it replaces. See {doc}`../guide/parity`.
 
 ```bash
-etabli parity <bench measures.json> [--archive <traces dir>]
-etabli parity --smoke <experiment dir> [--workdir <dir>]
+trysquare parity <bench measures.json> [--archive <traces dir>]
+trysquare parity --smoke <experiment dir> [--workdir <dir>]
 ```
 
 Without `--archive`, layer 3 only. With it, layers 3 and 1. With `--smoke`, layer 4's
@@ -153,8 +153,8 @@ mechanical checks over a matrix you measured.
 Generates or ingests a blind manual scoring form.
 
 ```bash
-etabli form <scenario> -o <dir>              # generate
-etabli form <scenario> -o <dir> --ingest <form.toml>
+trysquare form <scenario> -o <dir>              # generate
+trysquare form <scenario> -o <dir> --ingest <form.toml>
 ```
 
 The form is **shuffled, with cell names withheld**, the same blinding as the judge and

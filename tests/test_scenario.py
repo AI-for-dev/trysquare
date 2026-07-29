@@ -6,7 +6,7 @@ is a matrix paid for and thrown away, or worse, published.
 
 import unittest
 
-from etabli.scenario import ScenarioError, parse
+from trysquare.scenario import ScenarioError, parse
 
 MINIMAL = {
     "scenario": {"name": "t"},

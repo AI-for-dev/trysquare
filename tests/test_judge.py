@@ -11,10 +11,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from etabli import parity, validation
-from etabli.measure import final_text
-from etabli.runner import looks_like_path, preflight, read_brick, referenced_paths
-from etabli.scenario import Validator, parse
+from trysquare import parity, validation
+from trysquare.measure import final_text
+from trysquare.runner import looks_like_path, preflight, read_brick, referenced_paths
+from trysquare.scenario import Validator, parse
 from tests.test_scenario import GRID, MINIMAL
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -65,7 +65,7 @@ class TestPreflight(unittest.TestCase):
 
     def test_the_shipped_scenarios_pass_preflight(self):
         """Which is what the incident above should have been caught by."""
-        from etabli.scenario import load
+        from trysquare.scenario import load
 
         for f in sorted((ROOT / "scenarios").glob("*.toml")):
             with self.subTest(scenario=f.name):

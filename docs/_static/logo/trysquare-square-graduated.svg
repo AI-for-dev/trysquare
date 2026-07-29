@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="trysquare">
+  <title>trysquare</title>
+  <!-- The upright square with its blade graduated. The graduations are cut from the
+       silhouette with an even-odd fill, so the mark stays one path and one colour. -->
+  <path fill-rule="evenodd" fill="currentColor"
+        d="M8 6 H17 V45 H41 V58 H8 Z
+           M8 14 H12 V15.6 H8 Z
+           M8 21 H12 V22.6 H8 Z
+           M8 28 H12 V29.6 H8 Z
+           M8 35 H12 V36.6 H8 Z" />
+</svg>

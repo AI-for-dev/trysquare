@@ -194,7 +194,7 @@ validator failed is invalid. Both are global.
 ## Check it before spending
 
 ```bash
-etabli run scenarios/mine.toml -o out --dry-run
+trysquare run scenarios/mine.toml -o out --dry-run
 ```
 
 This loads and validates everything, checks every referenced path, verifies the thinking
@@ -203,8 +203,8 @@ precondition, reports how blind any judge is, and writes nothing.
 Then smoke it small:
 
 ```bash
-etabli run scenarios/mine.toml -o out --repetitions 2
-etabli parity --smoke out/mine_..._n2
+trysquare run scenarios/mine.toml -o out --repetitions 2
+trysquare parity --smoke out/mine_..._n2
 ```
 
 `..._n2` cannot touch the matrix you publish later.

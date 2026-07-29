@@ -7,7 +7,7 @@ someone else's machine.
 import statistics
 import unittest
 
-from etabli.verdict import (
+from trysquare.verdict import (
     ESTABLISHED,
     INCONCLUSIVE,
     gap_interval,

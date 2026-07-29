@@ -23,14 +23,14 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-CONFIG_NAME = "etabli.toml"
+CONFIG_NAME = "trysquare.toml"
 
 # Keys a config file is forbidden to carry. Listed so the refusal can name the
 # key and say why, rather than ignoring it silently.
 FORBIDDEN = ("provider", "model", "thinking", "etalon", "repetitions")
 
 BUILTIN_DEFAULTS = {
-    "workdir": "$TMPDIR/etabli",
+    "workdir": "$TMPDIR/trysquare",
     "concurrency": 5,
     "timeout": 900,
     "attempts": 3,

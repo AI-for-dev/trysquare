@@ -11,100 +11,100 @@ need no network, no clone, and no API key.
 
 ## The pure core
 
-### `etabli.scenario`
+### `trysquare.scenario`
 
 ```{eval-rst}
-.. automodule:: etabli.scenario
+.. automodule:: trysquare.scenario
    :members:
    :undoc-members:
    :show-inheritance:
 ```
 
-### `etabli.measure`
+### `trysquare.measure`
 
 ```{eval-rst}
-.. automodule:: etabli.measure
+.. automodule:: trysquare.measure
    :members:
    :undoc-members:
 ```
 
-### `etabli.verdict`
+### `trysquare.verdict`
 
 ```{eval-rst}
-.. automodule:: etabli.verdict
+.. automodule:: trysquare.verdict
    :members:
    :undoc-members:
 ```
 
-### `etabli.table`
+### `trysquare.table`
 
 ```{eval-rst}
-.. automodule:: etabli.table
+.. automodule:: trysquare.table
    :members:
    :undoc-members:
 ```
 
-### `etabli.parity`
+### `trysquare.parity`
 
 ```{eval-rst}
-.. automodule:: etabli.parity
+.. automodule:: trysquare.parity
    :members:
    :undoc-members:
 ```
 
 ## The effectful shell
 
-### `etabli.config`
+### `trysquare.config`
 
 ```{eval-rst}
-.. automodule:: etabli.config
+.. automodule:: trysquare.config
    :members:
    :undoc-members:
 ```
 
-### `etabli.repo`
+### `trysquare.repo`
 
 ```{eval-rst}
-.. automodule:: etabli.repo
+.. automodule:: trysquare.repo
    :members:
    :undoc-members:
 ```
 
-### `etabli.agent`
+### `trysquare.agent`
 
 ```{eval-rst}
-.. automodule:: etabli.agent
+.. automodule:: trysquare.agent
    :members:
    :undoc-members:
 ```
 
-### `etabli.validation`
+### `trysquare.validation`
 
 ```{eval-rst}
-.. automodule:: etabli.validation
+.. automodule:: trysquare.validation
    :members:
    :undoc-members:
 ```
 
-### `etabli.outputs`
+### `trysquare.outputs`
 
 ```{eval-rst}
-.. automodule:: etabli.outputs
+.. automodule:: trysquare.outputs
    :members:
    :undoc-members:
 ```
 
-### `etabli.runner`
+### `trysquare.runner`
 
 ```{eval-rst}
-.. automodule:: etabli.runner
+.. automodule:: trysquare.runner
    :members:
    :undoc-members:
 ```
 
-### `etabli.cli`
+### `trysquare.cli`
 
 ```{eval-rst}
-.. automodule:: etabli.cli
+.. automodule:: trysquare.cli
    :members: main, build_parser
 ```

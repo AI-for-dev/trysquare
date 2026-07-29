@@ -11,7 +11,7 @@ tool this one replaces.
 ## 1. A run counts only if it consumed tokens
 
 ```{code-block} python
-:caption: etabli/measure.py
+:caption: trysquare/measure.py
 def consumed_tokens(usage: dict) -> bool:
     return bool(usage.get("turns")) and bool(usage.get("input")) and bool(usage.get("output"))
 ```
@@ -42,7 +42,7 @@ the loop.
 The rule is enforced, not documented:
 
 ```text
-etabli.toml: [defaults] may not set thinking. These decide what is measured, so
+trysquare.toml: [defaults] may not set thinking. These decide what is measured, so
 they belong to the scenario and are never inherited: the same file must not
 measure something different on another machine.
 ```

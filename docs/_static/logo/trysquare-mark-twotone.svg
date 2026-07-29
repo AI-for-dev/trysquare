@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="trysquare">
+  <title>trysquare</title>
+  <!-- Two-tone: steel blade, brass stock. The colours are the real materials of a
+       try square, and the stock reads as the handle of the check. -->
+  <g transform="translate(7.6 37.3) rotate(-45)">
+    <path d="M11.5 12 H48 V21 H11.5 Z" fill="#232B33" />
+    <path d="M0 0 H12 V21 H0 Z" fill="#A97C2A" />
+  </g>
+</svg>

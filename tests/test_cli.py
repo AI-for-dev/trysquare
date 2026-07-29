@@ -9,8 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from etabli import parity
-from etabli.cli import build_parser, main
+from trysquare import parity
+from trysquare.cli import build_parser, main
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO = str(ROOT / "scenarios" / "2x3.toml")
@@ -54,8 +54,8 @@ class TestDryRun(unittest.TestCase):
         directory = out()
         self.quietly(["run", SCENARIO, "-o", str(directory), "--repetitions", "3", "--dry-run"])
         # Nothing is written by a dry run, so assert on the name the plan reports.
-        from etabli.outputs import experiment_name
-        from etabli.scenario import load
+        from trysquare.outputs import experiment_name
+        from trysquare.scenario import load
 
         s = load(SCENARIO)
         self.assertTrue(experiment_name(s, 3).endswith("_n3"))
@@ -64,12 +64,12 @@ class TestDryRun(unittest.TestCase):
 
 class TestRunPlan(unittest.TestCase):
     def plan(self, **overrides):
-        from etabli import config as config_mod
-        from etabli import runner
-        from etabli.scenario import load
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
 
         s = load(SCENARIO)
-        c = config_mod.load(ROOT / "etabli.toml")
+        c = config_mod.load(ROOT / "trysquare.toml")
         return runner.resolve(s, c, out(), overrides=overrides)
 
     def test_runs_are_interleaved_across_cells(self):
@@ -88,12 +88,12 @@ class TestRunPlan(unittest.TestCase):
         self.assertIn("concurrency 5 -> 10", joined)
 
     def test_only_marks_the_matrix_incomplete(self):
-        from etabli import config as config_mod
-        from etabli import runner
-        from etabli.scenario import load
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
 
         plan = runner.resolve(
-            load(SCENARIO), config_mod.load(ROOT / "etabli.toml"), out(), only=("rule / off",)
+            load(SCENARIO), config_mod.load(ROOT / "trysquare.toml"), out(), only=("rule / off",)
         )
         self.assertEqual(plan.runs, 10)
         self.assertTrue(any("INCOMPLETE" in n for n in plan.notes))

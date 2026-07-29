@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="trysquare">
+  <title>trysquare</title>
+  <!-- The check with the blade graduated. The notches are what stop the mark from
+       reading as a generic tick: it is an instrument that happens to be at 90 degrees.
+       They close up below about 32px, where the mark degrades to the plain check. -->
+  <path fill-rule="evenodd" fill="currentColor"
+        transform="translate(7.6 37.3) rotate(-45)"
+        d="M0 0 H12 V12 H48 V21 H0 Z
+           M22 17 H23.6 V21 H22 Z
+           M28 17 H29.6 V21 H28 Z
+           M34 17 H35.6 V21 H34 Z
+           M40 17 H41.6 V21 H40 Z" />
+</svg>

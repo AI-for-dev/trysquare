@@ -140,7 +140,7 @@ reconstitute a tree.
 
 ## Where clones and sessions live
 
-Under `workdir` from the config, by default `$TMPDIR/etabli`. Deliberately outside the
+Under `workdir` from the config, by default `$TMPDIR/trysquare`. Deliberately outside the
 output directory, and deliberately disposable: the OS may purge it, and nothing of value
 is lost because `replay` rebuilds a tree from a tag and a diff.
 

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="trysquare">
+  <title>trysquare</title>
+  <!-- Container form, for a favicon, an avatar or a repository social image. -->
+  <rect width="64" height="64" rx="13" fill="#232B33" />
+  <g transform="translate(32 32) scale(0.74) translate(-32 -32)">
+    <g transform="translate(7.6 37.3) rotate(-45)">
+      <path d="M11.5 12 H48 V21 H11.5 Z" fill="#EEF1F3" />
+      <path d="M0 0 H12 V21 H0 Z" fill="#C79338" />
+    </g>
+  </g>
+</svg>
