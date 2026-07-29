@@ -64,43 +64,58 @@ rather than kept.
 
 ## What is predicted
 
-A read-only subagent with a purpose-written definition produces an impact note a
-maintainer can act on more often than the model alone does. The gain comes from the
-definition, not from the mere existence of a delegation tool.
+**A read-only subagent leads the note to cite more of the repository than the model
+alone does.** The criterion is `cited_paths`: distinct real files the note points at,
+checked against the etalon tag, aggregated as a median.
+
+The gain, if any, comes from the agent definitions - not from the mere presence of a
+delegation tool, which is what the `+extension` witness is there to separate.
+
+## Why this criterion and not a judge
+
+The criterion was `note_usable`, scored by an LLM judge, for two matrices. It is gone.
+
+It saturated at 10/10 in every cell as soon as the task got easier, and worse, all
+three of the judge's metrics came out **identical in 40 runs out of 40** - it decided
+"good note" once and answered everything alike. On the narrower task it had
+discriminated (19 of 40 runs with mixed verdicts), so the halo was induced by the task
+rather than fixed. An instrument that stops discriminating exactly when its subject
+gets easy is not an instrument.
+
+A count has no ceiling and no halo. It also produced a **stronger negative** when
+applied retroactively to the 40 runs already paid for: gaps of `+0` with bounds of
+[-0.5, +0], which rules out an effect of any size worth caring about, where the
+judge's wide intervals could not tell "no effect" from "not enough power".
+
+`bogus_paths` travels with it, and it is why this beats a boolean. A note inventing
+`game/score.js` is worse than one citing nothing, and "does it cite paths" scores
+those two the same.
 
 ## What would falsify it
 
-- `+extension` scores as well as `+subagents`. Then the gain comes from having a
-  delegation tool at all, and the agent definitions are decoration. This is the
-  witness that makes the claim falsifiable, and it is why the cell exists.
-- `nothing` already scores high. Then there is nothing to demonstrate: the model
-  alone writes usable notes and the toolkit is answering a question nobody has.
-- `full stack` scores worse than `+subagents`. Then adding the profiler skill costs
-  more attention than it buys, and the stack should stop one brick earlier.
-- The judge's verdicts do not reproduce across repetitions of the same cell. Then
-  the instrument is too noisy to carry this criterion, and its dispersion will say
-  so by widening every interval until nothing is established. That is the honest
-  outcome, not a reason to smooth it with a majority vote.
+- **`+extension` cites as much as `+subagents`.** Then the gain comes from having a
+  delegation tool at all and the definitions are decoration. This is the witness that
+  makes the claim falsifiable, and it is why the cell exists.
+- **`nothing` already cites everything worth citing.** The etalon has 14 files and a
+  good note cites about 3, so the ceiling is low: if the baseline is already at the
+  ceiling there is no room to measure and the scenario cannot answer the question.
+- **`full stack` cites less than `+subagents`.** Then the profiler skill costs more
+  attention than it buys and the stack should stop one brick earlier.
+- **`bogus_paths` rises with the toolkit.** Then delegation is producing confident
+  invention rather than reading, which would be worse than no effect.
+- **The medians move but the intervals never exclude zero at n=10.** Then the effect,
+  if real, is smaller than this design can see, and claiming it would need a larger n
+  declared in advance rather than after looking.
 
 ## What is not claimed
 
-Nothing about whether the note is *correct*, only whether it is usable: it names
-where the change lands, what depends on it, and what it could not determine. A
-correct-but-unusable note and a usable-but-wrong note are different failures, and
-this criterion only sees the first.
+Nothing about whether the note is *correct*, or even useful - only how much of the
+repository it demonstrably points at. A note citing five real files and drawing the
+wrong conclusion scores well here. That is the price of a mechanical criterion, and it
+is worth paying after two matrices in which the judged criterion measured its own
+prompt.
 
 Nothing about the subagent mechanism's guarantee. That a read-only agent *cannot*
 write is a property of the harness, verified separately; it is not something a rate
 over ten runs should be asked to establish.
 
-## A note on the judge
-
-The judge is blind: it receives the task, the response and the diff, and nothing
-about which cell produced them. Here the task is constant across all four cells, so
-blinding is complete. Its verdict is a schema-checked tool call, so the *format* is
-guaranteed; whether it calls the tool at all is not, and a judge that does not leaves
-the run invalid rather than scoring zero.
-
-One call per run, one vote. The matrix already repeats, so the judge's noise lands in
-the cell's dispersion where the resampling accounts for it - and where it is visible
-in the table instead of being averaged away.

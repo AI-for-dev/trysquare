@@ -44,22 +44,36 @@ class TestShippedScenarios(unittest.TestCase):
         s = scenario.load(ROOT / "scenarios" / "2x3.toml")
         self.assertEqual(set(s.verdict["validity"]), {"delivered", "tests"})
 
-    def test_the_subagents_scenario_uses_variants_and_a_judge(self):
-        s = scenario.load(ROOT / "scenarios" / "subagents-judge.toml")
+    def test_the_subagents_scenario_uses_named_variants(self):
+        s = scenario.load(ROOT / "scenarios" / "subagents-citations.toml")
         self.assertEqual(len(s.cells), 4)
         self.assertEqual(s.cells[0].name, "nothing")
         self.assertTrue(s.cells[0].is_baseline)
-        self.assertIn("judge", [v.mode for v in s.validators])
 
-    def test_the_judge_is_blind_in_that_scenario(self):
-        """Its prompt is constant across all four cells, so nothing leaks."""
-        s = scenario.load(ROOT / "scenarios" / "subagents-judge.toml")
-        report = validation.blindness(s)
-        self.assertTrue(report["judge"]["blind"], report)
+    def test_the_subagents_scenario_composes_two_validators(self):
+        """Composition is what this scenario exercises that the 2x3 does not."""
+        s = scenario.load(ROOT / "scenarios" / "subagents-citations.toml")
+        self.assertEqual([v.mode for v in s.validators], ["script", "script"])
+
+    def test_its_criterion_is_counted_rather_than_judged(self):
+        """The judge was removed after two matrices in which it saturated at 10/10
+        and returned all three of its metrics identically in 40 runs out of 40."""
+        s = scenario.load(ROOT / "scenarios" / "subagents-citations.toml")
+        self.assertEqual(s.verdict["criterion"], "cited_paths")
+        self.assertNotIn("judge", [v.mode for v in s.validators])
+
+    def test_no_scenario_still_declares_a_judge_metric(self):
+        """A leftover judge metric would be declared and never returned, which
+        makes every run invalid for a missing declared metric."""
+        stale = {"note_usable", "cites_paths_judged", "says_what_is_missing"}
+        for f in sorted((ROOT / "scenarios").glob("*.toml")):
+            with self.subTest(scenario=f.name):
+                declared = set(scenario.load(f).declared_metrics)
+                self.assertEqual(declared & stale, set())
 
     def test_the_agent_gate_is_wired_into_the_subagent_cells(self):
         """Forcing the scope alone would leave the shipped agents reachable."""
-        s = scenario.load(ROOT / "scenarios" / "subagents-judge.toml")
+        s = scenario.load(ROOT / "scenarios" / "subagents-citations.toml")
         self.assertIn("agent-gate", s.bricks)
         for name in ("+subagents", "full stack"):
             self.assertIn("agent-gate", s.cell(name).delta["harness"], name)
@@ -93,17 +107,11 @@ class TestShippedConfig(unittest.TestCase):
 
 
 class TestShippedValidator(unittest.TestCase):
-    def test_the_neon_validator_is_executable(self):
-        """The contract is "any executable", so the bit is part of it."""
-        import os
-
-        path = ROOT / "validators" / "neon.py"
-        self.assertTrue(os.access(path, os.X_OK), f"{path} is not executable")
-
-    def test_the_validator_declares_what_the_scenarios_expect(self):
-        """Every metric a scenario contracts for must be one this validator can
-        return, or every run would be invalid for a missing declared metric."""
-        produced = {
+    # What each shipped validator actually returns. Keyed by the command a scenario
+    # names, so adding a validator without listing it here fails loudly rather than
+    # passing by omission.
+    PRODUCED = {
+        "neon.py": {
             "overflow",
             "issues",
             "delivered",
@@ -111,14 +119,38 @@ class TestShippedValidator(unittest.TestCase):
             "tests",
             "api_stable",
             "touched",
-        }
+        },
+        "citations.py": {"cited_paths", "exact_paths", "bogus_paths", "cites_paths"},
+    }
+
+    def test_every_shipped_validator_is_executable(self):
+        """The contract is "any executable", so the bit is part of it."""
+        import os
+
+        for name in self.PRODUCED:
+            with self.subTest(validator=name):
+                path = ROOT / "validators" / name
+                self.assertTrue(os.access(path, os.X_OK), f"{path} is not executable")
+
+    def test_each_validator_declares_only_what_it_returns(self):
+        """A metric a scenario contracts for but the validator never returns makes
+        every run invalid for a missing declared metric."""
         for f in sorted((ROOT / "scenarios").glob("*.toml")):
             s = scenario.load(f)
             for v in s.validators:
                 if v.mode != "script":
                     continue
-                with self.subTest(scenario=f.name):
-                    self.assertEqual(set(v.metrics) - produced, set())
+                name = Path(v.config["command"]).name
+                with self.subTest(scenario=f.name, validator=name):
+                    self.assertIn(name, self.PRODUCED, "unlisted validator")
+                    self.assertEqual(set(v.metrics) - self.PRODUCED[name], set())
+
+    def test_the_criterion_is_returned_by_some_validator(self):
+        """Checked at load too, but worth pinning for the shipped scenarios."""
+        for f in sorted((ROOT / "scenarios").glob("*.toml")):
+            s = scenario.load(f)
+            with self.subTest(scenario=f.name):
+                self.assertIn(s.verdict["criterion"], s.declared_metrics)
 
 
 if __name__ == "__main__":

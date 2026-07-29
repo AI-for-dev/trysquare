@@ -1,13 +1,18 @@
 # The scenario the previous bench could not express: isolated subagents, and a
-# composed validation where a judge scores what no script can.
+# composed validation.
 #
-# It exercises three things the 2x3 matrix does not: named variants (irregular,
-# not a cartesian product), harness bricks by path, and composed validation.
+# It exercises three things the 2x3 matrix does not: named variants (irregular, not
+# a cartesian product), harness bricks by path, and two validators composed.
+#
+# Renamed from `subagents-judge`: the judge is gone (see below), so the old name
+# described a mechanism the scenario no longer uses. The rename also gives the
+# matrix its own output directory, which the naming scheme would not otherwise have
+# done - the task and the criterion are not part of the directory name.
 
 [scenario]
-name = "subagents-judge"
-title = "Does a read-only subagent produce a usable impact note?"
-hypothesis = "../hypotheses/subagents-judge.md"
+name = "subagents-citations"
+title = "Does a read-only subagent cite more of the code in an impact note?"
+hypothesis = "../hypotheses/subagents-citations.md"
 
 [task]
 repo = "neon"
@@ -120,34 +125,23 @@ mode = "script"
 command = "../validators/citations.py"
 metrics = ["cited_paths", "exact_paths", "bogus_paths", "cites_paths"]
 
-# 3. The judge, kept for comparison but no longer carrying the verdict.
-#    Its metrics are still declared, so they are recorded and could be scored
-#    again; drop this block to halve the cost of a run.
-[[validation]]
-mode = "judge"
-# Pinned like everything else, and deliberately distinct from the model under
-# test: a judge that is the model being judged is not a judge.
-provider = "ilaas"
-model = "gemma-4-31b"
-thinking = "off"
-rubric = "../rubrics/impact-note.md"
-# What is assembled into the judge's prompt. Declared, because what the judge is
-# given to read is half of what it measures.
+# --- The judge was here, and was removed ----------------------------------
 #
-# The judge is blind: its context carries no cell name and no configuration. Here
-# `prompt` is constant across all four cells, so blinding is complete. In a matrix
-# where the treatment *is* the prompt it would not be, and the harness says so at
-# launch rather than pretending.
-pieces = ["prompt", "response", "diff"]
-# `cites_paths_judged`, not `cites_paths`: the counted metric owns that name now,
-# and two validators may not declare one metric - the loader refuses it at load,
-# before any measurement. Having both is the point: it is a direct comparison of
-# the two instruments on identical runs.
-metrics = ["note_usable", "cites_paths_judged", "says_what_is_missing"]
-
-# No `on_failure` key here: the rule is general. Any validator that crashes, times
-# out, returns unreadable JSON or omits a declared metric makes the run invalid,
-# never false. A broken judge must not read as a negative verdict.
+# It scored three metrics against `../rubrics/impact-note.md`. It is gone because it
+# could not carry a criterion: over two matrices `note_usable` saturated at 10/10 in
+# every cell as soon as the task got easier, and all three of its metrics came out
+# identical in **40 runs out of 40** - it decided "good note" once and answered
+# everything alike. On the narrower task it had discriminated (19 of 40 runs with
+# mixed verdicts), so the halo was induced by the task rather than fixed.
+#
+# It was kept for one round afterwards to compare the two instruments on identical
+# runs, then dropped: it doubled the cost of every matrix for metrics carrying no
+# verdict. The rubric is still in the repository, so a `[[validation]]` block with
+# `mode = "judge"` brings it back.
+#
+# No `on_failure` key anywhere: the rule is general. Any validator that crashes,
+# times out, returns unreadable JSON or omits a declared metric makes the run
+# invalid, never false.
 
 [verdict]
 criterion = "cited_paths"
