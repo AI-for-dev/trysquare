@@ -1,0 +1,43 @@
+# Configuration for this machine. Copy and edit; `--config <path>` points
+# elsewhere.
+#
+# This file replaces environment variables entirely. An environment variable is
+# invisible inheritance: a reader of a scenario cannot see it, the archive does not
+# record it, and the value that actually ran is whatever the shell happened to
+# hold. The previous tool had ten of them, and one of them silently decided the
+# thinking level of every measurement ever published.
+#
+# HARD RULE, enforced at load: this file may only supply **machine paths and load
+# fallbacks**. Setting `provider`, `model`, `thinking`, `etalon` or `repetitions`
+# in [defaults] raises. Those decide what is measured, so they are mandatory in
+# the scenario - otherwise the same file would measure something different on
+# another machine.
+
+# Measurable repositories, by logical name. A scenario writes `repo = "neon"`.
+# Relative paths are relative to this file, not to the current directory.
+[repos]
+neon = "../neon"
+
+# Repositories that provide harness bricks, pinned by tag in the scenario.
+[harness]
+subagent = "~/Work/Pi/subagent"
+
+[defaults]
+# Clones live in the system temporary directory, which macOS purges on reboot.
+# That is intended: the durable archive keeps only sources, and `replay`
+# reconstitutes a tree from a tag and a diff when one is needed again.
+workdir = "$TMPDIR/etabli"
+
+# Fallbacks used only when a scenario is silent. "A plan carries its own load"
+# remains the rule: these condition the retry count and therefore every cost
+# column, so whatever their origin they are written into `state.json` and printed
+# in the synthesis header.
+concurrency = 5
+timeout = 900
+attempts = 3
+
+# Method constants rather than experiment variables: changing them changes how a
+# conclusion is drawn, not what is measured. A scenario may override them if it
+# says so.
+draws = 10000
+seed = 20260729

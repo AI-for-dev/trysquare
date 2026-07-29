@@ -1,0 +1,124 @@
+# The scenario the previous bench could not express: isolated subagents, and a
+# composed validation where a judge scores what no script can.
+#
+# It exercises three things the 2x3 matrix does not: named variants (irregular,
+# not a cartesian product), harness bricks by path, and composed validation.
+
+[scenario]
+name = "subagents-judge"
+title = "Does a read-only subagent produce a usable impact note?"
+hypothesis = "hypotheses/subagents-judge.md"
+
+[task]
+repo = "neon"
+etalon = "etalon-v1"
+prompt = "bricks/impact-note-task.md"
+
+[agent]
+provider = "ilaas"
+model = "gemma-4-31b"
+thinking = "off"
+
+[protocol]
+repetitions = 10
+concurrency = 5
+timeout = 900
+attempts = 3
+
+# --- Harness bricks, by path ----------------------------------------------
+
+# The extension is pinned to a tag and cloned, exactly like the measured
+# repository. An experiment that pins the repository and lets the other half of
+# the harness float is measuring the operator: this is a living project and its
+# main branch moves.
+[harness.extension]
+repo = "subagent"
+tag = "formation-ai4dev-2026-v1"
+# The subdirectory loaded with `-e`. Installing it as a package is not an option:
+# the package format covers extensions, skills, prompt templates and themes, but
+# not agents.
+load = "extension"
+
+# Without this gate, dropping definitions into `.pi/agents/` does not activate
+# them - and the failure is a silent substitution, not an absence. See the
+# comments in the brick itself.
+[harness.agent-gate]
+load = "bricks/agent-gate.ts"
+
+# Copied into the clone's `.pi/agents/` and added to `.git/info/exclude`, so scope
+# scoring does not count our own configuration as the agent's work.
+[harness.agents]
+paths = ["agents/explorer.md", "agents/tester.md"]
+# Optional override. Absent, each file decides its own model, which keeps a cheap
+# explorer alongside an expensive coder expressible. Present, it overrides every
+# file. Either way the harness refuses to inject an agent that would end up with
+# no model at all: nine shipped agents once ran on the wrong provider and returned
+# 402 for exactly that reason. Two places may declare, so the trace settles which
+# one applied - `configuration.json` records the model used and where it came from.
+model = "ilaas/gemma-4-31b"
+
+# The extension hardcodes `.pi/skills/profile/profile.mjs` relative to the measured
+# repository, and the etalon does not contain that file. Without this injection the
+# gate still blocks, but it hands the model an error message instead of the numbers
+# it was supposed to put in front of it.
+[harness.skills]
+paths = ["skills/profile"]
+
+# --- Cells: named variants, not a grid -------------------------------------
+
+[variants.nothing]
+# the baseline: the model alone, with no toolkit
+
+[variants."+extension"]
+# The extension loaded with nobody to delegate to. A witness that matters: it is
+# what tells whether the gain comes from the definitions or merely from having a
+# delegation tool at all.
+harness = ["extension"]
+
+[variants."+subagents"]
+harness = ["extension", "agent-gate", "agents"]
+
+[variants."full stack"]
+harness = ["extension", "agent-gate", "agents", "skills"]
+
+# --- Composed validation --------------------------------------------------
+
+# Two validators in one scenario, each returning its own named metrics, merged
+# into one measurement line per run. They are **independent**: each receives the
+# same context and cannot see what the other found. A judge told the script's
+# verdict is anchored on it, and its agreement stops being an independent signal.
+
+# 1. What a script can judge, a script judges. Deterministic, free, and not open
+#    to argument.
+[[validation]]
+mode = "script"
+command = "validators/neon.py"
+metrics = ["overflow", "issues", "delivered", "in_scope", "tests", "api_stable", "touched"]
+
+# 2. What no script can judge: "is this impact note usable?"
+[[validation]]
+mode = "judge"
+# Pinned like everything else, and deliberately distinct from the model under
+# test: a judge that is the model being judged is not a judge.
+provider = "ilaas"
+model = "gemma-4-31b"
+thinking = "off"
+rubric = "rubrics/impact-note.md"
+# What is assembled into the judge's prompt. Declared, because what the judge is
+# given to read is half of what it measures.
+#
+# The judge is blind: its context carries no cell name and no configuration. Here
+# `prompt` is constant across all four cells, so blinding is complete. In a matrix
+# where the treatment *is* the prompt it would not be, and the harness says so at
+# launch rather than pretending.
+pieces = ["prompt", "response", "diff"]
+metrics = ["note_usable", "cites_paths", "says_what_is_missing"]
+
+# No `on_failure` key here: the rule is general. Any validator that crashes, times
+# out, returns unreadable JSON or omits a declared metric makes the run invalid,
+# never false. A broken judge must not read as a negative verdict.
+
+[verdict]
+criterion = "note_usable"
+reference = "nothing"
+validity = ["delivered", "tests"]

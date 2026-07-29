@@ -1,0 +1,90 @@
+# The 2x3 matrix of module 2.1: a project rule against a well written ticket, at
+# two reasoning budgets.
+#
+# This is the scenario the parity check is built around. Its published results,
+# from 60 runs with zero retries:
+#
+#                     thinking off   thinking high
+#   nothing              10/10           7/10
+#   project rule          9/10           2/10
+#   careful ticket        0/10           0/10
+#
+# A well written ticket separates completely (-100 points, established). The rule
+# only pays when the reasoning that goes and reads it is paid for as well
+# (-80 points with thinking, inconclusive without).
+
+[scenario]
+name = "2x3"
+title = "A project rule against a well written ticket, at two reasoning budgets"
+# Declared before measuring, and versioned. A hypothesis written afterwards is a
+# conclusion wearing a disguise.
+hypothesis = "hypotheses/2x3.md"
+
+[task]
+# A logical name, resolved by [repos] in the config file. A scenario carries no
+# machine path: that is what makes it portable, and it keeps one author's
+# directory layout out of an experiment.
+repo = "neon"
+# A tag, cloned. Never the working tree: main moves on, a classroom fixes issue
+# #1, and yesterday's measures stop comparing with tomorrow's.
+etalon = "etalon-v1"
+prompt = "bricks/vague-ticket.md"
+
+[agent]
+provider = "ilaas"
+model = "gemma-4-31b"
+# Always declared, never inherited. The operator's defaultThinkingLevel once made
+# this cell identical to the baseline in every matrix ever measured.
+thinking = "off"
+
+[protocol]
+# Ten in a session, twenty to publish. Declared in advance, and never rerun "to
+# see": optional stopping is the cure for a result you happen to like.
+repetitions = 10
+# A plan carries its own load. `test-ilaas` saturates at concurrency 10, and the
+# thinking cells regularly exceed 360s. These condition the retry count and
+# therefore every cost column, so they belong to the experiment.
+concurrency = 5
+timeout = 900
+attempts = 3
+
+# --- Cells: two axes, cartesian product -----------------------------------
+
+# The declaration order of the axes fixes the order of the rendered table:
+# context in rows, thinking in columns.
+[axes]
+context = ["nothing", "rule", "careful ticket"]
+thinking = ["off", "high"]
+
+# An axis value declares only its delta. The first value of an axis is the
+# baseline and needs no block, which shows that the baseline *is* a cell of the
+# matrix rather than a seventh one beside it. Every other value must declare a
+# delta, so a misspelling raises instead of silently producing a duplicate of the
+# baseline.
+[values.context.rule]
+context = "bricks/AGENTS.md"
+
+[values.context."careful ticket"]
+prompt = "bricks/careful-ticket.md"
+
+[values.thinking.high]
+thinking = "high"
+
+# --- Validation -----------------------------------------------------------
+
+# `metrics` is a contract. A run whose validator omits one of these names is
+# invalid, rather than having the missing key read as false.
+[[validation]]
+mode = "script"
+command = "validators/neon.py"
+metrics = ["overflow", "issues", "delivered", "in_scope", "tests", "api_stable", "touched"]
+
+# --- Verdict --------------------------------------------------------------
+
+[verdict]
+criterion = "overflow"
+reference = { context = "nothing", thinking = "off" }
+# Both halves of the bench's own validity condition. A run that delivered nothing
+# is not a disciplined agent, it is an agent that did not work - and an empty diff
+# passes the tests by construction.
+validity = ["delivered", "tests"]

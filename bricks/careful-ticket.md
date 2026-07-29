@@ -1,0 +1,1 @@
+La collision scanne toutes les briques a chaque frame et son code est mele a la boucle de rendu (issue #2). Sors la detection de collision de la boucle de rendu ET arrete de scanner toutes les briques. Ne modifie que game/neon.js et ne touche pas aux tests. Tu as fini quand npm test passe et que les fonctions deja exportees ont gardé leur nom et leur signature.
