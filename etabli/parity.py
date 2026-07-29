@@ -102,6 +102,118 @@ def layer3(
     return gap_rows(by_cell, reference, measures, validity=BENCH_VALIDITY)
 
 
+def layer1(measures_path: str | Path, archive: str | Path) -> list[str]:
+    """Recomputes tokens and turns from the archived sessions.
+
+    A genuine test rather than a tautology: the bench counted `message_end` events
+    in the live **stream**, and this reads the archived **session**, whose line
+    types are `session`, `model_change`, `thinking_level_change` and `message`,
+    with usage nested under `message.usage`. Two different paths to one number.
+
+    `retries` is deliberately not compared. It derives from `auto_retry_start`, a
+    stream event a session does not contain, so it is an archive artefact and is
+    removed from the parity scope rather than silently treated as zero.
+
+    Returns the differences, empty when the layer holds.
+    """
+    from .measure import strip_session
+
+    archive = Path(archive)
+    rows = json.loads(Path(measures_path).read_text())
+    published = {
+        r["identifiant"]: (r.get("input"), r.get("output"), r.get("tours"))
+        for r in rows
+        if r.get("identifiant")
+    }
+    cell_of = {r["identifiant"]: r.get("cellule") for r in rows if r.get("identifiant")}
+
+    problems = []
+    checked = 0
+    stripped: dict[str, tuple] = {}
+
+    for ident in published:
+        directory = archive / ident
+        sessions = sorted(directory.glob("*.jsonl")) if directory.is_dir() else []
+        if not sessions:
+            continue
+        text = "\n".join(p.read_text(errors="replace") for p in sessions)
+        got = strip_session(text)
+        stripped[ident] = (got["input"], got["output"], got["turns"])
+        checked += 1
+
+    for ident, got in stripped.items():
+        want = published[ident]
+        if got == want:
+            continue
+
+        # Before calling this a stripping difference, check whether these exact
+        # figures belong to another run. An exact match elsewhere means the numbers
+        # are right and the *labels* are crossed, which is an archive artefact
+        # rather than a disagreement about how to count.
+        owners = [other for other, value in published.items() if value == got and other != ident]
+        if owners:
+            same_cell = all(cell_of.get(o) == cell_of.get(ident) for o in owners)
+            problems.append(
+                f"LABEL: {ident} holds the figures published for {', '.join(owners)}"
+                + (
+                    " - same cell, so no aggregate is affected"
+                    if same_cell
+                    else " - DIFFERENT CELL, aggregates are affected"
+                )
+            )
+            continue
+
+        for i, (mine, theirs) in enumerate((("input", "input"), ("output", "output"), ("turns", "tours"))):
+            if got[i] != want[i]:
+                problems.append(f"{ident}/{mine}: bench {want[i]}, from the session {got[i]}")
+
+    if not checked:
+        problems.append(f"no archived session found under {archive}")
+    else:
+        agreeing = sum(1 for i, g in stripped.items() if g == published[i])
+        problems.insert(0, f"{agreeing}/{checked} sessions reproduce their recorded figures exactly")
+    return problems
+
+
+def layer2(
+    measures_path: str | Path,
+    archive: str | Path,
+    reconstitute,
+    validate,
+) -> list[str]:
+    """Re-scores archived runs by reconstituting their trees, and compares.
+
+    `reconstitute(run_dir) -> Path` rebuilds a tree from the tag and the archived
+    diff; `validate(tree) -> dict` returns the metrics. Both are injected so this
+    stays testable and so the caller owns the cost of cloning.
+
+    Costs no tokens, which is what makes "fix a signature and re-score runs already
+    paid for" true rather than aspirational.
+    """
+    archive = Path(archive)
+    rows = {r["identifiant"]: r for r in json.loads(Path(measures_path).read_text()) if r.get("identifiant")}
+    problems = []
+
+    for ident, row in rows.items():
+        directory = archive / ident
+        if not (directory / "diff.patch").is_file():
+            continue
+        try:
+            tree = reconstitute(directory)
+            got = validate(tree)
+        except Exception as e:  # noqa: BLE001 - report, do not abort the layer
+            problems.append(f"{ident}: could not re-score: {type(e).__name__}: {e}")
+            continue
+
+        want = {BENCH_METRICS.get(k, k): v for k, v in (row.get("note") or {}).items()}
+        for metric, expected in want.items():
+            if metric not in got:
+                problems.append(f"{ident}/{metric}: not returned by the validator")
+            elif got[metric] != expected:
+                problems.append(f"{ident}/{metric}: bench {expected!r}, here {got[metric]!r}")
+    return problems
+
+
 def compare(rows: list[dict], expected: dict[str, dict[str, str]]) -> list[str]:
     """Checks recomputed rows against the values the bench published.
 

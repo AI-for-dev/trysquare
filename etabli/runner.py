@@ -1,0 +1,320 @@
+"""Orchestrating a matrix: what runs, in what order, and what is written down.
+
+Runs are **interleaved** across cells rather than grouped by cell. That is not a
+scheduling detail: interleaved runs see the same provider load, which is the only
+reason durations are comparable between cells of one matrix. They are never
+comparable between matrices, and nothing here pretends otherwise.
+
+An exception in one run must not cost the matrix. A missing cell beats a lost
+table, and the runs already paid for are the ones being protected.
+"""
+
+from __future__ import annotations
+
+import json
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from pathlib import Path
+
+from . import agent as agent_mod
+from . import repo as repo_mod
+from . import validation as validation_mod
+from .config import Config
+from .measure import EMPTY, VALID, Run, merge
+from .outputs import Output
+from .scenario import Cell, Scenario
+
+
+@dataclass
+class Plan:
+    """Everything settled before a single token is spent."""
+
+    scenario: Scenario
+    config: Config
+    output: Output
+    repo_path: Path
+    todo: list[tuple[str, dict]]
+    overrides: dict
+    blindness: dict
+    notes: list[str]
+
+    @property
+    def runs(self) -> int:
+        return len(self.todo)
+
+
+def resolve(
+    scenario: Scenario,
+    config: Config,
+    output_root: Path,
+    overrides: dict | None = None,
+    only: tuple[str, ...] = (),
+    resume: bool = False,
+) -> Plan:
+    """Turns a scenario into a concrete plan, refusing what cannot be measured."""
+    overrides = overrides or {}
+    repetitions = overrides.get("repetitions") or scenario.protocol["repetitions"]
+    output = Output(output_root, scenario, repetitions)
+
+    notes = []
+    for key, value in sorted(overrides.items()):
+        declared = scenario.protocol.get(key, scenario.agent.get(key))
+        notes.append(f"OVERRIDE: {key} {declared} -> {value}")
+
+    repo_path = config.repo(scenario.task["repo"])
+
+    # A subagent's thinking level cannot be declared anywhere, so it is verified.
+    uses_subagents = "agents" in scenario.bricks
+    refusal = validation_mod.check_thinking_precondition(
+        scenario.agent.get("thinking"),
+        agent_mod.ambient_thinking(),
+        uses_subagents,
+    )
+    if refusal:
+        raise RuntimeError(refusal)
+
+    # Reading state is fine here; writing is not. `resolve` must leave the disk
+    # untouched so `--dry-run` cannot create a directory - or worse, reset the
+    # ledger of an experiment that already exists. Preparing and writing belong to
+    # `execute`, which is the part that actually spends something.
+    state = output.load_or_create_state(overrides) if resume else output.initial_state(overrides)
+    todo = output.to_do(state, only)
+
+    if only:
+        notes.append(
+            f"INCOMPLETE: only {', '.join(only)} will run "
+            f"({len(todo)} of {len(output.plan())}); no synthesis is written"
+        )
+
+    return Plan(
+        scenario=scenario,
+        config=config,
+        output=output,
+        repo_path=repo_path,
+        todo=interleave(todo),
+        overrides=overrides,
+        blindness=validation_mod.blindness(scenario),
+        notes=notes,
+    )
+
+
+def interleave(todo: list[tuple[str, dict]]) -> list[tuple[str, dict]]:
+    """Orders runs by repetition first, so cells are measured side by side.
+
+    Grouping by cell would measure the first cell under an idle provider and the
+    last under a loaded one, and the duration column would then compare our own
+    scheduling rather than the configurations.
+    """
+    return sorted(todo, key=lambda item: (item[1]["repetition"], item[1]["cell"]))
+
+
+def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> dict:
+    """The bricks one cell loads, resolved to real paths."""
+    wanted = cell.delta.get("harness", [])
+    extensions: list[Path] = []
+    agents: list[Path] = []
+    skills: list[Path] = []
+    agent_model = None
+
+    for name in wanted:
+        brick = scenario.bricks.get(name)
+        if brick is None:
+            raise RuntimeError(f"cell {cell.name!r} wants brick {name!r}, which is not declared")
+
+        if "repo" in brick:
+            # A pinned repository: clone it at its tag and load from inside.
+            source = config.harness_repo(brick["repo"])
+            clone_dir = config.workdir() / "harness" / f"{brick['repo']}-{brick['tag']}"
+            if not clone_dir.exists():
+                repo_mod.clone(source, brick["tag"], clone_dir)
+            extensions.append(clone_dir / brick.get("load", "."))
+        elif "load" in brick:
+            extensions.append((base / brick["load"]).resolve())
+
+        for path in brick.get("paths", []):
+            resolved = (base / path).resolve()
+            if name == "skills":
+                skills.append(resolved)
+            else:
+                agents.append(resolved)
+        if brick.get("model"):
+            agent_model = brick["model"]
+
+    return {
+        "extensions": extensions,
+        "agents": agents,
+        "skills": skills,
+        "agent_model": agent_model,
+    }
+
+
+def read_brick(base: Path, value: str | None) -> str | None:
+    """A scenario value that may be inline text or a path to a file."""
+    if not value:
+        return None
+    candidate = (base / value).resolve()
+    if candidate.is_file():
+        return candidate.read_text()
+    return value
+
+
+def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
+    """Measures one cell once, and writes down everything about it.
+
+    Every failure path here ends in a `Run` with a state, never in an exception:
+    one frozen run must not take the matrix with it.
+    """
+    scenario = plan.scenario
+    base = scenario.path.parent if scenario.path else Path.cwd()
+    cell = scenario.cell(meta["cell"])
+    run = Run(id=run_id, cell=cell.name, repetition=meta["repetition"])
+
+    try:
+        bricks = brick_paths(scenario, plan.config, cell, base)
+
+        prompt = read_brick(base, cell.delta.get("prompt") or scenario.task.get("prompt")) or ""
+        context = read_brick(base, cell.delta.get("context"))
+        system = read_brick(base, cell.delta.get("system"))
+        thinking = cell.delta.get("thinking") or scenario.agent["thinking"]
+
+        work = plan.config.workdir() / plan.output.directory.name / run_id
+        clone = repo_mod.clone(plan.repo_path, scenario.task["etalon"], work / "repo")
+        prepared = repo_mod.Prepared(path=clone, etalon=scenario.task["etalon"])
+        repo_mod.inject(
+            prepared,
+            context=context,
+            system=system,
+            agents=bricks["agents"],
+            skills=bricks["skills"],
+            agent_model=bricks["agent_model"],
+        )
+        repo_mod.check_agent_models(prepared.agents)
+
+        session_dir = work / "session"
+        args = agent_mod.argv(
+            prompt=prompt,
+            provider=scenario.agent["provider"],
+            model=scenario.agent["model"],
+            thinking=thinking,
+            session_dir=session_dir,
+            extensions=bricks["extensions"],
+            skills=bricks["skills"],
+            has_context=context is not None,
+        )
+        timeout = plan.overrides.get("timeout") or scenario.protocol.get(
+            "timeout", plan.config.fallback("timeout")
+        )
+        attempts = scenario.protocol.get("attempts", plan.config.fallback("attempts"))
+        outcome, tries = agent_mod.run_until_productive(clone, args, timeout, attempts)
+
+        run.usage = outcome.usage
+        run.duration = outcome.duration
+        run.attempts = tries
+
+        if not outcome.produced_something:
+            run.state = EMPTY
+            run.detail = agent_mod.first_error(outcome.stream) or outcome.stderr[:200] or "no tokens consumed"
+            return run
+
+        # The trace is kept next to the run, not in the measured repository.
+        trace = work / "trace.jsonl"
+        trace.write_text(outcome.stream)
+
+        prompt_file = work / "prompt.txt"
+        prompt_file.write_text(prompt)
+
+        results = []
+        for validator in scenario.validators:
+            blind = validator.mode == "judge"
+            directory = plan.output.run_dir(run_id) / "validation" / validator.mode
+            context_file = validation_mod.write_context(
+                directory,
+                repo=clone,
+                etalon=scenario.task["etalon"],
+                etalon_checkout=plan.repo_path,
+                prompt_file=prompt_file,
+                session_dir=session_dir,
+                trace=trace,
+                cell=cell.name,
+                repetition=meta["repetition"],
+                blind=blind,
+            )
+            if validator.mode == "script":
+                result = validation_mod.run_script(validator, context_file, timeout, cwd=base)
+            else:
+                # A judge needs the agent invocation, which the CLI wires once the
+                # rubric brick exists. Recorded as a failure rather than silently
+                # skipped: an unimplemented validator must not read as a verdict.
+                result = validation_mod.Result(
+                    validator.mode, None, detail=f"{validator.mode} validator not wired yet"
+                )
+            plan.output.write_validation(run_id, validator.mode, result.payload, result.stderr)
+            results.append((validator.mode, result.payload))
+            if not result.ok and result.detail:
+                run.detail = result.detail
+
+        metrics, reasons, state, detail = merge(results, scenario.declared_metrics)
+        run.metrics, run.reasons = metrics, reasons
+        if state != VALID:
+            run.state, run.detail = state, detail or run.detail
+
+        archive(plan, run_id, clone, prepared, cell, thinking)
+    except Exception as e:  # noqa: BLE001 - one run must not cost the matrix
+        run.state = EMPTY if run.state == VALID and not run.usage else run.state
+        run.detail = f"{type(e).__name__}: {e}"
+    return run
+
+
+def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking: str) -> None:
+    """Keeps the sources a re-score needs, and nothing more.
+
+    The raw stream is almost entirely streaming deltas, which teach nothing the
+    per-message record does not: 15.9 MB of stream against 30 KB of session. What
+    is archived is the tag, the diff and the configuration, which is exactly what
+    `replay` needs to reconstitute a tree.
+    """
+    directory = plan.output.run_dir(run_id)
+    (directory / "diff.patch").write_text(repo_mod.diff(clone))
+    plan.output.write_configuration(
+        run_id,
+        {
+            "cell": cell.name,
+            "etalon": plan.scenario.task["etalon"],
+            "provider": plan.scenario.agent["provider"],
+            "model": plan.scenario.agent["model"],
+            "thinking": thinking,
+            "injected": prepared.injected,
+            # Two places may declare a subagent's model, so the trace settles
+            # which one applied.
+            "agents": prepared.agents,
+        },
+    )
+
+
+def execute(plan: Plan, on_run=None) -> list[Run]:
+    """Runs the plan, writing state as it goes so an interruption is resumable."""
+    plan.output.prepare()
+    state = plan.output.load_or_create_state(plan.overrides)
+    plan.output.write_state(state)
+    concurrency = plan.overrides.get("concurrency") or plan.scenario.protocol.get(
+        "concurrency", plan.config.fallback("concurrency")
+    )
+
+    done: list[Run] = []
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = {pool.submit(one_run, plan, rid, meta): rid for rid, meta in plan.todo}
+        for future in futures:
+            run = future.result()
+            done.append(run)
+            plan.output.record(state, run.id, run)
+            plan.output.write_state(state)
+            if on_run:
+                on_run(run)
+
+    existing = {r.id: r for r in plan.output.read_measures()}
+    for run in done:
+        existing[run.id] = run
+    plan.output.write_measures(list(existing.values()))
+    plan.output.summarise(state)
+    plan.output.write_state(state)
+    return done
