@@ -10,3 +10,9 @@ build/
 # repository, and nothing should be committed by accident.
 out/
 runs/
+
+# Built documentation
+docs/_build/
+
+# Local virtualenv (docs build only; the tool needs no dependencies)
+.venv/

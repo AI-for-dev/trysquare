@@ -279,3 +279,19 @@ Stated rather than left to be discovered:
 ## Licence
 
 Not yet chosen.
+
+## Documentation
+
+Full reference and user guide, built with Sphinx and MyST:
+
+```bash
+uv venv && uv pip install -e ".[docs]"
+make -C docs html          # then open docs/_build/html/index.html
+```
+
+- **Guide** - getting started, core concepts, writing a scenario, writing a
+  validator, the invariants and their reasoning, parity, troubleshooting
+- **Reference** - CLI, scenario schema, config schema, outputs, Python API
+
+Sphinx lives in the `docs` optional group and is never imported by the package: the
+tool itself keeps zero runtime dependencies.

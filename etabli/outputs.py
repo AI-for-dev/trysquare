@@ -10,14 +10,15 @@ anything that changes what is measured changes the name, so a quick run at three
 repetitions writes to its own directory and *cannot* corrupt a published matrix at
 ten.
 
+The layout, as a literal block so the underscores are not read as markup::
+
     <output>/<scenario>_<etalon>_<provider>_<model>_n<N>/
       state.json        cells, runs, valid / empty / failed, attempt counters
       measures.json     one line per run
       synthesis.md      table and verdicts, written only when complete
-      synthesis.html
       runs/<id>/
         context.json  configuration.json  diff.patch
-        session/*.jsonl   session.html
+        session/*.jsonl
         validation/<mode>.json   validation/<mode>.stderr
 """
 

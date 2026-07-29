@@ -2,6 +2,7 @@
 # is a property worth keeping: a measurement tool that needs an install step is a
 # measurement tool people work around. These are never imported by etabli/.
 sphinx>=8.1
-myst-parser>=4.0
+myst-parser[linkify]>=4.0
+sphinx-design>=0.6
 furo>=2024.8.6
 sphinx-copybutton>=0.5.2
