@@ -119,3 +119,54 @@ Nothing about the subagent mechanism's guarantee. That a read-only agent *cannot
 write is a property of the harness, verified separately; it is not something a rate
 over ten runs should be asked to establish.
 
+
+---
+
+## What happened
+
+Measured at n=10, 40 runs, all valid, no judge.
+`mesures/subagents-citations_etalon-v1_ilaas_gemma-4-31b_n10`.
+
+| cell | median | range | exact | bogus | gap to `nothing` |
+| --- | --- | --- | --- | --- | --- |
+| `nothing` | 3 | 0-3 | 1.5 | 0 | - |
+| `+extension` | 3 | 2-4 | 1.5 | 0 | +0, inconclusive |
+| `+subagents` | 3 | 3-4 | 2.0 | 0 | +0, inconclusive |
+| `full stack` | 3 | 0-3 | 2.0 | 0 | +0, inconclusive |
+
+**The prediction is not supported: nothing is established, and the gaps are exactly
+zero.** This replicates the same criterion scored retroactively over the previous
+matrix - a different 40 runs, the same medians and the same `+0` gaps. Two independent
+samples through one instrument agreeing is the strongest result in the sequence, and
+what it agrees on is the absence of an effect.
+
+### The falsification condition that fired
+
+The second one: **the baseline is already at the ceiling.** Every range is pinned
+against 3-4 files, `nothing` already reaches 3, and the etalon holds 14 files of which
+perhaps 5 are relevant. There is no headroom for a toolkit to demonstrate anything.
+
+So the finding is not "subagents do not help". It is **"NÉON cannot answer this
+question"** - a 14-file repository gives delegation nothing to save. That distinction
+matters: the first would be a claim about the mechanism, and only the second is
+supported.
+
+### What did not fire
+
+`bogus_paths` is 0 in all 40 runs, as it was in the previous matrix. No agent invented
+a path, so the "confident invention" condition is ruled out rather than untested.
+
+### One signal below the threshold
+
+`+subagents` is the only cell that never drops below 3 citations (range 3-4, 10/10 on
+`cites_paths`), while `nothing` and `full stack` each have a run at 0. The same pattern
+appeared in the previous matrix. It is **not established** at n=10, and more
+repetitions are the wrong remedy: a criterion pinned to a ceiling does not get
+sharper with n, it needs headroom.
+
+### What would make this answerable
+
+A different **etalon**, not a different task or criterion. A repository where an impact
+note could plausibly cite fifteen files and a bare model cites four. That is a new
+experiment rather than another round of this one, and the instrument built here would
+carry over unchanged.
