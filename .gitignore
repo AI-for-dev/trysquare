@@ -16,3 +16,8 @@ docs/_build/
 
 # Local virtualenv (docs build only; the tool needs no dependencies)
 .venv/
+
+# uv writes this when a command resolves the docs extra. The project pins nothing at
+# runtime, has never tracked a lock file, and one arrived here by accident rather than by
+# decision - which is the only reason this line exists.
+uv.lock
