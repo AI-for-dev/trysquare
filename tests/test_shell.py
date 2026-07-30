@@ -6,6 +6,7 @@ silently lost or a standard silently bent.
 """
 
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -15,7 +16,7 @@ from unittest import mock
 
 from trysquare import agent, config, outputs, repo, runner, validation
 from trysquare.measure import EMPTY, VALID, VALIDATOR_FAILED, Run
-from trysquare.scenario import parse
+from trysquare.scenario import Validator, parse
 from tests.test_scenario import GRID, MINIMAL
 
 
@@ -488,6 +489,61 @@ class TestBlindness(unittest.TestCase):
         context = json.loads(path.read_text())
         self.assertEqual(context["cell"], "rule / high")
         self.assertEqual(context["etalon"]["tag"], "etalon-v1")
+
+
+class TestScriptValidatorPaths(unittest.TestCase):
+    """A validator is run from the context's directory, so the context path must be
+    absolute.
+
+    `--output out` is the documented way to invoke the tool, and it made every script
+    validator fail with `unreadable context`: the relative path was measured from the
+    child's new working directory rather than the caller's. The whole matrix came back
+    `validator_failed` after paying for every run.
+    """
+
+    def validator(self, script: Path) -> Validator:
+        return Validator(mode="script", config={"command": str(script)}, metrics=("ok",))
+
+    def echo_script(self, directory: Path) -> Path:
+        """A validator that only proves it could open what it was handed."""
+        script = directory / "echo.py"
+        script.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, sys\n"
+            "json.load(open(sys.argv[1]))\n"
+            'print(json.dumps({"metrics": {"ok": True}}))\n'
+        )
+        script.chmod(0o755)
+        return script
+
+    def context_under(self, root: Path) -> Path:
+        directory = root / "out" / "exp" / "runs" / "abcd" / "validation" / "script"
+        directory.mkdir(parents=True)
+        context = directory / "context.json"
+        context.write_text(json.dumps({"repo": "/r"}))
+        return context
+
+    def test_a_relative_output_still_reaches_the_context(self):
+        root = Path(tempfile.mkdtemp())
+        script = self.echo_script(root)
+        context = self.context_under(root)
+        relative = context.relative_to(root)
+
+        previous = Path.cwd()
+        os.chdir(root)
+        try:
+            result = validation.run_script(self.validator(script), relative, timeout=30)
+        finally:
+            os.chdir(previous)
+        self.assertIsNone(result.detail or None, result.stderr)
+        self.assertEqual(result.payload, {"metrics": {"ok": True}})
+
+    def test_an_absolute_output_works_as_it_always_did(self):
+        root = Path(tempfile.mkdtemp())
+        result = validation.run_script(
+            self.validator(self.echo_script(root)), self.context_under(root), timeout=30
+        )
+        self.assertEqual(result.payload, {"metrics": {"ok": True}})
 
 
 class TestThinkingPrecondition(unittest.TestCase):
