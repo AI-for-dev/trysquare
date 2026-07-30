@@ -490,6 +490,62 @@ class TestBlindness(unittest.TestCase):
         self.assertEqual(context["cell"], "rule / high")
         self.assertEqual(context["etalon"]["tag"], "etalon-v1")
 
+    def test_the_declared_test_command_travels_in_the_context(self):
+        """A validator scoring `tests` reads the command here rather than guessing it."""
+        d = Path(tempfile.mkdtemp())
+        path = validation.write_context(
+            d,
+            repo=Path("/r"),
+            etalon="etalon-v1",
+            etalon_checkout=Path("/e"),
+            prompt_file=Path("/p"),
+            session_dir=Path("/s"),
+            trace=None,
+            cell="none",
+            repetition=0,
+            test_command=["node", "--test", "game/**/*.test.js"],
+        )
+        context = json.loads(path.read_text())
+        self.assertEqual(context["test_command"], ["node", "--test", "game/**/*.test.js"])
+
+    def test_a_blind_context_still_carries_the_test_command(self):
+        """It is a property of the **task**, identical in every cell, so it tells a
+        judge nothing about which configuration produced the work it scores."""
+        d = Path(tempfile.mkdtemp())
+        path = validation.write_context(
+            d,
+            repo=Path("/r"),
+            etalon="etalon-v1",
+            etalon_checkout=Path("/e"),
+            prompt_file=Path("/p"),
+            session_dir=Path("/s"),
+            trace=None,
+            cell="none",
+            repetition=0,
+            blind=True,
+            test_command=["node", "--test"],
+        )
+        context = json.loads(path.read_text())
+        self.assertNotIn("cell", context)
+        self.assertEqual(context["test_command"], ["node", "--test"])
+
+    def test_a_scenario_with_no_command_writes_no_key(self):
+        """An absent key is what a validator reads as "this scenario names no suite",
+        which is not the same fact as an empty command."""
+        d = Path(tempfile.mkdtemp())
+        path = validation.write_context(
+            d,
+            repo=Path("/r"),
+            etalon="etalon-v1",
+            etalon_checkout=Path("/e"),
+            prompt_file=Path("/p"),
+            session_dir=Path("/s"),
+            trace=None,
+            cell="none",
+            repetition=0,
+        )
+        self.assertNotIn("test_command", json.loads(path.read_text()))
+
 
 class TestScriptValidatorPaths(unittest.TestCase):
     """A validator is run from the context's directory, so the context path must be

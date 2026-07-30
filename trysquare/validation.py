@@ -57,6 +57,8 @@ def write_context(
     repetition: int,
     blind: bool = False,
     response_file: Path | None = None,
+    test_command: list[str] | None = None,
+    prepare: list[list[str]] | None = None,
 ) -> Path:
     """Writes the context file a validator is handed.
 
@@ -64,6 +66,18 @@ def write_context(
     validator that needed it would otherwise have to reimplement stream parsing,
     and every validator reimplementing it is every validator getting it slightly
     differently.
+
+    `test_command` is the suite the scenario declared, carried here for that same
+    reason and one more: a validator that guessed it would be reading
+    `package.json`, a file inside the perimeter the measured agent may edit.
+
+    It is **not** withheld from a blind context. It is a property of the task,
+    identical in every cell, so it tells a judge nothing about which configuration
+    produced the work in front of it.
+
+    Absent when the scenario names no suite, and an absent key is a different fact
+    from an empty command: it says this experiment scores no test suite, which is
+    something a validator may need to refuse over rather than score.
     """
     context = {
         "repo": str(repo),
@@ -73,6 +87,12 @@ def write_context(
         "cell": cell,
         "repetition": repetition,
     }
+    if test_command is not None:
+        context["test_command"] = list(test_command)
+    # The steps to run before the suite. Kept apart from the suite itself because their
+    # failures mean different things: one says nobody judged, the other is a measurement.
+    if prepare:
+        context["prepare"] = [list(step) for step in prepare]
     if response_file is not None:
         context["response"] = str(response_file)
     if trace is not None:

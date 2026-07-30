@@ -13,6 +13,7 @@ network, a clone, or an API key.
 from __future__ import annotations
 
 import itertools
+import shlex
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,6 +35,35 @@ REQUIRED = (
     ("agent", "thinking"),
     ("protocol", "repetitions"),
 )
+
+# The metric whose declaration makes `[task].test_command` mandatory.
+#
+# The command is **declared, never detected**, and the reason is the same lesson as
+# `REQUIRED` above wearing different clothes. The obvious detection is `npm test`,
+# whose meaning is read from `package.json` - a file inside the perimeter the
+# measured agent may edit. Broken code plus a `scripts.test` of `echo ok` scores
+# green, and nothing in the output says so. A detected command hands the choice of
+# how a run is measured to the very agent being measured.
+#
+# Every documented migration in comparable tools runs the same way, from detecting
+# towards declaring, and none the other way: Heroku's Python buildpack removed two
+# heuristics with the motive written into its source, Renovate is mid-removal, and
+# SWE-bench - which has exactly this problem - wrote 315 test commands by hand.
+#
+# Required by the metric rather than by the section, because a scenario that
+# measures prose has no suite to name and demanding one would be ceremony.
+TESTS_METRIC = "tests"
+
+# Written as a string - the command as an author would type it - and split once, here,
+# with `shlex`. So the *file* is ergonomic and the *data* is unambiguous: everything
+# downstream receives an argv and never splits again.
+#
+# The words below only mean anything to a shell, and no shell runs this command. Left to
+# reach `subprocess` they would arrive as arguments to the runner and fail in a way nobody
+# could read, so they are refused at load time instead. That refusal is the whole reason a
+# string is safe to accept: it is louder than the list form it replaces, which merely made
+# them harmless.
+SHELL_ONLY = frozenset({"&&", "||", ";", "|", ">", ">>", "<", "&"})
 
 
 class ScenarioError(Exception):
@@ -89,6 +119,24 @@ class Scenario:
     def runs(self) -> int:
         """Total executions this scenario asks for."""
         return len(self.cells) * self.protocol["repetitions"]
+
+    @property
+    def test_argv(self) -> tuple[str, ...]:
+        """The command that **decides** the `tests` metric, split once at load."""
+        command = self.task.get("test_command")
+        return tuple(shlex.split(command)) if command else ()
+
+    @property
+    def prepare_argv(self) -> tuple[tuple[str, ...], ...]:
+        """The commands to run **before** the suite, in order.
+
+        Separate from `test_argv` because their failures mean different things, and the
+        difference is the one this whole project is built around. A `prepare` that fails -
+        no network, a dependency that will not install - means **nobody judged**; the suite
+        failing is a measurement. Conflated, a broken network would score an agent red on a
+        column that can carry the scenario's validity condition.
+        """
+        return tuple(tuple(shlex.split(c)) for c in self.task.get("prepare", ()))
 
     @property
     def declared_metrics(self) -> tuple[str, ...]:
@@ -147,6 +195,7 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
     validators = _validators(raw.get("validation", []))
     verdict = dict(raw["verdict"])
     _check_verdict(verdict, validators, cells, axes)
+    _check_test_command(raw["task"], validators, where)
 
     scenario = raw["scenario"]
     return Scenario(
@@ -234,6 +283,76 @@ def _check_axes(axes: dict, values: dict) -> None:
                     f"first value of an axis ({declared[0]!r}) is the baseline. "
                     f"Deltas declared for this axis: {known or 'none'}"
                 )
+
+
+def _check_test_command(task: dict, validators: tuple[Validator, ...], where: str) -> None:
+    """Refuses a scenario that scores a test suite without naming the suite.
+
+    See `TESTS_METRIC` for why the command is declared and never detected.
+
+    Written as a string and split once here, with `shlex` - the shell's own word
+    splitting, quotes included, which is a rule every author already knows. The file is
+    therefore what you would type, and everything downstream receives an argv.
+
+    No shell ever runs it. What that used to buy by refusing strings outright, it now buys
+    better: a word that only means something to a shell is **named and refused** at load
+    time, instead of reaching the runner as an argument and failing where nobody can read
+    it. See `SHELL_ONLY`.
+
+    A command declared by a scenario that scores no tests is kept and not refused: a
+    scenario may name its suite before a validator scores it, and refusing that would
+    punish writing the file in the order it is natural to write it.
+    """
+    for i, step in enumerate(task.get("prepare", ())):
+        _check_one_command(step, f"[task].prepare[{i}]", where)
+
+    command = task.get("test_command")
+
+    if command is None:
+        if TESTS_METRIC in {m for v in validators for m in v.metrics}:
+            raise ScenarioError(
+                f"{where}a validator declares the {TESTS_METRIC!r} metric, so "
+                f"[task].test_command is required: it names the suite that decides "
+                f"that metric, as you would type it.\n"
+                f'  test_command = "node --test \'game/**/*.test.js\'"\n'
+                f"It is declared and never detected, because the obvious detection "
+                f"reads `package.json`, which the measured agent may edit - broken "
+                f"code plus a test script of `echo ok` would score green."
+            )
+        return
+
+    _check_one_command(command, "[task].test_command", where)
+
+
+def _check_one_command(command, field: str, where: str) -> None:
+    """One declared command: a string, splittable, and not secretly a shell line."""
+    if not isinstance(command, str):
+        raise ScenarioError(
+            f"{where}{field} must be a string - the command as you would type it - "
+            f"got {command!r}"
+        )
+
+    try:
+        words = shlex.split(command)
+    except ValueError as e:
+        raise ScenarioError(
+            f"{where}{field} does not split into words ({e}): {command!r}"
+        ) from e
+
+    if not words:
+        raise ScenarioError(f"{where}{field} is empty")
+
+    smuggled = sorted(set(words) & SHELL_ONLY)
+    if smuggled:
+        raise ScenarioError(
+            f"{where}{field} looks like a shell command: it carries "
+            f"{', '.join(smuggled)}.\n"
+            f"  {command}\n"
+            f"No shell runs it - the words are handed straight to the process - so a "
+            f"redirection, a pipe or an `&&` would reach the runner as arguments and fail "
+            f"in a way nobody could read. Refused here rather than there. For several "
+            f"steps use `prepare`, which is a list; each entry is still one command."
+        )
 
 
 def _validators(declared: list) -> tuple[Validator, ...]:

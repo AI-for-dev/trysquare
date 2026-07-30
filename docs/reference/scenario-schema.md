@@ -49,11 +49,66 @@ result publishable rather than quietly reframed.
 * - `prompt`
   - no
   - The task given to the agent: inline text, or a path to a file.
+* - `test_command`
+  - when `tests` is scored
+  - The suite that decides the `tests` metric, **as you would type it**. Declared,
+    never detected.
+* - `prepare`
+  - no
+  - Commands to run before the suite, in order. A failure here means nobody judged.
 ```
 
 `repo` being logical is what makes a scenario portable: it carries no author's
 directory layout. A value containing `/` or `~` is a mistake the schema does not
 prevent but the config resolution will.
+
+`test_command` is required as soon as any validator declares the `tests` metric, and
+the refusal happens at load time. Required by the *metric* rather than by the section:
+a scenario that measures prose has no suite to name, and demanding one would be
+ceremony.
+
+```toml
+test_command = "node --test 'game/**/*.test.js'"
+```
+
+**Declared and never detected**, which is the same lesson as the mandatory keys above
+wearing different clothes. The obvious detection is `npm test`, whose meaning is read
+from `package.json` - a file inside the perimeter the measured agent may edit. Broken
+code plus a test script of `echo ok` scores green, and nothing in the output says so.
+A detected command hands the choice of how a run is measured to the agent being
+measured.
+
+**A string, split once at load with `shlex`.** The file is what you would type;
+everything downstream receives an argv and never splits again. `shlex` is the shell's own
+word splitting, quotes included, so the rule is one every author already knows - and a
+glob still works when the runner expands it itself, as `node --test` does.
+
+**No shell ever runs it.** A word that only means something to a shell - `&&`, `|`, `;`,
+a redirection - is therefore **named and refused at load time**, rather than reaching the
+runner as an argument and failing where nobody can read it.
+
+### `prepare`
+
+For the steps a suite needs before it can run:
+
+```toml
+[task]
+prepare = ["npm ci"]
+test_command = "npm test"
+```
+
+Separate from `test_command` because **their failures mean different things**, and the
+difference is the one this whole tool is built around. A `prepare` that fails - no network,
+a dependency that will not install - means *nobody judged*, so the metric is unjudged rather
+than false. The suite failing is a measurement.
+
+Conflated into one list, a broken network would score an agent **red** on a column that can
+carry the scenario's `validity` condition - "could not judge" filed as "worked badly", one
+level up.
+
+Each entry is one command, under the same rules as `test_command`. NEON declares none: it
+has no dependency to install, which is what makes a validation replayable from a tag and a
+diff months later.
 
 ## `[agent]`
 

@@ -237,5 +237,107 @@ class TestShape(unittest.TestCase):
         self.assertEqual(set(s.declared_metrics), {"overflow", "delivered", "usable"})
 
 
+def scoring_tests(**task) -> dict:
+    """A scenario that contracts for the `tests` metric, with `task` keys added."""
+    return MINIMAL | {
+        "task": MINIMAL["task"] | task,
+        "validation": [
+            {"mode": "script", "command": "v.py", "metrics": ["overflow", "delivered", "tests"]}
+        ],
+    }
+
+
+class TestDeclaredTestCommand(unittest.TestCase):
+    """Scoring a test suite means saying which suite, in the scenario.
+
+    The command is declared rather than detected because the obvious detection -
+    `npm test`, read from `package.json` - takes its answer from a file inside the
+    perimeter the measured agent may edit. Broken code plus a `scripts.test` of
+    `echo ok` scores green.
+    """
+
+    def test_a_scenario_that_scores_tests_must_declare_the_command(self):
+        with self.assertRaises(ScenarioError) as raised:
+            parse(scoring_tests())
+        self.assertIn("test_command", str(raised.exception))
+
+    def test_a_scenario_that_does_not_score_tests_needs_no_command(self):
+        """Required by the metric, not by the section: a scenario measuring prose has
+        no suite to name, and demanding one would be ceremony."""
+        self.assertNotIn("tests", parse(MINIMAL).declared_metrics)
+
+    def test_a_declared_command_is_split_once_at_load(self):
+        """The file carries a string - what you would type - and everything downstream
+        receives an argv. `shlex` is the shell's own word splitting, so the quoting rule is
+        one every author already knows."""
+        s = parse(scoring_tests(test_command="node --test 'game/**/*.test.js'"))
+        self.assertEqual(s.test_argv, ("node", "--test", "game/**/*.test.js"))
+
+    def test_a_list_is_refused_because_one_command_decides(self):
+        with self.assertRaises(ScenarioError) as raised:
+            parse(scoring_tests(test_command=["node", "--test"]))
+        self.assertIn("string", str(raised.exception))
+
+    def test_a_shell_word_is_named_and_refused(self):
+        """What the old list form only made harmless, this refuses out loud. Left alone,
+        `&&` would reach the runner as an argument and fail where nobody can read it."""
+        for line in ("npm ci && npm test", "npm test | tee out", "npm test > out"):
+            with self.subTest(command=line):
+                with self.assertRaises(ScenarioError) as raised:
+                    parse(scoring_tests(test_command=line))
+                self.assertIn("shell", str(raised.exception))
+
+    def test_the_refusal_points_at_prepare(self):
+        """Because there is somewhere to put the other step, and saying so is the
+        difference between a refusal and a dead end."""
+        with self.assertRaises(ScenarioError) as raised:
+            parse(scoring_tests(test_command="npm ci && npm test"))
+        self.assertIn("prepare", str(raised.exception))
+
+    def test_an_empty_command_is_refused(self):
+        with self.assertRaises(ScenarioError):
+            parse(scoring_tests(test_command="   "))
+
+    def test_an_unbalanced_quote_is_refused_at_load(self):
+        with self.assertRaises(ScenarioError):
+            parse(scoring_tests(test_command="node --test 'unclosed"))
+
+    def test_a_command_declared_without_scoring_tests_is_kept(self):
+        """Not an error: a scenario may name its suite before a validator scores it,
+        and refusing that would punish writing the file in the useful order."""
+        s = parse(MINIMAL | {"task": MINIMAL["task"] | {"test_command": "node --test"}})
+        self.assertEqual(s.test_argv, ("node", "--test"))
+
+
+class TestPrepareSteps(unittest.TestCase):
+    """Steps that run **before** the suite, whose failure means something else.
+
+    A `prepare` that fails - no network, a dependency that will not install - says nobody
+    judged. The suite failing is a measurement. Conflated in one list, a broken network
+    would score an agent red on a column that can carry the scenario's validity condition,
+    which is "could not judge" filed as "worked badly" one level up.
+    """
+
+    def test_prepare_is_a_list_of_commands_each_split(self):
+        s = parse(scoring_tests(test_command="npm test", prepare=["npm ci", "npm run build"]))
+        self.assertEqual(
+            s.prepare_argv, (("npm", "ci"), ("npm", "run", "build"))
+        )
+
+    def test_no_prepare_is_the_common_case(self):
+        """NEON has no dependency to install, and that is what makes a validation
+        replayable from a tag and a diff months later."""
+        self.assertEqual(parse(scoring_tests(test_command="npm test")).prepare_argv, ())
+
+    def test_a_shell_word_in_prepare_is_refused_too(self):
+        with self.assertRaises(ScenarioError) as raised:
+            parse(scoring_tests(test_command="npm test", prepare=["npm ci && npm run build"]))
+        self.assertIn("prepare[0]", str(raised.exception))
+
+    def test_a_prepare_entry_that_is_not_a_string_is_refused(self):
+        with self.assertRaises(ScenarioError):
+            parse(scoring_tests(test_command="npm test", prepare=[["npm", "ci"]]))
+
+
 if __name__ == "__main__":
     unittest.main()
