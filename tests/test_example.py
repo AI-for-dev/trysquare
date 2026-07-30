@@ -25,9 +25,10 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE = ROOT / "examples" / "validator.py"
 FIXTURE = ROOT / "tests" / "fixtures" / "tiny"
 
-# The suite the fixture declares. `python3` rather than `sys.executable`, because a
-# scenario must carry no machine path - and a trivial suite runs under any Python.
-TEST_COMMAND = ["python3", "-m", "unittest", "discover", "-s", "tests", "-t", "."]
+# The suite the fixture declares, written as a scenario writes it: a string. `python3`
+# rather than `sys.executable`, because a scenario must carry no machine path - and a
+# trivial suite runs under any Python.
+TEST_COMMAND = "python3 -m unittest discover -s tests -t ."
 
 
 def fixture_files() -> dict[str, str]:
@@ -42,7 +43,7 @@ def fixture_files() -> dict[str, str]:
 def a_measured_run(
     change: dict | None = None,
     response: str | None = None,
-    command: list[str] | None = None,
+    command: str | None = None,
 ) -> Path:
     """A clone standing for one finished run, plus the context a validator is handed.
 
@@ -137,7 +138,7 @@ class TestTheExampleScoresARun(unittest.TestCase):
         version.
         """
         payload = score(
-            a_measured_run({"counter.py": "x = 1\n"}, command=["/nowhere/runner"])
+            a_measured_run({"counter.py": "x = 1\n"}, command="/nowhere/runner")
         )
         self.assertNotIn("tests", payload["metrics"])
         self.assertIn("tests", payload["unjudged"])

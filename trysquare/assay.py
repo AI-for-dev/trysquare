@@ -57,6 +57,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from . import repo
+from .scenario import split_command
 
 USAGE = "usage: <validator> <context.json>"
 
@@ -508,8 +509,12 @@ class Assay:
         return self._call("tests", timeout)
 
     def _compute_tests(self):
-        command = self._given("test_command", "the declared test suite")
-        prepare = self._context.get("prepare") or []
+        # Split here, with the loader's own rule. The context carries the command as the
+        # scenario wrote it, so a validator in any language gets the shape its runtime
+        # prefers - and this one rule, shared, is what stops a command being split two
+        # slightly different ways and therefore measured two slightly different ways.
+        command = split_command(self._given("test_command", "the declared test suite"))
+        prepare = [split_command(step) for step in self._context.get("prepare") or []]
         directory = self.repo
 
         def launch(argv, timeout: int):

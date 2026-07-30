@@ -58,8 +58,8 @@ def write_context(
     repetition: int,
     blind: bool = False,
     response_file: Path | None = None,
-    test_command: list[str] | None = None,
-    prepare: list[list[str]] | None = None,
+    test_command: str | None = None,
+    prepare: list[str] | None = None,
     touched: list[str] | None = None,
     files: list[str] | None = None,
     declared: tuple[str, ...] = (),
@@ -74,6 +74,14 @@ def write_context(
     `test_command` is the suite the scenario declared, carried here for that same
     reason and one more: a validator that guessed it would be reading
     `package.json`, a file inside the perimeter the measured agent may edit.
+
+    Carried **as the scenario wrote it** - a string - rather than pre-split. One fact, one
+    representation: an archived context read against the scenario file six months later says
+    the same thing, with no transformation to know about. And a validator gets the shape its
+    own runtime prefers, which is the opposite of what pre-splitting assumed: a shell splits
+    a string for free, where a JSON array has to be parsed and rebuilt. Only Python prefers
+    an argv, and a Python validator never sees this key - `run.tests()` does the splitting,
+    with `scenario.split_command`, which is the same rule the loader vetted it with.
 
     It is **not** withheld from a blind context. It is a property of the task,
     identical in every cell, so it tells a judge nothing about which configuration
@@ -108,11 +116,11 @@ def write_context(
     if prompt_file is not None:
         context["prompt"] = str(prompt_file)
     if test_command is not None:
-        context["test_command"] = list(test_command)
+        context["test_command"] = test_command
     # The steps to run before the suite. Kept apart from the suite itself because their
     # failures mean different things: one says nobody judged, the other is a measurement.
     if prepare:
-        context["prepare"] = [list(step) for step in prepare]
+        context["prepare"] = list(prepare)
     # Written even when empty, and that is the one place where absent and empty must not
     # be confused: an agent that changed nothing is a **result**, and a validator has to
     # be able to read it. A missing key means nobody looked.

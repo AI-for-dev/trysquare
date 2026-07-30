@@ -7,7 +7,7 @@ is a matrix paid for and thrown away, or worse, published.
 import unittest
 from pathlib import Path
 
-from trysquare.scenario import ScenarioError, parse
+from trysquare.scenario import ScenarioError, parse, split_command
 
 MINIMAL = {
     "scenario": {"name": "t"},
@@ -271,7 +271,12 @@ class TestDeclaredTestCommand(unittest.TestCase):
         receives an argv. `shlex` is the shell's own word splitting, so the quoting rule is
         one every author already knows."""
         s = parse(scoring_tests(test_command="node --test 'game/**/*.test.js'"))
-        self.assertEqual(s.test_argv, ("node", "--test", "game/**/*.test.js"))
+        # The scenario keeps the string; `split_command` is the one rule that turns it into
+        # an argv, and it is the same one the loader vetted it with.
+        self.assertEqual(s.task["test_command"], "node --test 'game/**/*.test.js'")
+        self.assertEqual(
+            split_command(s.task["test_command"]), ("node", "--test", "game/**/*.test.js")
+        )
 
     def test_a_list_is_refused_because_one_command_decides(self):
         with self.assertRaises(ScenarioError) as raised:
@@ -306,7 +311,31 @@ class TestDeclaredTestCommand(unittest.TestCase):
         """Not an error: a scenario may name its suite before a validator scores it,
         and refusing that would punish writing the file in the useful order."""
         s = parse(MINIMAL | {"task": MINIMAL["task"] | {"test_command": "node --test"}})
-        self.assertEqual(s.test_argv, ("node", "--test"))
+        self.assertEqual(s.task["test_command"], "node --test")
+
+
+class TestOneSplittingRule(unittest.TestCase):
+    """`split_command` is the only place a command becomes an argv.
+
+    Both callers come here: the loader that vets a scenario and the base that runs the
+    command. Two implementations would be the drift this effort exists to remove, and a
+    command split two slightly different ways would be measured two slightly different ways.
+    """
+
+    def test_quotes_hold_a_word_together(self):
+        self.assertEqual(
+            split_command("node --test 'game/**/*.test.js'"),
+            ("node", "--test", "game/**/*.test.js"),
+        )
+
+    def test_a_path_with_a_space_survives(self):
+        self.assertEqual(split_command('pytest "my tests"'), ("pytest", "my tests"))
+
+    def test_it_is_what_the_loader_vets_with(self):
+        """So a command that loads is a command that runs, with no second rule in between."""
+        with self.assertRaises(ScenarioError):
+            parse(scoring_tests(test_command="npm ci && npm test"))
+        self.assertIn("&&", split_command("npm ci && npm test"))
 
 
 class TestPrepareSteps(unittest.TestCase):
@@ -320,14 +349,12 @@ class TestPrepareSteps(unittest.TestCase):
 
     def test_prepare_is_a_list_of_commands_each_split(self):
         s = parse(scoring_tests(test_command="npm test", prepare=["npm ci", "npm run build"]))
-        self.assertEqual(
-            s.prepare_argv, (("npm", "ci"), ("npm", "run", "build"))
-        )
+        self.assertEqual(s.task["prepare"], ["npm ci", "npm run build"])
 
     def test_no_prepare_is_the_common_case(self):
         """NEON has no dependency to install, and that is what makes a validation
         replayable from a tag and a diff months later."""
-        self.assertEqual(parse(scoring_tests(test_command="npm test")).prepare_argv, ())
+        self.assertEqual(parse(scoring_tests(test_command="npm test")).task.get("prepare"), None)
 
     def test_a_shell_word_in_prepare_is_refused_too(self):
         with self.assertRaises(ScenarioError) as raised:

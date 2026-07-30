@@ -51,11 +51,6 @@ Any executable, in any language. One argument: a path to a context file.
 validators/neon.py /path/to/run/validation/script/context.json
 ```
 
-The scenario writes its commands as **strings** - `test_command = "node --test ..."` - and
-they arrive here **already split**. The harness splits once, at load, with `shlex`, so no
-validator ever has to split a shell string, and every language receives an unambiguous
-argv. The file is ergonomic; the data is not ambiguous.
-
 ```json
 {
   "repo": "/tmp/trysquare/2x3_.../a7f3/repo",
@@ -65,7 +60,7 @@ argv. The file is ergonomic; the data is not ambiguous.
   "trace": "/tmp/.../trace.jsonl",
   "cell": "rule / high",
   "repetition": 3,
-  "test_command": ["node", "--test", "game/**/*.test.js"],
+  "test_command": "node --test 'game/**/*.test.js'",
   "prepare": [],
   "touched": ["game/neon.js"],
   "files": ["README.md", "game/neon.js", "game/theme.js"],
@@ -96,7 +91,13 @@ a signature and re-score runs already paid for" true.
 as *text* and not every validator can run `git`.
 
 `test_command` is the suite that decides the `tests` metric, declared by the scenario and
-never guessed here. Run it as the argv it is - no shell, and nothing to split.
+never guessed here. It is carried **as the scenario wrote it**, so a context read against the
+scenario file says the same thing, and so a validator gets the shape its own runtime prefers:
+a shell splits a string for free, where a JSON array would have to be parsed and rebuilt.
+
+No shell runs it, though - the loader refused any word that only means something to one. In
+Python, {func}`trysquare.scenario.split_command` is the rule the loader vetted it with, and
+`run.tests()` already uses it. Elsewhere, `$cmd` unquoted does the same job.
 
 `prepare` is what has to run before the suite - usually nothing. Its failures mean
 something else: no network or a dependency that will not install says *nobody judged*, so

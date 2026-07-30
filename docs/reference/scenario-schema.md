@@ -78,10 +78,12 @@ code plus a test script of `echo ok` scores green, and nothing in the output say
 A detected command hands the choice of how a run is measured to the agent being
 measured.
 
-**A string, split once at load with `shlex`.** The file is what you would type;
-everything downstream receives an argv and never splits again. `shlex` is the shell's own
-word splitting, quotes included, so the rule is one every author already knows - and a
-glob still works when the runner expands it itself, as `node --test` does.
+**A string, and it stays one.** The file is what you would type, `context.json` carries the
+same string, and `split_command` turns it into an argv wherever one is needed - the loader
+that vets it and the base that runs it come to the same rule, so what loads is what runs.
+`shlex` is the shell's own word splitting, quotes included, so the rule is one every author
+already knows - and a glob still works when the runner expands it itself, as `node --test`
+does.
 
 **No shell ever runs it.** A word that only means something to a shell - `&&`, `|`, `;`,
 a redirection - is therefore **named and refused at load time**, rather than reaching the
