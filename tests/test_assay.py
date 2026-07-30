@@ -6,6 +6,7 @@ docstrings are to those originals.
 """
 
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -412,8 +413,13 @@ class TestToolCalls(unittest.TestCase):
             run.tool_calls()
 
 
-def a_runner(directory: Path, code: int, out: str = "", err: str = "") -> list[str]:
-    """A command standing for a test runner: a chosen exit code and a chosen output."""
+def a_runner(directory: Path, code: int, out: str = "", err: str = "") -> str:
+    """A command standing for a test runner: a chosen exit code and a chosen output.
+
+    A **string**, because that is what a scenario writes and what the context carries.
+    `shlex.join` rather than a bare join, so a temporary path holding a space still produces
+    one word.
+    """
     script = directory / "runner.py"
     script.write_text(
         "import sys\n"
@@ -421,7 +427,7 @@ def a_runner(directory: Path, code: int, out: str = "", err: str = "") -> list[s
         f"sys.stderr.write({err!r})\n"
         f"sys.exit({code})\n"
     )
-    return [sys.executable, str(script)]
+    return shlex.join([sys.executable, str(script)])
 
 
 NODE_SPEC = (
@@ -490,7 +496,7 @@ class TestTheDeclaredSuite(unittest.TestCase):
 
     def test_an_executable_that_is_not_there_cannot_judge(self):
         d = Path(tempfile.mkdtemp())
-        run = Assay({"repo": str(d), "test_command": ["/nowhere/runner", "--test"]})
+        run = Assay({"repo": str(d), "test_command": "/nowhere/runner --test"})
         with self.assertRaises(CannotJudge):
             run.tests()
 
@@ -520,7 +526,7 @@ class TestTheDeclaredSuite(unittest.TestCase):
         d = Path(tempfile.mkdtemp())
         script = d / "hang.py"
         script.write_text("import time\ntime.sleep(30)\n")
-        run = Assay({"repo": str(d), "test_command": [sys.executable, str(script)]})
+        run = Assay({"repo": str(d), "test_command": shlex.join([sys.executable, str(script)])})
         with self.assertRaises(CannotJudge) as raised:
             run.tests(timeout=1)
         self.assertIn("timed out", str(raised.exception))
@@ -539,7 +545,7 @@ class TestTheDeclaredSuite(unittest.TestCase):
             {
                 "repo": str(d),
                 "prepare": [a_runner(d, 0, "installed\n")],
-                "test_command": [sys.executable, "-c", "print('ℹ pass 1')"],
+                "test_command": shlex.join([sys.executable, "-c", "print('ℹ pass 1')"]),
             }
         )
         self.assertTrue(run.tests())
@@ -553,7 +559,7 @@ class TestTheDeclaredSuite(unittest.TestCase):
             {
                 "repo": str(d),
                 "prepare": [a_runner(d, 1, "", "npm ERR! network unreachable\n")],
-                "test_command": [sys.executable, "-c", "print('ℹ pass 1')"],
+                "test_command": shlex.join([sys.executable, "-c", "print('ℹ pass 1')"]),
             }
         )
         with self.assertRaises(CannotJudge) as raised:
@@ -568,11 +574,9 @@ class TestTheDeclaredSuite(unittest.TestCase):
             {
                 "repo": str(d),
                 "prepare": [a_runner(d, 1)],
-                "test_command": [
-                    sys.executable,
-                    "-c",
-                    f"open({str(witness)!r}, 'w').close()",
-                ],
+                "test_command": shlex.join(
+                    [sys.executable, "-c", f"open({str(witness)!r}, 'w').close()"]
+                ),
             }
         )
         with self.assertRaises(CannotJudge):
@@ -582,7 +586,7 @@ class TestTheDeclaredSuite(unittest.TestCase):
     def test_the_command_is_run_as_an_argv_without_a_shell(self):
         """No shell, so a scenario cannot smuggle a redirection past the declaration."""
         d = Path(tempfile.mkdtemp())
-        run = Assay({"repo": str(d), "test_command": ["echo", "hi > stolen.txt"]})
+        run = Assay({"repo": str(d), "test_command": "echo 'hi > stolen.txt'"})
         self.assertTrue(run.tests())
         self.assertFalse((d / "stolen.txt").exists())
 

@@ -492,7 +492,12 @@ class TestBlindness(unittest.TestCase):
         self.assertEqual(context["etalon"]["tag"], "etalon-v1")
 
     def test_the_declared_test_command_travels_in_the_context(self):
-        """A validator scoring `tests` reads the command here rather than guessing it."""
+        """A validator scoring `tests` reads the command here rather than guessing it.
+
+        Carried **as the scenario wrote it**, a string. One fact, one representation: an
+        archived context read against the scenario file six months later says the same thing,
+        with no transformation to know about.
+        """
         d = Path(tempfile.mkdtemp())
         path = validation.write_context(
             d,
@@ -504,10 +509,10 @@ class TestBlindness(unittest.TestCase):
             trace=None,
             cell="none",
             repetition=0,
-            test_command=["node", "--test", "game/**/*.test.js"],
+            test_command="node --test 'game/**/*.test.js'",
         )
         context = json.loads(path.read_text())
-        self.assertEqual(context["test_command"], ["node", "--test", "game/**/*.test.js"])
+        self.assertEqual(context["test_command"], "node --test 'game/**/*.test.js'")
 
     def test_a_blind_context_still_carries_the_test_command(self):
         """It is a property of the **task**, identical in every cell, so it tells a
@@ -524,11 +529,56 @@ class TestBlindness(unittest.TestCase):
             cell="none",
             repetition=0,
             blind=True,
-            test_command=["node", "--test"],
+            test_command="node --test",
         )
         context = json.loads(path.read_text())
         self.assertNotIn("cell", context)
-        self.assertEqual(context["test_command"], ["node", "--test"])
+        self.assertEqual(context["test_command"], "node --test")
+
+    def test_the_context_and_the_loader_split_it_the_same_way(self):
+        """The point of a single rule: what loads is what runs, with nothing in between.
+
+        Two implementations would let a command be split two slightly different ways, and
+        therefore measured two slightly different ways.
+        """
+        from trysquare.scenario import split_command
+
+        d = Path(tempfile.mkdtemp())
+        written = "node --test 'game/**/*.test.js'"
+        path = validation.write_context(
+            d,
+            repo=Path("/r"),
+            etalon="etalon-v1",
+            etalon_checkout=Path("/e"),
+            prompt_file=Path("/p"),
+            session_dir=Path("/s"),
+            trace=None,
+            cell="none",
+            repetition=0,
+            test_command=written,
+        )
+        carried = json.loads(path.read_text())["test_command"]
+        self.assertEqual(carried, written)
+        self.assertEqual(
+            split_command(carried), ("node", "--test", "game/**/*.test.js")
+        )
+
+    def test_prepare_travels_as_written_too(self):
+        d = Path(tempfile.mkdtemp())
+        path = validation.write_context(
+            d,
+            repo=Path("/r"),
+            etalon="etalon-v1",
+            etalon_checkout=Path("/e"),
+            prompt_file=Path("/p"),
+            session_dir=Path("/s"),
+            trace=None,
+            cell="none",
+            repetition=0,
+            test_command="npm test",
+            prepare=["npm ci"],
+        )
+        self.assertEqual(json.loads(path.read_text())["prepare"], ["npm ci"])
 
     def test_a_scenario_with_no_command_writes_no_key(self):
         """An absent key is what a validator reads as "this scenario names no suite",

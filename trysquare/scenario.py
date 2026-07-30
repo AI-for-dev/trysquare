@@ -66,6 +66,21 @@ TESTS_METRIC = "tests"
 SHELL_ONLY = frozenset({"&&", "||", ";", "|", ">", ">>", "<", "&"})
 
 
+def split_command(command: str) -> tuple[str, ...]:
+    """One declared command, as an argv.
+
+    The single splitting rule, and the only one: the loader vetting a scenario and the base
+    running the command both come here. Two implementations would be the drift this module
+    spends its whole length refusing - and a command split two slightly different ways would
+    be measured two slightly different ways.
+
+    `shlex` is the shell's own word splitting, quotes included, which is why the scenario can
+    carry a string an author would recognise. Nothing here runs a shell; `SHELL_ONLY` above is
+    what makes that safe.
+    """
+    return tuple(shlex.split(command))
+
+
 class ScenarioError(Exception):
     """A scenario that is not a well-formed experiment.
 
@@ -119,24 +134,6 @@ class Scenario:
     def runs(self) -> int:
         """Total executions this scenario asks for."""
         return len(self.cells) * self.protocol["repetitions"]
-
-    @property
-    def test_argv(self) -> tuple[str, ...]:
-        """The command that **decides** the `tests` metric, split once at load."""
-        command = self.task.get("test_command")
-        return tuple(shlex.split(command)) if command else ()
-
-    @property
-    def prepare_argv(self) -> tuple[tuple[str, ...], ...]:
-        """The commands to run **before** the suite, in order.
-
-        Separate from `test_argv` because their failures mean different things, and the
-        difference is the one this whole project is built around. A `prepare` that fails -
-        no network, a dependency that will not install - means **nobody judged**; the suite
-        failing is a measurement. Conflated, a broken network would score an agent red on a
-        column that can carry the scenario's validity condition.
-        """
-        return tuple(tuple(shlex.split(c)) for c in self.task.get("prepare", ()))
 
     @property
     def declared_metrics(self) -> tuple[str, ...]:
@@ -333,7 +330,7 @@ def _check_one_command(command, field: str, where: str) -> None:
         )
 
     try:
-        words = shlex.split(command)
+        words = split_command(command)
     except ValueError as e:
         raise ScenarioError(
             f"{where}{field} does not split into words ({e}): {command!r}"
