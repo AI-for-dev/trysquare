@@ -67,9 +67,10 @@ exclude_patterns = [
 html_theme = "furo"
 html_static_path = ["_static"]
 html_title = "trysquare"
-# The mark is monochrome and carries no wordmark, because html_title already sets the
-# word beside it. Two files rather than one: currentColor does not reach an SVG that is
-# referenced as an image, so a single monochrome file would go black in both themes.
+# The mark carries no wordmark, because html_title already sets the word beside it. Two
+# files rather than one: the mark is two-tone, so it needs a variant per ground, and
+# currentColor would not have helped anyway - it does not reach an SVG referenced as an
+# image, so a monochrome file would go black in both themes.
 html_favicon = "_static/logo/trysquare-tile.svg"
 html_theme_options = {
     "source_repository": "",

@@ -4,8 +4,13 @@
        editable; outline it before publishing anywhere the fonts are not guaranteed. -->
   <g transform="translate(2 6) scale(0.8)">
     <g transform="translate(7.6 37.3) rotate(-45)">
-      <path d="M11.5 12 H48 V21 H11.5 Z" fill="#232B33" />
-      <path d="M0 0 H12 V21 H0 Z" fill="#A97C2A" />
+      <path fill-rule="evenodd" fill="#232B33"
+            d="M11.5 12 H48 V21 H11.5 Z
+               M22 17 H23.6 V21 H22 Z
+               M28 17 H29.6 V21 H28 Z
+               M34 17 H35.6 V21 H34 Z
+               M40 17 H41.6 V21 H40 Z" />
+      <path fill="#A97C2A" d="M0 0 H12 V21 H0 Z" />
     </g>
   </g>
   <text x="60" y="40.5" fill="#232B33"

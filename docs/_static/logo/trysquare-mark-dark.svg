@@ -1,12 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="trysquare">
   <title>trysquare</title>
-  <!-- The mark with an explicit ink colour, for a dark ground. See
-       trysquare-mark-light.svg for why the two grounds need two files. -->
-  <path fill-rule="evenodd" fill="#C9D3DB"
-        transform="translate(7.6 37.3) rotate(-45)"
-        d="M0 0 H12 V12 H48 V21 H0 Z
-           M22 17 H23.6 V21 H22 Z
-           M28 17 H29.6 V21 H28 Z
-           M34 17 H35.6 V21 H34 Z
-           M40 17 H41.6 V21 H40 Z" />
+  <!-- The mark on a dark ground. The blade inverts to the paper ink and the brass is
+       lifted a step, because #A97C2A goes muddy against #14181B. The graduations are
+       cut from the blade, so they show the ground through them either way. -->
+  <g transform="translate(7.6 37.3) rotate(-45)">
+    <path fill-rule="evenodd" fill="#C9D3DB"
+          d="M11.5 12 H48 V21 H11.5 Z
+             M22 17 H23.6 V21 H22 Z
+             M28 17 H29.6 V21 H28 Z
+             M34 17 H35.6 V21 H34 Z
+             M40 17 H41.6 V21 H40 Z" />
+    <path fill="#C79338" d="M0 0 H12 V21 H0 Z" />
+  </g>
 </svg>

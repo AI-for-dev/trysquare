@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="trysquare">
+  <title>trysquare</title>
+  <!-- The mark below 32px, on a dark ground. See -small-light.svg for why the
+       graduations are absent rather than scaled. -->
+  <g transform="translate(7.6 37.3) rotate(-45)">
+    <path fill="#C9D3DB" d="M11.5 12 H48 V21 H11.5 Z" />
+    <path fill="#C79338" d="M0 0 H12 V21 H0 Z" />
+  </g>
+</svg>
