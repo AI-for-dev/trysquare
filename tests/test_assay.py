@@ -533,6 +533,52 @@ class TestTheDeclaredSuite(unittest.TestCase):
             run.tests()
         self.assertIn("test_command", str(raised.exception))
 
+    def test_a_preparation_step_runs_before_the_suite(self):
+        d = Path(tempfile.mkdtemp())
+        run = Assay(
+            {
+                "repo": str(d),
+                "prepare": [a_runner(d, 0, "installed\n")],
+                "test_command": [sys.executable, "-c", "print('ℹ pass 1')"],
+            }
+        )
+        self.assertTrue(run.tests())
+
+    def test_a_preparation_step_that_fails_cannot_judge(self):
+        """Not a red suite: nobody ran it. No network, or a dependency that will not
+        install, would otherwise score the agent red on a column that can carry the
+        scenario's validity condition."""
+        d = Path(tempfile.mkdtemp())
+        run = Assay(
+            {
+                "repo": str(d),
+                "prepare": [a_runner(d, 1, "", "npm ERR! network unreachable\n")],
+                "test_command": [sys.executable, "-c", "print('ℹ pass 1')"],
+            }
+        )
+        with self.assertRaises(CannotJudge) as raised:
+            run.tests()
+        self.assertIn("before the suite ran", str(raised.exception))
+
+    def test_the_suite_does_not_run_when_preparation_failed(self):
+        """Otherwise a green suite could paper over a failed install."""
+        d = Path(tempfile.mkdtemp())
+        witness = d / "ran"
+        run = Assay(
+            {
+                "repo": str(d),
+                "prepare": [a_runner(d, 1)],
+                "test_command": [
+                    sys.executable,
+                    "-c",
+                    f"open({str(witness)!r}, 'w').close()",
+                ],
+            }
+        )
+        with self.assertRaises(CannotJudge):
+            run.tests()
+        self.assertFalse(witness.exists())
+
     def test_the_command_is_run_as_an_argv_without_a_shell(self):
         """No shell, so a scenario cannot smuggle a redirection past the declaration."""
         d = Path(tempfile.mkdtemp())

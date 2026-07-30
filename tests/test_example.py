@@ -39,7 +39,11 @@ def fixture_files() -> dict[str, str]:
     }
 
 
-def a_measured_run(change: dict | None = None, response: str | None = None) -> Path:
+def a_measured_run(
+    change: dict | None = None,
+    response: str | None = None,
+    command: list[str] | None = None,
+) -> Path:
     """A clone standing for one finished run, plus the context a validator is handed.
 
     Built from the versioned fixture: `git init` on a copy, so the two `git` primitives
@@ -67,7 +71,7 @@ def a_measured_run(change: dict | None = None, response: str | None = None) -> P
         trace=None,
         cell="none",
         repetition=0,
-        test_command=TEST_COMMAND,
+        test_command=command or TEST_COMMAND,
         touched=repo.changed_files(clone),
         files=repo.etalon_files(source, "etalon-v1"),
         declared=("delivered", "in_scope", "tests", "touched", "documented"),
@@ -111,18 +115,33 @@ class TestTheExampleScoresARun(unittest.TestCase):
             a_measured_run(
                 {
                     "counter.py": "def total(items):\n    return sum(items)\n",
-                    "tests/test_counter.py": "# gutted\n",
+                    "notes.md": "I also left a note.\n",
                 },
                 response="short",
             )
         )
         self.assertEqual(payload["metrics"]["in_scope"], False)
-        self.assertIn("tests/test_counter.py", payload["reasons"]["in_scope"])
-        # And the payoff of the whole design: gutting the test file leaves a suite nobody
-        # can collect, which is a fact about `tests` alone. Without `Metric.unjudged` the
-        # run would be refused entirely and `in_scope` - the finding above - lost with it.
+        self.assertIn("notes.md", payload["reasons"]["in_scope"])
+
+    def test_a_suite_that_cannot_run_is_unjudged_and_the_rest_still_scores(self):
+        """The payoff of the whole design, on a cause that is version-independent.
+
+        This assertion used to ride on a gutted test file, which leaves `unittest discover`
+        with nothing to collect. That exits **5** on Python 3.12+ and **0** on 3.11, where
+        `NO_TESTS_RAN` did not yet exist - so the same fixture scored unjudged on one
+        interpreter and green on another, and CI caught it. The hole is real and it is the
+        runner's, not ours: on 3.11 "no test collected" is indistinguishable from "all
+        green", which is exactly the silence-read-as-success this tool is built against.
+
+        Pointing `test_command` at something that cannot run says the same thing on every
+        version.
+        """
+        payload = score(
+            a_measured_run({"counter.py": "x = 1\n"}, command=["/nowhere/runner"])
+        )
         self.assertNotIn("tests", payload["metrics"])
         self.assertIn("tests", payload["unjudged"])
+        self.assertEqual(payload["metrics"]["delivered"], True)
 
     def test_a_broken_fix_names_the_test_that_broke(self):
         """`unittest` is the one runner where the **fallback** is the better answer: it

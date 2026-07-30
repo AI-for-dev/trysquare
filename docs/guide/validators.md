@@ -51,6 +51,11 @@ Any executable, in any language. One argument: a path to a context file.
 validators/neon.py /path/to/run/validation/script/context.json
 ```
 
+The scenario writes its commands as **strings** - `test_command = "node --test ..."` - and
+they arrive here **already split**. The harness splits once, at load, with `shlex`, so no
+validator ever has to split a shell string, and every language receives an unambiguous
+argv. The file is ergonomic; the data is not ambiguous.
+
 ```json
 {
   "repo": "/tmp/trysquare/2x3_.../a7f3/repo",
@@ -91,9 +96,7 @@ a signature and re-score runs already paid for" true.
 as *text* and not every validator can run `git`.
 
 `test_command` is the suite that decides the `tests` metric, declared by the scenario and
-never guessed here. It arrives **already split**: the scenario carries the command as a
-string and the harness splits it once at load, so a validator runs an argv and never a
-shell.
+never guessed here. Run it as the argv it is - no shell, and nothing to split.
 
 `prepare` is what has to run before the suite - usually nothing. Its failures mean
 something else: no network or a dependency that will not install says *nobody judged*, so

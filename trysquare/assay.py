@@ -509,12 +509,13 @@ class Assay:
 
     def _compute_tests(self):
         command = self._given("test_command", "the declared test suite")
+        prepare = self._context.get("prepare") or []
         directory = self.repo
 
-        def run(timeout: int) -> Metric:
+        def launch(argv, timeout: int):
             try:
-                done = subprocess.run(
-                    list(command),
+                return subprocess.run(
+                    list(argv),
                     cwd=directory,
                     capture_output=True,
                     text=True,
@@ -522,14 +523,27 @@ class Assay:
                 )
             except subprocess.TimeoutExpired as e:
                 raise CannotJudge(
-                    f"the declared suite timed out after {timeout}s: "
-                    f"{' '.join(command)}"
+                    f"`{' '.join(argv)}` timed out after {timeout}s"
                 ) from e
             except OSError as e:
-                raise CannotJudge(
-                    f"the declared suite could not run: {e}. The scenario names "
-                    f"{' '.join(command)}"
-                ) from e
+                raise CannotJudge(f"`{' '.join(argv)}` could not run: {e}") from e
+
+        def run(timeout: int) -> Metric:
+            # The preparation steps, and their failures are **not** a verdict on the
+            # agent. No network, a dependency that will not install, a build that breaks
+            # on the runner: nobody judged. Scoring those red would put "could not judge"
+            # on a column that can carry the scenario's validity condition, which is the
+            # confusion this whole module exists to prevent, one level up.
+            for step in prepare:
+                done = launch(step, timeout)
+                if done.returncode != 0:
+                    raise CannotJudge(
+                        f"a preparation step failed before the suite ran, so nothing "
+                        f"about this run was judged: `{' '.join(step)}` exited "
+                        f"{done.returncode}.\n{summarise(done.stdout + done.stderr)}"
+                    )
+
+            done = launch(command, timeout)
 
             # Both streams, for **reading** only. go guarantees its report is on stdout
             # even when a test wrote to stderr, and npm writes a notice to stderr on a
