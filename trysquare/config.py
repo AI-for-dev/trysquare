@@ -29,6 +29,13 @@ CONFIG_NAME = "trysquare.toml"
 # key and say why, rather than ignoring it silently.
 FORBIDDEN = ("provider", "model", "thinking", "etalon", "repetitions")
 
+# Sections that describe a machine, and sections that describe an experiment.
+# Both files are TOML and the config is the one lying at the root of the
+# repository under a guessable name, so handing one to the argument that wants
+# the other is the mix-up an operator actually makes - in both directions.
+CONFIG_SECTIONS = ("repos", "harness", "defaults")
+SCENARIO_SECTIONS = ("scenario", "task", "agent", "protocol", "verdict")
+
 BUILTIN_DEFAULTS = {
     "workdir": "$TMPDIR/trysquare",
     "concurrency": 5,
@@ -41,6 +48,24 @@ BUILTIN_DEFAULTS = {
 
 class ConfigError(Exception):
     pass
+
+
+def which_file(raw: dict) -> str | None:
+    """Tells the two TOML files apart, or says it cannot.
+
+    Returns `"config"`, `"scenario"`, or `None` when the file is too empty or
+    too mixed to say. Silence is the useful part: a scenario legitimately
+    carries `[harness]` to pin bricks by tag, so a file with sections of both
+    kinds is a scenario with an ordinary mistake in it, and the caller's own
+    refusals name that mistake better than a guess about which file it is.
+    """
+    config = any(section in raw for section in CONFIG_SECTIONS)
+    scenario = any(section in raw for section in SCENARIO_SECTIONS)
+    if config and not scenario:
+        return "config"
+    if scenario and not config:
+        return "scenario"
+    return None
 
 
 @dataclass
@@ -116,6 +141,19 @@ def load(path: str | Path | None = None, start: Path | None = None) -> Config:
         raw = tomllib.loads(found.read_text())
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"{found}: invalid TOML: {e}") from e
+
+    # The mirror of the refusal in `scenario.parse`, and the more dangerous of
+    # the two: a scenario read as a config carries no [repos] and no [defaults],
+    # so it would load as built-in defaults and a silent absence of machine
+    # paths. Nothing about it looks wrong until a run resolves a repository.
+    if which_file(raw) == "scenario":
+        raise ConfigError(
+            f"{found}: this is a scenario file, not a config: it describes an "
+            f"experiment, not a machine. Read as a config it would supply "
+            f"nothing at all and every default would be the built-in one. Pass "
+            f"it as the scenario argument instead; the config is the file "
+            f"holding [repos], [harness] and [defaults]"
+        )
 
     defaults = dict(BUILTIN_DEFAULTS) | dict(raw.get("defaults", {}))
     offending = [k for k in FORBIDDEN if k in defaults]
