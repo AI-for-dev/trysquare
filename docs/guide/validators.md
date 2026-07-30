@@ -111,7 +111,8 @@ fact from an empty command. It says this experiment scores no test suite - which
 something to refuse over, not something to score as a failure.
 :::
 
-A minimal validator:
+A minimal validator, by hand. Any executable in any language may do this, and this is
+what the contract is:
 
 ```python
 #!/usr/bin/env python3
@@ -124,6 +125,37 @@ repo = Path(context["repo"])
 metrics = {"has_readme": (repo / "README.md").is_file()}
 json.dump({"metrics": metrics, "reasons": {}}, sys.stdout)
 ```
+
+In Python, write it with {mod}`trysquare.assay` instead. The same validator, plus the
+error contract, plus a reason attached where the value was found:
+
+```python
+#!/usr/bin/env python3
+from trysquare.assay import Assay, Metric, validator
+
+SCOPE = frozenset({"counter.py"})
+
+
+@validator
+def evaluate(run: Assay) -> dict:
+    outside = run.touched - SCOPE
+    return {
+        "delivered": bool(run.touched),
+        "in_scope": Metric(not outside, f"also touched {', '.join(sorted(outside))}"),
+        "tests": run.tests(),
+        "touched": run.touched,
+    }
+
+
+if __name__ == "__main__":
+    raise SystemExit(evaluate.cli())
+```
+
+The whole thing is in `examples/validator.py`, and `tests/test_example.py` runs it against
+`tests/fixtures/tiny` on every CI build - so unlike a snippet in a document, it cannot rot.
+It is also where to see the pattern that matters: wrapping a metric the run cannot answer
+so that **one** unanswerable metric does not refuse the run and take every other metric
+with it.
 
 Make it executable. The contract says "any executable", so the bit is part of it.
 
