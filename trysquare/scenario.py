@@ -17,6 +17,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .config import CONFIG_SECTIONS, SCENARIO_SECTIONS, which_file
+
 # Keys that decide *what is measured*. They are mandatory in the scenario and
 # they can never come from the config file or from a built-in default.
 #
@@ -120,9 +122,13 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
 
     Split out so the rules can be tested without writing files.
     """
-    for section in ("scenario", "task", "agent", "protocol", "verdict"):
+    where = f"{path}: " if path else ""
+
+    _refuse_a_config_file(raw, where)
+
+    for section in SCENARIO_SECTIONS:
         if section not in raw:
-            raise ScenarioError(f"missing section [{section}]")
+            raise ScenarioError(f"{where}missing section [{section}]")
 
     for section, key in REQUIRED:
         if raw.get(section, {}).get(key) is None:
@@ -156,6 +162,25 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
         bricks=dict(raw.get("harness", {})),
         axes=axes,
         path=path,
+    )
+
+
+def _refuse_a_config_file(raw: dict, where: str) -> None:
+    """Says "that is the config file" instead of "this scenario is malformed".
+
+    `run trysquare.toml` costs nothing but a command, and the section-by-section
+    refusal in `parse` reads like a broken scenario rather than the wrong file.
+    """
+    if which_file(raw) != "config":
+        return
+
+    present = ", ".join(f"[{s}]" for s in CONFIG_SECTIONS if s in raw)
+    raise ScenarioError(
+        f"{where}this is a config file, not a scenario: it carries {present} "
+        f"and nothing that describes an experiment. The config describes the "
+        f"machine and is found on its own, or given with --config. Pass a "
+        f"scenario file - the one holding [task], [agent], [protocol] and "
+        f"[verdict]"
     )
 
 

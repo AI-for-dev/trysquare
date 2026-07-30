@@ -15,7 +15,7 @@ from trysquare import parity, validation
 from trysquare.measure import final_text
 from trysquare.runner import looks_like_path, preflight, read_brick, referenced_paths
 from trysquare.scenario import Validator, parse
-from tests.test_scenario import GRID, MINIMAL
+from tests.test_scenario import GRID
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,8 +54,8 @@ class TestPreflight(unittest.TestCase):
     def test_every_referenced_file_is_collected(self):
         s = parse(GRID)
         labels = [label for label, _ in referenced_paths(s, Path("/base"))]
-        self.assertTrue(any("cell 'rule / off'" in l for l in labels))
-        self.assertTrue(any("validation[script].command" in l for l in labels))
+        self.assertTrue(any("cell 'rule / off'" in label for label in labels))
+        self.assertTrue(any("validation[script].command" in label for label in labels))
 
     def test_missing_files_are_listed_with_where_they_were_declared(self):
         s = parse(GRID)

@@ -7,7 +7,7 @@ example, and a broken example is worse than none.
 import unittest
 from pathlib import Path
 
-from trysquare import config, outputs, scenario, validation
+from trysquare import config, scenario
 
 ROOT = Path(__file__).resolve().parent.parent
 

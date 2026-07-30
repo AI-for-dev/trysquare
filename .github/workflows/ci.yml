@@ -1,0 +1,39 @@
+# The suite needs no network and no API key, which is why it can be the gate.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # The floor is what pyproject requires, the ceiling is what the author
+      # runs. A tool with no runtime dependencies has no excuse for a gap.
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --python ${{ matrix.python }} python -m unittest discover -s tests -t .
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # Pinned: an unpinned linter turns someone else's release into a red
+      # build on a branch that changed nothing.
+      - run: uvx ruff@0.15.20 check trysquare tests
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # `make html` already passes -W: a warning is a defect in the
+      # documentation, held to the same standard as the code.
+      - run: uv run --extra docs make -C docs html

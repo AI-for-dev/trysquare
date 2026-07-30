@@ -5,6 +5,7 @@ is a matrix paid for and thrown away, or worse, published.
 """
 
 import unittest
+from pathlib import Path
 
 from trysquare.scenario import ScenarioError, parse
 
@@ -57,6 +58,56 @@ class TestRequired(unittest.TestCase):
                 d = {k: v for k, v in MINIMAL.items() if k != section}
                 with self.assertRaises(ScenarioError):
                     parse(d)
+
+    def test_a_missing_section_names_the_file(self):
+        d = {k: v for k, v in MINIMAL.items() if k != "verdict"}
+        with self.assertRaises(ScenarioError) as e:
+            parse(d, path=Path("scenarios/half-written.toml"))
+        self.assertIn("scenarios/half-written.toml", str(e.exception))
+
+
+class TestTheConfigFileHandedIn(unittest.TestCase):
+    """The mix-up an operator actually makes, and how it must read.
+
+    Both files are TOML and the config is the one at the root of the repository
+    under a guessable name, so `run trysquare.toml` costs nothing but reads as a
+    broken scenario unless the refusal names the confusion.
+    """
+
+    CONFIG = {
+        "repos": {"neon": "../neon"},
+        "harness": {"subagent": "~/Work/Pi/subagent"},
+        "defaults": {"workdir": "$TMPDIR/trysquare", "concurrency": 5},
+    }
+
+    def test_a_config_file_is_refused_as_such(self):
+        with self.assertRaises(ScenarioError) as e:
+            parse(self.CONFIG, path=Path("trysquare.toml"))
+        message = str(e.exception)
+        self.assertIn("config file", message)
+        self.assertIn("trysquare.toml", message)
+        self.assertIn("--config", message)
+
+    def test_any_config_section_alone_is_enough_to_recognise_it(self):
+        for section in ("repos", "harness", "defaults"):
+            with self.subTest(section=section):
+                with self.assertRaises(ScenarioError) as e:
+                    parse({section: self.CONFIG[section]})
+                self.assertIn("config file", str(e.exception))
+
+    def test_a_scenario_with_a_stray_config_section_gets_the_ordinary_refusal(self):
+        """[harness] is legitimate in a scenario, which pins bricks by tag."""
+        d = {k: v for k, v in MINIMAL.items() if k != "verdict"} | {
+            "harness": {"subagent": "v0.3.0"}
+        }
+        with self.assertRaises(ScenarioError) as e:
+            parse(d)
+        self.assertIn("[verdict]", str(e.exception))
+
+    def test_an_empty_file_is_not_mistaken_for_a_config(self):
+        with self.assertRaises(ScenarioError) as e:
+            parse({})
+        self.assertIn("[scenario]", str(e.exception))
 
 
 class TestGrid(unittest.TestCase):

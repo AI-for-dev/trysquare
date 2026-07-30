@@ -11,7 +11,6 @@ table, and the runs already paid for are the ones being protected.
 
 from __future__ import annotations
 
-import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass

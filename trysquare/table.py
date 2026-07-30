@@ -16,7 +16,7 @@ import statistics
 from dataclasses import dataclass
 from typing import Callable
 
-from .measure import Run, kind, median, rate, series, valid_runs
+from .measure import Run, kind, median, rate, valid_runs
 from .verdict import ESTABLISHED, judge, mean, points, signed
 
 

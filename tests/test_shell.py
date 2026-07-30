@@ -103,6 +103,37 @@ class TestConfigRules(unittest.TestCase):
         with self.assertRaises(config.ConfigError):
             config.load(Path(tempfile.mkdtemp()) / "nope.toml")
 
+    def test_a_scenario_handed_to_config_is_refused(self):
+        """The dangerous half of the two-file mix-up.
+
+        A scenario read as a config has no [repos] and no [defaults], so it
+        loads as built-in defaults and an empty set of machine paths. Nothing
+        looks wrong until a run resolves a repository, and what fails then names
+        the wrong file.
+        """
+        path = self.write(
+            '[scenario]\nname = "t"\n[task]\netalon = "etalon-v1"\n'
+            '[agent]\nprovider = "ilaas"\n[protocol]\nrepetitions = 10\n'
+        )
+        with self.assertRaises(config.ConfigError) as e:
+            config.load(path)
+        message = str(e.exception)
+        self.assertIn("scenario file", message)
+        self.assertIn(str(path), message)
+
+    def test_a_scenario_pinning_bricks_is_not_mistaken_for_either_file(self):
+        """[harness] is legitimate in both, so a file with both stays ambiguous."""
+        raw = {"scenario": {"name": "t"}, "harness": {"subagent": "v0.3.0"}}
+        self.assertIsNone(config.which_file(raw))
+
+    def test_the_real_config_reads_as_a_config(self):
+        self.assertEqual(
+            config.which_file({"repos": {"neon": "../neon"}, "defaults": {}}), "config"
+        )
+
+    def test_an_empty_file_is_neither(self):
+        self.assertIsNone(config.which_file({}))
+
 
 class TestNaming(unittest.TestCase):
     def test_the_directory_name_carries_the_experiment_identity(self):
