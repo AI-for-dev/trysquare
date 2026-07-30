@@ -7,10 +7,13 @@ silently lost or a standard silently bent.
 
 import json
 import tempfile
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 
-from trysquare import agent, config, outputs, repo, validation
+from trysquare import agent, config, outputs, repo, runner, validation
 from trysquare.measure import EMPTY, VALID, VALIDATOR_FAILED, Run
 from trysquare.scenario import parse
 from tests.test_scenario import GRID, MINIMAL
@@ -57,6 +60,31 @@ class TestArgv(unittest.TestCase):
         self.assertEqual(self.args()[-1], "do it")
 
 
+class TestCloneArgv(unittest.TestCase):
+    """The flags that make a clone the pinned state and nothing else."""
+
+    def test_a_clone_is_pinned_to_the_tag(self):
+        for keep_tags in (False, True):
+            with self.subTest(keep_tags=keep_tags):
+                args = repo.clone_argv("/s", "etalon-v1", Path("/x"), keep_tags=keep_tags)
+                self.assertIn("--single-branch", args)
+                self.assertEqual(args[args.index("--branch") + 1], "etalon-v1")
+
+    def test_a_run_clone_drops_the_tags_and_a_pinned_source_keeps_them(self):
+        """Every run clones *from* the pinned source by tag name.
+
+        Git happens to keep the tag named by `--branch` even under `--no-tags`, so this
+        is not the difference between working and not working. It is the difference
+        between resting on documented behaviour and resting on an accident.
+        """
+        self.assertIn("--no-tags", repo.clone_argv("/s", "t", Path("/x")))
+        self.assertNotIn("--no-tags", repo.clone_argv("/s", "t", Path("/x"), keep_tags=True))
+
+    def test_a_url_reaches_git_verbatim(self):
+        args = repo.clone_argv("https://h/x.git", "t", Path("/x"), keep_tags=True)
+        self.assertIn("https://h/x.git", args)
+
+
 class TestConfigRules(unittest.TestCase):
     def write(self, text: str) -> Path:
         d = Path(tempfile.mkdtemp())
@@ -89,6 +117,67 @@ class TestConfigRules(unittest.TestCase):
                 with self.assertRaises(config.ConfigError) as e:
                     config.load(path)
                 self.assertIn(key, str(e.exception))
+
+    def test_a_url_is_told_apart_from_a_path(self):
+        remote = (
+            "https://h/x.git",
+            "http://h/x.git",
+            "ssh://git@h/x.git",
+            "git://h/x.git",
+            "file:///tmp/x",
+            "git@github.com:org/x.git",
+        )
+        local = ("../neon", "/abs/neon", "~/w/sub", "./x", "$TMPDIR/x", "neon")
+        for value in remote:
+            with self.subTest(value=value):
+                self.assertTrue(config.is_remote(value))
+        for value in local:
+            with self.subTest(value=value):
+                self.assertFalse(config.is_remote(value))
+
+    def test_a_url_is_never_mangled_into_a_path(self):
+        """The whole reason a URL is classified before `expand()` ever sees it.
+
+        `Path("https://h/x.git")` collapses the double slash into `https:/h/x.git`, a
+        *relative* path: git would then be handed a directory resolved against the
+        config file's parent, and the failure is a clone of nothing rather than an error.
+        """
+        url = "https://h/x.git"
+        c = config.load(self.write(f'[repos]\nneon = "{url}"\n'))
+        self.assertEqual(c.remote("neon"), url)
+        self.assertNotEqual(c.remote("neon"), str(Path(url)))
+
+    def test_a_url_does_not_inherit_from_the_shell(self):
+        """A username or token taken from the environment is invisible inheritance.
+
+        It appears in no archive, and the value that actually ran would be whatever the
+        shell happened to hold - the defect this whole module exists to abolish.
+        """
+        c = config.load(self.write('[repos]\nneon = "git@h:$USER/x.git"\n'))
+        self.assertEqual(c.remote("neon"), "git@h:$USER/x.git")
+
+    def test_a_local_entry_has_no_url(self):
+        c = config.load(self.write('[repos]\nneon = "../neon"\n[harness]\nsub = "~/w/sub"\n'))
+        self.assertIsNone(c.remote("neon"))
+        self.assertIsNone(c.harness_remote("sub"))
+
+    def test_a_url_has_no_local_directory_until_it_is_cloned(self):
+        c = config.load(self.write('[repos]\nneon = "https://h/x.git"\n'))
+        with self.assertRaises(config.ConfigError) as e:
+            c.repo("neon")
+        self.assertIn("https://h/x.git", str(e.exception))
+
+    def test_a_harness_entry_may_be_a_url_too(self):
+        """The two sections have the same shape; accepting one and refusing the other
+        would be an asymmetry nobody could guess."""
+        c = config.load(self.write('[harness]\nsub = "https://h/sub.git"\n'))
+        self.assertEqual(c.harness_remote("sub"), "https://h/sub.git")
+
+    def test_an_unknown_logical_name_names_what_is_known_from_remote_too(self):
+        c = config.load(self.write('[repos]\nneon = "../neon"\n'))
+        with self.assertRaises(config.ConfigError) as e:
+            c.remote("ghost")
+        self.assertIn("neon", str(e.exception))
 
     def test_load_fallbacks_are_allowed(self):
         c = config.load(self.write("[defaults]\nconcurrency = 2\ntimeout = 60\n"))
@@ -133,6 +222,117 @@ class TestConfigRules(unittest.TestCase):
 
     def test_an_empty_file_is_neither(self):
         self.assertIsNone(config.which_file({}))
+
+
+class TestPinnedSources(unittest.TestCase):
+    """Pinning a remote once, without ever running git."""
+
+    def conf(self, entry: str):
+        d = Path(tempfile.mkdtemp())
+        path = d / config.CONFIG_NAME
+        path.write_text(f'[repos]\nneon = "{entry}"\n[defaults]\nworkdir = "{d / "work"}"\n')
+        return config.load(path)
+
+    def fake_pin(self, calls: list, fail: bool = False):
+        def pin(url, etalon, target):
+            calls.append((url, etalon, Path(target)))
+            if fail:
+                raise repo.RepoError("could not read from remote repository")
+            Path(target).mkdir(parents=True, exist_ok=True)
+            return Path(target)
+
+        return pin
+
+    def pin_calls(self, entry: str, times: int = 1, fail: bool = False):
+        """Runs `prepare_source` `times` times against a fake clone."""
+        c = self.conf(entry)
+        calls: list = []
+        with mock.patch.object(runner.repo_mod, "pin", self.fake_pin(calls, fail)):
+            for _ in range(times):
+                result = runner.prepare_source(c, "neon", "etalon-v1")
+        return c, calls, result
+
+    URL = "https://h/x.git"
+
+    def test_a_pinned_directory_is_keyed_by_the_url_and_the_tag(self):
+        """Editing the URL must not silently reuse the previous repository's clone, and
+        a cache hit must be at the tag being asked for rather than merely present."""
+        c = self.conf(self.URL)
+        base = runner.source_dir(c, "neon", self.URL, "etalon-v1")
+        self.assertEqual(base.parent, c.workdir() / "sources")
+        self.assertNotEqual(base, runner.source_dir(c, "neon", "https://h/other.git", "etalon-v1"))
+        self.assertNotEqual(base, runner.source_dir(c, "neon", self.URL, "etalon-v2"))
+        self.assertEqual(base, runner.source_dir(c, "neon", self.URL, "etalon-v1"), "stable")
+
+    def test_a_slash_in_a_tag_stays_one_directory(self):
+        """`release/1.0` would otherwise put the clone somewhere nobody named."""
+        c = self.conf(self.URL)
+        directory = runner.source_dir(c, "neon", self.URL, "release/1.0")
+        self.assertEqual(directory.parent, c.workdir() / "sources")
+        self.assertIn("release-1.0", directory.name)
+
+    def test_a_local_entry_is_never_cloned(self):
+        existing = Path(tempfile.mkdtemp())
+        c, calls, result = self.pin_calls(str(existing))
+        self.assertEqual(result, existing)
+        self.assertEqual(calls, [])
+
+    def test_a_missing_local_entry_names_the_config_file(self):
+        with self.assertRaises(repo.RepoError) as e:
+            self.pin_calls("../nowhere")
+        self.assertIn(config.CONFIG_NAME, str(e.exception))
+        self.assertIn("nowhere", str(e.exception))
+
+    def test_a_remote_is_cloned_once_and_reused(self):
+        _, calls, result = self.pin_calls(self.URL, times=3)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue((result / runner.READY).is_file())
+
+    def test_a_marker_left_by_another_url_forces_a_fresh_clone(self):
+        """A directory that cannot say which repository it holds must not be trusted."""
+        c = self.conf(self.URL)
+        target = runner.source_dir(c, "neon", self.URL, "etalon-v1")
+        target.mkdir(parents=True)
+        (target / runner.READY).write_text("neon@etalon-v1\nhttps://h/somewhere-else.git\n")
+        calls: list = []
+        with mock.patch.object(runner.repo_mod, "pin", self.fake_pin(calls)):
+            runner.prepare_source(c, "neon", "etalon-v1")
+        self.assertEqual(len(calls), 1)
+
+    def test_concurrent_cells_pin_exactly_once(self):
+        """Cells run concurrently and all arrive here at the same moment.
+
+        Checking existence and then cloning is not atomic: this is the race that made
+        two of four concurrent cells fail on `destination path already exists`, and let
+        a third load an extension whose dependencies were never installed.
+        """
+        c = self.conf(self.URL)
+        calls: list = []
+        slow = self.fake_pin(calls)
+
+        def pin(url, etalon, target):
+            time.sleep(0.02)
+            return slow(url, etalon, target)
+
+        results = []
+        with mock.patch.object(runner.repo_mod, "pin", pin):
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                futures = [
+                    pool.submit(runner.prepare_source, c, "neon", "etalon-v1") for _ in range(8)
+                ]
+                results = [f.result() for f in futures]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(set(results)), 1)
+
+    def test_a_clone_failure_names_the_url_the_tag_and_the_config(self):
+        """A bad URL is a config bug, so the refusal has to say which file to edit."""
+        with self.assertRaises(repo.RepoError) as e:
+            self.pin_calls(self.URL, fail=True)
+        message = str(e.exception)
+        self.assertIn(self.URL, message)
+        self.assertIn("etalon-v1", message)
+        self.assertIn(config.CONFIG_NAME, message)
+        self.assertIn("Nothing was measured", message)
 
 
 class TestNaming(unittest.TestCase):

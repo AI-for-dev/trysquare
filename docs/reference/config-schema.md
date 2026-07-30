@@ -29,6 +29,7 @@ Measurable repositories, by logical name.
 [repos]
 neon = "../neon"                  # relative to this file, not to the cwd
 other = "/absolute/path/ok/too"
+remote = "https://github.com/org/repo.git"     # a URL works too
 ```
 
 A scenario writes `repo = "neon"`. Relative paths resolve against the config file,
@@ -41,6 +42,34 @@ An unknown name names what is known:
 [repos] has no entry 'ghost' (known: neon). Add it to /path/to/trysquare.toml
 ```
 
+### A URL instead of a directory
+
+`https://`, `http://`, `ssh://`, `git://`, `file://` and the scp-like
+`git@host:org/repo.git` are all recognised. A URL is **pinned**: cloned once, at the
+scenario's etalon tag, into
+
+```text
+<workdir>/sources/<name>-<hash of the url>-<tag>/
+```
+
+and every run then clones from that local directory. Three consequences worth knowing:
+
+- **A tag moved upstream is ignored.** The directory is keyed by tag, so one that is
+  already there is by construction already at the tag being asked for. Nothing is
+  refetched mid-matrix, and what the later runs measure cannot drift from what the
+  earlier ones did.
+- **Editing the URL re-clones.** The hash is part of the directory name, so a changed URL
+  lands somewhere else instead of silently reusing the previous repository's clone.
+- **`workdir` is disposable.** If the OS purges it, the next run clones again, so a
+  `--resume` against a URL needs the network once more.
+
+A URL is taken verbatim: `$VAR` is **not** expanded in one. A username or token coming
+from the shell would be invisible inheritance - absent from the archive, and different on
+the next machine.
+
+Pinning happens when a run starts, never while planning: `--dry-run` against a URL
+touches neither disk nor network.
+
 ## `[harness]`
 
 Repositories providing harness bricks, pinned by tag in the scenario.
@@ -48,9 +77,11 @@ Repositories providing harness bricks, pinned by tag in the scenario.
 ```toml
 [harness]
 subagent = "~/Work/Pi/subagent"
+# subagent = "https://github.com/org/pi-subagent.git"
 ```
 
-`~` and `$VAR` are expanded.
+`~` and `$VAR` are expanded in a path. A URL is accepted on the same terms as in
+`[repos]` and taken verbatim; the brick's clone is already keyed by tag.
 
 ## `[defaults]`
 

@@ -27,7 +27,7 @@ library. A measurement tool that needs an install step is a measurement tool peo
 work around.
 
 ```bash
-uv run python -m unittest discover -s tests -t .     # 193 tests, no network
+uv run python -m unittest discover -s tests -t .     # 232 tests, no network
 ```
 
 Measuring anything also needs the agent binary (`pi`) on PATH and a provider you
@@ -42,6 +42,10 @@ uv run trysquare run scenarios/2x3.toml --output out --dry-run
 ```
 
 `--dry-run` shows the whole plan and writes nothing. Drop it to measure.
+
+A `[repos]` entry may be a directory or a git URL. A URL is cloned once, at the scenario's
+etalon tag, under `workdir`, and every run clones from there - so nothing has to be cloned
+by hand first, and a tag moved upstream cannot change what a matrix in flight is measuring.
 
 ```bash
 uv run trysquare run scenarios/2x3.toml --output out

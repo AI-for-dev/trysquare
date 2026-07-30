@@ -144,6 +144,18 @@ Under `workdir` from the config, by default `$TMPDIR/trysquare`. Deliberately ou
 output directory, and deliberately disposable: the OS may purge it, and nothing of value
 is lost because `replay` rebuilds a tree from a tag and a diff.
 
+```text
+<workdir>/
+├── sources/neon-3f2a1b9c-etalon-v1/   a [repos] URL, pinned once at the tag
+├── harness/subagent-v1.2/             a [harness] brick, pinned once at its tag
+└── <experiment>/<run id>/             one clone, session and trace per run
+```
+
+`sources/` exists only for repository entries that are URLs; a `[repos]` entry naming a
+directory is read where it already is. Because it lives under a disposable `workdir`, a
+`--resume` against a URL after the directory has been purged clones again, and so needs
+the network again.
+
 Sessions live there too, which is why `parity --smoke` takes a `--workdir`.
 
 (naming-gap)=
