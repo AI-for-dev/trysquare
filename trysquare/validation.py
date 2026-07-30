@@ -58,6 +58,7 @@ def write_context(
     blind: bool = False,
     response_file: Path | None = None,
     test_command: list[str] | None = None,
+    prepare: list[list[str]] | None = None,
 ) -> Path:
     """Writes the context file a validator is handed.
 
@@ -88,6 +89,10 @@ def write_context(
     }
     if test_command is not None:
         context["test_command"] = list(test_command)
+    # The steps to run before the suite. Kept apart from the suite itself because their
+    # failures mean different things: one says nobody judged, the other is a measurement.
+    if prepare:
+        context["prepare"] = [list(step) for step in prepare]
     if response_file is not None:
         context["response"] = str(response_file)
     if trace is not None:

@@ -35,9 +35,15 @@ prompt = "../bricks/vague-ticket.md"
 # nothing in the output would say so. Required as soon as a validator declares
 # `tests`, and refused at load time.
 #
-# A list of words, because no shell runs it. The glob survives anyway: `node --test`
-# expands it itself, so nothing is lost by not having a shell.
-test_command = ["node", "--test", "game/**/*.test.js"]
+# Written as you would type it, and split once at load with `shlex`. No shell runs it, so a
+# word that only means something to a shell - `&&`, a pipe, a redirection - is refused there
+# rather than reaching `node` as an argument. The glob survives anyway: `node --test` expands
+# it itself.
+#
+# NEON has no dependency to install, which is what makes a validation replayable from a tag and
+# a diff months later. A repository that needed one would declare `prepare = ["npm ci"]`, whose
+# failure means nobody judged rather than a red suite.
+test_command = "node --test 'game/**/*.test.js'"
 
 [agent]
 provider = "ilaas"

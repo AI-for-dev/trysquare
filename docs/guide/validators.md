@@ -60,7 +60,8 @@ validators/neon.py /path/to/run/validation/script/context.json
   "trace": "/tmp/.../trace.jsonl",
   "cell": "rule / high",
   "repetition": 3,
-  "test_command": ["node", "--test", "game/**/*.test.js"]
+  "test_command": ["node", "--test", "game/**/*.test.js"],
+  "prepare": []
 }
 ```
 
@@ -74,8 +75,14 @@ a signature and re-score runs already paid for" true.
 `etalon.checkout` is a path, not just a tag, because scoring needs the reference side
 as *text* and not every validator can run `git`.
 
-`test_command` is the suite that decides the `tests` metric, declared by the scenario
-and never guessed here. Run it as an argv, without a shell.
+`test_command` is the suite that decides the `tests` metric, declared by the scenario and
+never guessed here. It arrives **already split**: the scenario carries the command as a
+string and the harness splits it once at load, so a validator runs an argv and never a
+shell.
+
+`prepare` is what has to run before the suite - usually nothing. Its failures mean
+something else: no network or a dependency that will not install says *nobody judged*, so
+the metric is unjudged rather than false. The suite failing is a measurement.
 
 :::{warning}
 Do not fall back to `npm test`, or to any command read out of the repository. Its

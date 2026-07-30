@@ -13,7 +13,7 @@ network, a clone, or an API key.
 from __future__ import annotations
 
 import itertools
-import json
+import shlex
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -53,6 +53,17 @@ REQUIRED = (
 # Required by the metric rather than by the section, because a scenario that
 # measures prose has no suite to name and demanding one would be ceremony.
 TESTS_METRIC = "tests"
+
+# Written as a string - the command as an author would type it - and split once, here,
+# with `shlex`. So the *file* is ergonomic and the *data* is unambiguous: everything
+# downstream receives an argv and never splits again.
+#
+# The words below only mean anything to a shell, and no shell runs this command. Left to
+# reach `subprocess` they would arrive as arguments to the runner and fail in a way nobody
+# could read, so they are refused at load time instead. That refusal is the whole reason a
+# string is safe to accept: it is louder than the list form it replaces, which merely made
+# them harmless.
+SHELL_ONLY = frozenset({"&&", "||", ";", "|", ">", ">>", "<", "&"})
 
 
 class ScenarioError(Exception):
@@ -108,6 +119,24 @@ class Scenario:
     def runs(self) -> int:
         """Total executions this scenario asks for."""
         return len(self.cells) * self.protocol["repetitions"]
+
+    @property
+    def test_argv(self) -> tuple[str, ...]:
+        """The command that **decides** the `tests` metric, split once at load."""
+        command = self.task.get("test_command")
+        return tuple(shlex.split(command)) if command else ()
+
+    @property
+    def prepare_argv(self) -> tuple[tuple[str, ...], ...]:
+        """The commands to run **before** the suite, in order.
+
+        Separate from `test_argv` because their failures mean different things, and the
+        difference is the one this whole project is built around. A `prepare` that fails -
+        no network, a dependency that will not install - means **nobody judged**; the suite
+        failing is a measurement. Conflated, a broken network would score an agent red on a
+        column that can carry the scenario's validity condition.
+        """
+        return tuple(tuple(shlex.split(c)) for c in self.task.get("prepare", ()))
 
     @property
     def declared_metrics(self) -> tuple[str, ...]:
@@ -261,16 +290,22 @@ def _check_test_command(task: dict, validators: tuple[Validator, ...], where: st
 
     See `TESTS_METRIC` for why the command is declared and never detected.
 
-    The list form is a contract rather than a preference. The command is handed to
-    `subprocess` **without** `shell=True`, so a string would either need a shell -
-    which would let a scenario carry a redirection, an `&&` or an expansion, none of
-    which anyone can read as one measured command - or be split by a rule the author
-    would have to guess. A list has one meaning.
+    Written as a string and split once here, with `shlex` - the shell's own word
+    splitting, quotes included, which is a rule every author already knows. The file is
+    therefore what you would type, and everything downstream receives an argv.
+
+    No shell ever runs it. What that used to buy by refusing strings outright, it now buys
+    better: a word that only means something to a shell is **named and refused** at load
+    time, instead of reaching the runner as an argument and failing where nobody can read
+    it. See `SHELL_ONLY`.
 
     A command declared by a scenario that scores no tests is kept and not refused: a
     scenario may name its suite before a validator scores it, and refusing that would
     punish writing the file in the order it is natural to write it.
     """
+    for i, step in enumerate(task.get("prepare", ())):
+        _check_one_command(step, f"[task].prepare[{i}]", where)
+
     command = task.get("test_command")
 
     if command is None:
@@ -278,33 +313,45 @@ def _check_test_command(task: dict, validators: tuple[Validator, ...], where: st
             raise ScenarioError(
                 f"{where}a validator declares the {TESTS_METRIC!r} metric, so "
                 f"[task].test_command is required: it names the suite that decides "
-                f"that metric, as a list of words.\n"
-                f'  test_command = ["node", "--test", "game/**/*.test.js"]\n'
+                f"that metric, as you would type it.\n"
+                f'  test_command = "node --test \'game/**/*.test.js\'"\n'
                 f"It is declared and never detected, because the obvious detection "
                 f"reads `package.json`, which the measured agent may edit - broken "
                 f"code plus a test script of `echo ok` would score green."
             )
         return
 
-    if isinstance(command, str):
-        # `json.dumps` rather than `repr`, because the suggested line has to be
-        # pasteable: TOML does not accept the single quotes Python's repr produces,
-        # so a refusal that suggested `['npm', 'test']` would be a refusal twice.
+    _check_one_command(command, "[task].test_command", where)
+
+
+def _check_one_command(command, field: str, where: str) -> None:
+    """One declared command: a string, splittable, and not secretly a shell line."""
+    if not isinstance(command, str):
         raise ScenarioError(
-            f"{where}[task].test_command is a string, and it must be a list of "
-            f"words: {command!r}.\n"
-            f"  test_command = {json.dumps(command.split())}\n"
-            f"No shell runs it, which is what stops a scenario from carrying a "
-            f"redirection or an `&&` that nobody could read as one measured command."
-        )
-    if not isinstance(command, list) or not command:
-        raise ScenarioError(
-            f"{where}[task].test_command must be a non-empty list of words, "
+            f"{where}{field} must be a string - the command as you would type it - "
             f"got {command!r}"
         )
-    if not all(isinstance(word, str) for word in command):
+
+    try:
+        words = shlex.split(command)
+    except ValueError as e:
         raise ScenarioError(
-            f"{where}[task].test_command must contain only strings, got {command!r}"
+            f"{where}{field} does not split into words ({e}): {command!r}"
+        ) from e
+
+    if not words:
+        raise ScenarioError(f"{where}{field} is empty")
+
+    smuggled = sorted(set(words) & SHELL_ONLY)
+    if smuggled:
+        raise ScenarioError(
+            f"{where}{field} looks like a shell command: it carries "
+            f"{', '.join(smuggled)}.\n"
+            f"  {command}\n"
+            f"No shell runs it - the words are handed straight to the process - so a "
+            f"redirection, a pipe or an `&&` would reach the runner as arguments and fail "
+            f"in a way nobody could read. Refused here rather than there. For several "
+            f"steps use `prepare`, which is a list; each entry is still one command."
         )
 
 

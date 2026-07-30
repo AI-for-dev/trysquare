@@ -18,15 +18,15 @@ hypothesis = "../hypotheses/subagents-citations.md"
 repo = "neon"
 etalon = "etalon-v1"
 prompt = "../bricks/impact-note-task.md"
-# Required because `../validators/neon.py` declares the `tests` metric, and written
-# out rather than `npm test` for the reason given in `2x3.toml`.
+# Required because `../validators/neon.py` declares the `tests` metric, and written out
+# rather than `npm test` for the reason given in `2x3.toml`.
 #
 # Worth knowing before reading that column here: this task asks for prose and
 # explicitly forbids changing any code, so the suite passes by construction in every
 # cell and the number says nothing about the configurations. It is reported, never a
 # validity condition - see the note under [verdict], which explains why copying
 # `validity = ["delivered", "tests"]` from the 2x3 matrix eliminated the whole matrix.
-test_command = ["node", "--test", "game/**/*.test.js"]
+test_command = "node --test 'game/**/*.test.js'"
 
 [agent]
 provider = "ilaas"
