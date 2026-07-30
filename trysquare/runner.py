@@ -486,6 +486,7 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
                 repetition=meta["repetition"],
                 blind=blind,
                 response_file=response_file,
+                test_command=scenario.task.get("test_command"),
             )
             if validator.mode == "script":
                 result = validation_mod.run_script(validator, context_file, timeout, cwd=base)

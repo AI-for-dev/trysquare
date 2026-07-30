@@ -29,6 +29,15 @@ repo = "neon"
 # #1, and yesterday's measures stop comparing with tomorrow's.
 etalon = "etalon-v1"
 prompt = "../bricks/vague-ticket.md"
+# The suite that decides the `tests` metric, written out rather than `npm test`.
+# `npm test` reads its meaning from `package.json`, which is inside the perimeter the
+# agent may edit: broken code plus a test script of `echo ok` would score green and
+# nothing in the output would say so. Required as soon as a validator declares
+# `tests`, and refused at load time.
+#
+# A list of words, because no shell runs it. The glob survives anyway: `node --test`
+# expands it itself, so nothing is lost by not having a shell.
+test_command = ["node", "--test", "game/**/*.test.js"]
 
 [agent]
 provider = "ilaas"

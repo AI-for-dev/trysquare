@@ -13,6 +13,7 @@ network, a clone, or an API key.
 from __future__ import annotations
 
 import itertools
+import json
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,6 +35,24 @@ REQUIRED = (
     ("agent", "thinking"),
     ("protocol", "repetitions"),
 )
+
+# The metric whose declaration makes `[task].test_command` mandatory.
+#
+# The command is **declared, never detected**, and the reason is the same lesson as
+# `REQUIRED` above wearing different clothes. The obvious detection is `npm test`,
+# whose meaning is read from `package.json` - a file inside the perimeter the
+# measured agent may edit. Broken code plus a `scripts.test` of `echo ok` scores
+# green, and nothing in the output says so. A detected command hands the choice of
+# how a run is measured to the very agent being measured.
+#
+# Every documented migration in comparable tools runs the same way, from detecting
+# towards declaring, and none the other way: Heroku's Python buildpack removed two
+# heuristics with the motive written into its source, Renovate is mid-removal, and
+# SWE-bench - which has exactly this problem - wrote 315 test commands by hand.
+#
+# Required by the metric rather than by the section, because a scenario that
+# measures prose has no suite to name and demanding one would be ceremony.
+TESTS_METRIC = "tests"
 
 
 class ScenarioError(Exception):
@@ -147,6 +166,7 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
     validators = _validators(raw.get("validation", []))
     verdict = dict(raw["verdict"])
     _check_verdict(verdict, validators, cells, axes)
+    _check_test_command(raw["task"], validators, where)
 
     scenario = raw["scenario"]
     return Scenario(
@@ -234,6 +254,58 @@ def _check_axes(axes: dict, values: dict) -> None:
                     f"first value of an axis ({declared[0]!r}) is the baseline. "
                     f"Deltas declared for this axis: {known or 'none'}"
                 )
+
+
+def _check_test_command(task: dict, validators: tuple[Validator, ...], where: str) -> None:
+    """Refuses a scenario that scores a test suite without naming the suite.
+
+    See `TESTS_METRIC` for why the command is declared and never detected.
+
+    The list form is a contract rather than a preference. The command is handed to
+    `subprocess` **without** `shell=True`, so a string would either need a shell -
+    which would let a scenario carry a redirection, an `&&` or an expansion, none of
+    which anyone can read as one measured command - or be split by a rule the author
+    would have to guess. A list has one meaning.
+
+    A command declared by a scenario that scores no tests is kept and not refused: a
+    scenario may name its suite before a validator scores it, and refusing that would
+    punish writing the file in the order it is natural to write it.
+    """
+    command = task.get("test_command")
+
+    if command is None:
+        if TESTS_METRIC in {m for v in validators for m in v.metrics}:
+            raise ScenarioError(
+                f"{where}a validator declares the {TESTS_METRIC!r} metric, so "
+                f"[task].test_command is required: it names the suite that decides "
+                f"that metric, as a list of words.\n"
+                f'  test_command = ["node", "--test", "game/**/*.test.js"]\n'
+                f"It is declared and never detected, because the obvious detection "
+                f"reads `package.json`, which the measured agent may edit - broken "
+                f"code plus a test script of `echo ok` would score green."
+            )
+        return
+
+    if isinstance(command, str):
+        # `json.dumps` rather than `repr`, because the suggested line has to be
+        # pasteable: TOML does not accept the single quotes Python's repr produces,
+        # so a refusal that suggested `['npm', 'test']` would be a refusal twice.
+        raise ScenarioError(
+            f"{where}[task].test_command is a string, and it must be a list of "
+            f"words: {command!r}.\n"
+            f"  test_command = {json.dumps(command.split())}\n"
+            f"No shell runs it, which is what stops a scenario from carrying a "
+            f"redirection or an `&&` that nobody could read as one measured command."
+        )
+    if not isinstance(command, list) or not command:
+        raise ScenarioError(
+            f"{where}[task].test_command must be a non-empty list of words, "
+            f"got {command!r}"
+        )
+    if not all(isinstance(word, str) for word in command):
+        raise ScenarioError(
+            f"{where}[task].test_command must contain only strings, got {command!r}"
+        )
 
 
 def _validators(declared: list) -> tuple[Validator, ...]:

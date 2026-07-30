@@ -4,6 +4,7 @@ Every refusal here has a cost attached. A scenario that loads when it should not
 is a matrix paid for and thrown away, or worse, published.
 """
 
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -235,6 +236,78 @@ class TestShape(unittest.TestCase):
             }
         )
         self.assertEqual(set(s.declared_metrics), {"overflow", "delivered", "usable"})
+
+
+def scoring_tests(**task) -> dict:
+    """A scenario that contracts for the `tests` metric, with `task` keys added."""
+    return MINIMAL | {
+        "task": MINIMAL["task"] | task,
+        "validation": [
+            {"mode": "script", "command": "v.py", "metrics": ["overflow", "delivered", "tests"]}
+        ],
+    }
+
+
+class TestDeclaredTestCommand(unittest.TestCase):
+    """Scoring a test suite means saying which suite, in the scenario.
+
+    The command is declared rather than detected because the obvious detection -
+    `npm test`, read from `package.json` - takes its answer from a file inside the
+    perimeter the measured agent may edit. Broken code plus a `scripts.test` of
+    `echo ok` scores green.
+    """
+
+    def test_a_scenario_that_scores_tests_must_declare_the_command(self):
+        with self.assertRaises(ScenarioError) as raised:
+            parse(scoring_tests())
+        self.assertIn("test_command", str(raised.exception))
+
+    def test_a_scenario_that_does_not_score_tests_needs_no_command(self):
+        """Required by the metric, not by the section: a scenario measuring prose has
+        no suite to name, and demanding one would be ceremony."""
+        self.assertNotIn("tests", parse(MINIMAL).declared_metrics)
+
+    def test_a_declared_command_is_carried_on_the_task(self):
+        s = parse(scoring_tests(test_command=["node", "--test", "game/**/*.test.js"]))
+        self.assertEqual(s.task["test_command"], ["node", "--test", "game/**/*.test.js"])
+
+    def test_a_string_is_refused_because_nothing_will_run_a_shell(self):
+        """`subprocess` without `shell=True` is what keeps a scenario from carrying a
+        redirection or an `&&`, so the list form is the contract, not a preference."""
+        with self.assertRaises(ScenarioError) as raised:
+            parse(scoring_tests(test_command="npm test"))
+        self.assertIn("list", str(raised.exception))
+
+    def test_the_suggested_fix_is_valid_toml(self):
+        """A refusal that suggests a line nobody can paste is a refusal twice.
+
+        Python's `repr` of a list of strings uses single quotes, which TOML does not
+        accept for an array of strings.
+        """
+        with self.assertRaises(ScenarioError) as raised:
+            parse(scoring_tests(test_command="npm test"))
+        suggested = [
+            line.strip()
+            for line in str(raised.exception).split("\n")
+            if line.strip().startswith("test_command")
+        ]
+        self.assertTrue(suggested, "the refusal suggests no replacement line")
+        parsed = tomllib.loads(suggested[0])
+        self.assertEqual(parsed["test_command"], ["npm", "test"])
+
+    def test_an_empty_command_is_refused(self):
+        with self.assertRaises(ScenarioError):
+            parse(scoring_tests(test_command=[]))
+
+    def test_a_command_whose_words_are_not_strings_is_refused(self):
+        with self.assertRaises(ScenarioError):
+            parse(scoring_tests(test_command=["node", 7]))
+
+    def test_a_command_declared_without_scoring_tests_is_kept(self):
+        """Not an error: a scenario may name its suite before a validator scores it,
+        and refusing that would punish writing the file in the useful order."""
+        s = parse(MINIMAL | {"task": MINIMAL["task"] | {"test_command": ["node", "--test"]}})
+        self.assertEqual(s.task["test_command"], ["node", "--test"])
 
 
 if __name__ == "__main__":

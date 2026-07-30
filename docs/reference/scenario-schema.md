@@ -49,11 +49,37 @@ result publishable rather than quietly reframed.
 * - `prompt`
   - no
   - The task given to the agent: inline text, or a path to a file.
+* - `test_command`
+  - when `tests` is scored
+  - The suite that decides the `tests` metric, as a **list of words**. Declared,
+    never detected.
 ```
 
 `repo` being logical is what makes a scenario portable: it carries no author's
 directory layout. A value containing `/` or `~` is a mistake the schema does not
 prevent but the config resolution will.
+
+`test_command` is required as soon as any validator declares the `tests` metric, and
+the refusal happens at load time. Required by the *metric* rather than by the section:
+a scenario that measures prose has no suite to name, and demanding one would be
+ceremony.
+
+```toml
+test_command = ["node", "--test", "game/**/*.test.js"]
+```
+
+**Declared and never detected**, which is the same lesson as the mandatory keys above
+wearing different clothes. The obvious detection is `npm test`, whose meaning is read
+from `package.json` - a file inside the perimeter the measured agent may edit. Broken
+code plus a test script of `echo ok` scores green, and nothing in the output says so.
+A detected command hands the choice of how a run is measured to the agent being
+measured.
+
+**A list of words, never a string.** The command is handed to `subprocess` without a
+shell, so a string would either need one - letting a scenario carry a redirection or
+an `&&` that nobody can read as a single measured command - or be split by a rule the
+author would have to guess. A list has one meaning. Nothing is lost: a glob still
+works when the runner expands it itself, as `node --test` does.
 
 ## `[agent]`
 

@@ -59,7 +59,8 @@ validators/neon.py /path/to/run/validation/script/context.json
   "session": "/tmp/.../session",
   "trace": "/tmp/.../trace.jsonl",
   "cell": "rule / high",
-  "repetition": 3
+  "repetition": 3,
+  "test_command": ["node", "--test", "game/**/*.test.js"]
 }
 ```
 
@@ -72,6 +73,21 @@ a signature and re-score runs already paid for" true.
 
 `etalon.checkout` is a path, not just a tag, because scoring needs the reference side
 as *text* and not every validator can run `git`.
+
+`test_command` is the suite that decides the `tests` metric, declared by the scenario
+and never guessed here. Run it as an argv, without a shell.
+
+:::{warning}
+Do not fall back to `npm test`, or to any command read out of the repository. Its
+meaning lives in `package.json`, which is inside the perimeter the measured agent may
+edit: broken code plus a test script of `echo ok` scores green, and nothing in the
+output says so. The scenario declaring the command is what stops the agent being
+measured from choosing how it is measured.
+
+The key is absent when the scenario names no suite, and an absent key is a different
+fact from an empty command. It says this experiment scores no test suite - which is
+something to refuse over, not something to score as a failure.
+:::
 
 A minimal validator:
 
