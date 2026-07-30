@@ -412,5 +412,134 @@ class TestToolCalls(unittest.TestCase):
             run.tool_calls()
 
 
+def a_runner(directory: Path, code: int, out: str = "", err: str = "") -> list[str]:
+    """A command standing for a test runner: a chosen exit code and a chosen output."""
+    script = directory / "runner.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.stdout.write({out!r})\n"
+        f"sys.stderr.write({err!r})\n"
+        f"sys.exit({code})\n"
+    )
+    return [sys.executable, str(script)]
+
+
+NODE_SPEC = (
+    "✔ bounces off the wall (0.25ms)\n"
+    "✖ bounces off a brick (0.26ms)\n"
+    "ℹ tests 2\n"
+    "ℹ fail 1\n"
+    "\n"
+    "✖ failing tests:\n"
+    "test at game/neon.test.js:12:1\n"
+    "✖ bounces off a brick (0.26ms)\n"
+    "  AssertionError: expected -300 to equal 300\n"
+)
+
+
+class TestTheDeclaredSuite(unittest.TestCase):
+    """Three outcomes, not two, and a reason that is the runner's own summary.
+
+    The shipped validator greps for `not ok`, which stopped matching in **Node v23.0.0**
+    when the default non-TTY reporter went from `tap` to `spec` (nodejs/node#54548, "This
+    is a breaking change"). Its silent `tail[-1]` fallback then returned a closing brace
+    as the reason for a genuinely failing suite, and nothing looked broken. A fallback that
+    does not say it is one is what let that survive two major versions.
+    """
+
+    def run_with(self, code: int, out: str = "", err: str = "", **extra):
+        d = Path(tempfile.mkdtemp())
+        context = {"repo": str(d), "test_command": a_runner(d, code, out, err), **extra}
+        return Assay(context).tests()
+
+    def test_a_green_suite(self):
+        self.assertTrue(self.run_with(0, "ℹ pass 2\n"))
+
+    def test_a_red_suite_is_false_rather_than_unjudged(self):
+        """A failing suite is a measurement, and the agent's own."""
+        result = self.run_with(1, NODE_SPEC)
+        self.assertFalse(result)
+        self.assertTrue(result.judged)
+
+    def test_the_reason_is_the_runners_own_summary(self):
+        reason = self.run_with(1, NODE_SPEC).reason
+        self.assertIn("bounces off a brick", reason)
+        self.assertIn("expected -300 to equal 300", reason)
+
+    def test_the_reason_of_a_spec_report_is_not_a_closing_brace(self):
+        """The exact regression: the old grep found nothing and fell back to the last
+        line, which for a spec report is the tail of a diff."""
+        self.assertNotEqual(self.run_with(1, NODE_SPEC).reason.strip(), "}")
+
+    def test_a_pytest_summary_is_found_too(self):
+        out = "=== short test summary info ===\nFAILED test_a.py::test_one - assert 1 == 2\n"
+        self.assertIn("test_one", self.run_with(1, out).reason)
+
+    def test_a_report_with_no_known_marker_says_it_fell_back(self):
+        """A reason that does not declare itself a fallback is what hid the Node change."""
+        reason = self.run_with(1, "something nobody recognises\n").reason
+        self.assertIn("no recognised summary", reason)
+        self.assertIn("something nobody recognises", reason)
+
+    def test_output_on_stderr_is_not_a_failing_suite(self):
+        """`npm` writes a notice to stderr on a perfectly green run. Reading stderr's
+        presence as evidence is what put `npm notice run node --test` in a reason."""
+        result = self.run_with(0, "ℹ pass 2\n", err="npm notice run node --test\n")
+        self.assertTrue(result)
+        self.assertNotIn("npm notice", result.reason)
+
+    def test_an_executable_that_is_not_there_cannot_judge(self):
+        d = Path(tempfile.mkdtemp())
+        run = Assay({"repo": str(d), "test_command": ["/nowhere/runner", "--test"]})
+        with self.assertRaises(CannotJudge):
+            run.tests()
+
+    def test_a_missing_npm_script_cannot_judge(self):
+        """`npm error Missing script: "test"` exits 1, exactly like a failing suite, and
+        it means nobody ran anything."""
+        with self.assertRaises(CannotJudge):
+            self.run_with(1, err='npm error Missing script: "test"\n')
+
+    def test_pytest_collecting_nothing_cannot_judge(self):
+        """Exit 5 is "no test collected", which is not a green suite and not a red one.
+        `unittest discover` over a pytest test prints `Ran 0 tests`, `OK`, and exits 0 -
+        the same hole, silent."""
+        with self.assertRaises(CannotJudge):
+            self.run_with(5)
+
+    def test_pytest_misused_cannot_judge(self):
+        with self.assertRaises(CannotJudge):
+            self.run_with(4)
+
+    def test_node_failing_to_load_a_reporter_cannot_judge(self):
+        """Exit 7 is `ERR_MODULE_NOT_FOUND`: an inability to judge dressed as a failure."""
+        with self.assertRaises(CannotJudge):
+            self.run_with(7)
+
+    def test_a_suite_that_never_ends_cannot_judge(self):
+        d = Path(tempfile.mkdtemp())
+        script = d / "hang.py"
+        script.write_text("import time\ntime.sleep(30)\n")
+        run = Assay({"repo": str(d), "test_command": [sys.executable, str(script)]})
+        with self.assertRaises(CannotJudge) as raised:
+            run.tests(timeout=1)
+        self.assertIn("timed out", str(raised.exception))
+
+    def test_a_scenario_naming_no_suite_cannot_judge(self):
+        """An absent `test_command` says this experiment scores no suite, which is
+        something to refuse over rather than to score as a failure."""
+        run = Assay({"repo": "/r"})
+        with self.assertRaises(CannotJudge) as raised:
+            run.tests()
+        self.assertIn("test_command", str(raised.exception))
+
+    def test_the_command_is_run_as_an_argv_without_a_shell(self):
+        """No shell, so a scenario cannot smuggle a redirection past the declaration."""
+        d = Path(tempfile.mkdtemp())
+        run = Assay({"repo": str(d), "test_command": ["echo", "hi > stolen.txt"]})
+        self.assertTrue(run.tests())
+        self.assertFalse((d / "stolen.txt").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

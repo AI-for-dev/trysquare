@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 import traceback
 from dataclasses import dataclass
@@ -79,6 +80,80 @@ OPAQUE = frozenset({"subagent"})
 # A shell redirection. It is a fact about the shell, identical in the stream and in the
 # session, so changing which file is read does not remove the need for it.
 REDIRECT = re.compile(r">>?\s*(?:\./)?([A-Za-z0-9_./-]+)")
+
+# How long a declared suite may take. Generous, because it exists only for a suite that
+# hangs - which is a defect of the work being measured, not of the harness.
+TEST_TIMEOUT = 300
+
+# Where a test runner starts its own summary. Four lines of data and one rule - from the
+# marker to the end of the output - which is **not** a parser for TAP, JUnit or spec.
+#
+# A table of four is acceptable here where a table of four *ecosystem detections* was
+# refused, and the asymmetry of consequences is the whole reason: a marker that is missing
+# or wrong degrades the **reason** and nothing else, since the verdict comes from the exit
+# code, whereas a wrong detection changes the **measure**. Only one of these four is
+# exercised today, and the other three cost nothing to have wrong.
+SUMMARY_MARKERS = (
+    "short test summary info",  # pytest
+    "test result:",  # cargo
+    "failures:",  # cargo, the per-target list
+    "failing tests:",  # node, spec and dot reporters
+)
+
+# go prints `ok <pkg>` or `FAIL <pkg>` at the start of a line and nothing before it.
+GO_SUMMARY = re.compile(r"^(ok|FAIL)\s", re.M)
+
+# Exit codes that mean nobody managed to run the suite, though they look like a failure.
+# pytest documents its own (`pytest.ExitCode` is public API): 4 is a command-line misuse
+# and 5 is **no test collected**. node exits 7 on `ERR_MODULE_NOT_FOUND`, which is what an
+# unknown `--test-reporter` produces. None of the three is a red suite.
+CANNOT_JUDGE_CODES = {
+    4: "the runner refused the command line it was given",
+    5: "the runner collected no test at all",
+    7: "the runner could not load a module it needed",
+}
+
+# Said on stderr by npm when the script does not exist. It exits 1, exactly like a failing
+# suite, and it means nothing ran.
+NO_SUCH_SCRIPT = "Missing script"
+
+# How much output to hand back when no marker is found. Generous on purpose: node and go
+# finish on stack traces, so three lines or twenty would cut the answer in half.
+FALLBACK_LINES = 60
+
+
+def _unjudgeable(code: int, output: str) -> str:
+    """Why this exit code is not a verdict on the agent, or an empty string."""
+    if NO_SUCH_SCRIPT in output:
+        return "the declared suite does not exist"
+    return CANNOT_JUDGE_CODES.get(code, "")
+
+
+def summarise(output: str) -> str:
+    """The runner's own summary, or a tail that says it is a fallback.
+
+    Anchored on the marker and taken to the end, because every one of the four runners
+    writes its summary last. Nothing is parsed.
+
+    A fallback that does not **declare itself** a fallback is what let a real regression
+    live: the shipped validator grepped for `not ok`, Node v23 changed its default non-TTY
+    reporter from `tap` to `spec`, the grep stopped matching, and a silent `tail[-1]`
+    returned a closing brace as the reason for a failing suite. Nothing looked broken for
+    two major versions.
+    """
+    lines = output.rstrip().split("\n")
+
+    for marker in SUMMARY_MARKERS:
+        for i, line in enumerate(lines):
+            if marker in line:
+                return "\n".join(lines[i:]).strip()
+
+    found = GO_SUMMARY.search(output)
+    if found:
+        return output[found.start() :].strip()
+
+    tail = "\n".join(lines[-FALLBACK_LINES:]).strip()
+    return f"no recognised summary, last lines follow:\n{tail}"
 
 
 def _tool_calls(session: str):
@@ -295,6 +370,17 @@ class Assay:
             )
         return compute()
 
+    def _call(self, name: str, *args):
+        """A part that takes arguments, whether it is computed or stubbed.
+
+        The real computation is a closure, so it is called. A fake's stub is the answer
+        itself - `Assay.fake(tests=Metric(False, "1 failure"))` - because that is what a
+        test wants to write, and making the author wrap it in a lambda would be the base
+        winning an argument against its own ergonomics.
+        """
+        part = self._part(name)
+        return part(*args) if callable(part) else part
+
     def _given(self, key: str, what: str):
         """A value the harness pre-computed, or a refusal naming what is missing.
 
@@ -381,9 +467,67 @@ class Assay:
 
     # --- what costs something, so a method -------------------------------
 
-    def tests(self) -> Metric:
-        """Runs the suite the scenario declared. See the `test_command` field."""
-        return self._part("tests")
+    def tests(self, timeout: int = TEST_TIMEOUT) -> Metric:
+        """Runs the suite the scenario **declared**, and reports the runner's own summary.
+
+        Declared and never detected. The obvious detection is `npm test`, whose meaning is
+        read from `package.json` - a file inside the perimeter the measured agent may edit,
+        so broken code plus a test script of `echo ok` scores green. A detected command
+        hands the choice of how a run is measured to the agent being measured, and no
+        comparable tool has that adversary. Every documented migration elsewhere runs from
+        detecting towards declaring and none the other way.
+
+        **Three outcomes, not two.** Green, red, and could-not-judge - the last covering an
+        executable that is not there, a timeout, `npm error Missing script`, pytest's exit 4
+        and 5, and node's exit 7. Three distinct causes all exit 1, and calling any of them
+        a failing suite would be scoring an agent for something it did not do.
+
+        No report format is parsed. One generic mechanism instead: find the summary the
+        runner already wrote and hand it back, anchored on its marker and taken to the end.
+        A table of four markers is acceptable where a table of four *detections* was not,
+        and the asymmetry is the reason - a wrong marker degrades the **reason** while a
+        wrong detection changes the **measure**.
+        """
+        return self._call("tests", timeout)
+
+    def _compute_tests(self):
+        command = self._given("test_command", "the declared test suite")
+        directory = self.repo
+
+        def run(timeout: int) -> Metric:
+            try:
+                done = subprocess.run(
+                    list(command),
+                    cwd=directory,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired as e:
+                raise CannotJudge(
+                    f"the declared suite timed out after {timeout}s: "
+                    f"{' '.join(command)}"
+                ) from e
+            except OSError as e:
+                raise CannotJudge(
+                    f"the declared suite could not run: {e}. The scenario names "
+                    f"{' '.join(command)}"
+                ) from e
+
+            # Both streams, for **reading** only. go guarantees its report is on stdout
+            # even when a test wrote to stderr, and npm writes a notice to stderr on a
+            # perfectly green run - so the presence of stderr is not evidence of anything.
+            # Treating it as evidence is what put `npm notice run node --test` in a reason.
+            output = done.stdout + done.stderr
+
+            unjudgeable = _unjudgeable(done.returncode, output)
+            if unjudgeable:
+                raise CannotJudge(f"{unjudgeable}: {' '.join(command)}")
+            if done.returncode == 0:
+                return Metric(True)
+            return Metric(False, summarise(output))
+
+        return run
 
     def sources_at_etalon(self, pattern: str, exclude: str | None = None) -> str:
         """The text of the pinned files a pattern selects, joined.
@@ -405,7 +549,7 @@ class Assay:
         The reading itself is `repo.etalon_file`, which the harness has had all along.
         Three shipped validators reimplemented it with a raw `subprocess`.
         """
-        return self._part("sources_at_etalon")(pattern, exclude)
+        return self._call("sources_at_etalon", pattern, exclude)
 
     def _compute_sources_at_etalon(self):
         etalon = self._given("etalon", "the etalon")
