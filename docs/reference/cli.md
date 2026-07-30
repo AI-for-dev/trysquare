@@ -137,18 +137,61 @@ Reconstitutes archived runs so they can be re-scored. Costs no tokens.
 
 ```bash
 trysquare replay <experiment dir or run dir> --scenario <scenario> [--config <file>]
+trysquare replay <experiment dir> --scenario <scenario> --rescore
 ```
 
 Clones the etalon at its tag, applies the archived `diff.patch`, and writes a fresh
-context beside each reconstituted tree. This is what makes "fix a signature and re-score
-runs already paid for" true rather than aspirational: the archive keeps the tag and the
-patch, not 150 copies of a working tree.
+context beside each reconstituted tree, under `<workdir>/replay/<run id>/`. This is what
+makes "fix a signature and re-score runs already paid for" true rather than aspirational:
+the archive keeps the tag and the patch, not 150 copies of a working tree.
 
 The context is written **fresh** rather than reused. The archived one holds absolute paths
 into the work directory of the original run, which lives under `$TMPDIR` by default and
 which the system may long since have purged - so it names a tree that no longer exists,
 while the tree just rebuilt would be named by nothing. `touched` is recomputed from that
 tree, `files` from the tag, and the session is the archived one.
+
+### `--rescore`
+
+Re-runs the scenario's **script** validators over the reconstituted trees, then rewrites
+`measures.json`, `state.json` and the synthesis. Still no tokens.
+
+This is what closes the loop. Without it, a corrected signature could be executed against
+sixty archived runs and the sixty answers had nowhere to go: only `run` and `form` ever
+wrote `measures.json`, so a reader had to assemble a second scoring path of their own -
+which is exactly what a single harness exists to prevent.
+
+What it may and may not touch:
+
+`usage`, `duration`, `attempts`
+: never. They are facts about the run, not about the scoring. In particular `attempts` is
+  what leaves an abusive resume visible in `state.json`, and a re-scoring must not spend
+  that.
+
+`state.json`
+: rewritten with the new per-run state, and it has to be. That file decides whether a
+  synthesis is publishable at all, so a validator repaired here would otherwise stay
+  counted among the failures and the matrix would keep refusing to publish.
+
+`validation/<mode>.json`
+: replaced by what the validator just returned. Leaving the old payload would put a
+  `measures.json` and a `validation/script.json` side by side that disagree, with nothing
+  to say which one is the score.
+
+A **judge is not re-run**: its verdict costs tokens, and `replay` exists on the promise
+that it costs none. The archived payload is reused instead, which is the right answer and
+not a compromise - that verdict is a measurement somebody paid for, and correcting a script
+metric must not silently discard it. A run whose archived judge verdict is missing is left
+alone rather than scored short.
+
+Two refusals, both before anything is written:
+
+- a run whose state is `empty` is **left alone**. No scoring turns "produced nothing" into
+  a measurement, and overwriting its state would hide an incomplete matrix behind a
+  full-looking one.
+- a directory that is not this scenario's is refused by name. A directory name *is* the
+  experiment's identity, so comparing the two names catches a re-scoring that would rewrite
+  measures belonging to another matrix.
 
 :::{note}
 Three things a replay cannot give back: `prompt`, `response` and `trace`. The first two
@@ -163,8 +206,9 @@ stream.
 :::
 
 :::{note}
-It reconstitutes the trees and their contexts; running the validators over them and
-rewriting the measures is the remaining step. See {ref}`not-implemented`.
+`--rescore` re-runs the validators one run at a time, in order. It is deliberately not
+concurrent: a re-scoring is cheap, and the contexts live in per-run directories precisely
+so that it *could* be, but nothing here needs it yet.
 :::
 
 ## `compare`

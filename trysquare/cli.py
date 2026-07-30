@@ -19,17 +19,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 from . import agent as agent_mod
 from . import config as config_mod
+from . import measure as measure_mod
 from . import parity as parity_mod
 from . import repo as repo_mod
 from . import runner as runner_mod
 from . import table as table_mod
 from . import validation as validation_mod
-from .measure import Run, VALID
+from .measure import EMPTY, Run, VALID
 from .outputs import SESSION, Output, incomplete_note
 from .scenario import ScenarioError, load as load_scenario
 
@@ -99,6 +101,11 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("directory", type=Path, help="an experiment directory, or one run inside it")
     replay.add_argument("--config", type=Path)
     replay.add_argument("--scenario", type=Path, required=True)
+    replay.add_argument(
+        "--rescore",
+        action="store_true",
+        help="also re-run the script validators and rewrite measures.json and the synthesis",
+    )
     replay.set_defaults(func=cmd_replay)
 
     compare = sub.add_parser("compare", help="compare two experiments")
@@ -334,6 +341,7 @@ def cmd_replay(args) -> int:
     """Re-scores archived runs by reconstituting their trees. Costs no tokens."""
     scenario = load_scenario(args.scenario)
     config = config_mod.load(args.config, start=Path(args.scenario).resolve().parent)
+    base = Path(args.scenario).resolve().parent
     # Pinned like a run would: a replay costs no tokens, but it has always cost a clone,
     # and a scenario naming a URL has nothing to reconstitute from until it is pinned.
     source = runner_mod.prepare_source(config, scenario.task["repo"], scenario.task["etalon"])
@@ -346,17 +354,39 @@ def cmd_replay(args) -> int:
         print(f"error: no archived run found under {directory}", file=sys.stderr)
         return 1
 
+    scored = None
+    if args.rescore:
+        scored = rescored_measures(directory, scenario)
+        if scored is None:
+            return 1
+
     print(f"replaying {len(runs)} runs from {directory}")
     at_etalon = repo_mod.etalon_files(source, scenario.task["etalon"])
 
     for run_dir in runs:
         patch = (run_dir / "diff.patch").read_text() if (run_dir / "diff.patch").is_file() else ""
         work = config.workdir() / "replay" / run_dir.name
-        clone = repo_mod.clone(source, scenario.task["etalon"], work)
+        # Into `work/repo`, which is the run's own layout rather than tidiness. The context
+        # is written beside the tree, in `clone.parent`, so cloning *into* `work` made that
+        # `replay/` - one path shared by every run, where sixty contexts overwrote each
+        # other and only the last survived. A distinct `context:` line was printed for each
+        # all the same, so nothing looked wrong.
+        #
+        # No score was ever wrong: a context is written and consumed in the same turn of
+        # this loop. What was lost is the artifact - "point your validators at those
+        # contexts" was executable for one run out of sixty, and a validator failure could
+        # not be reproduced by hand. And it is a race waiting for the day this loop runs
+        # concurrently, which is when it would start producing plausible wrong numbers.
+        clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
         repo_mod.apply_diff(clone, patch)
         context = replay_context(run_dir, clone, source, scenario, at_etalon)
         print(f"  {run_dir.name}: reconstituted at {clone}")
         print(f"    context: {context}")
+        if scored is not None:
+            print(f"    {rescore_run(scored, scenario, run_dir, context, base)}")
+
+    if scored is not None:
+        return publish_rescore(scored, scenario)
 
     print("\n  trees reconstituted, each with a context beside it. Point the scenario's")
     print("  validators at those contexts - re-scoring costs no tokens.")
@@ -366,6 +396,157 @@ def cmd_replay(args) -> int:
             f"those lived in the work directory, which is disposable by design"
         )
     return 0
+
+
+# --- replay --rescore ------------------------------------------------------
+#
+# What `replay` was missing to keep its own promise. It reconstituted trees and said
+# "point the validators at those contexts", and there the trail ended: nothing wrote a
+# score back, because only `run` and `form` ever wrote `measures.json`. So a corrected
+# signature could be *executed* against sixty archived runs and the sixty answers had
+# nowhere to go but a reader's own script - which is a second scoring path, of the kind
+# this project refuses everywhere else.
+
+REPETITIONS = re.compile(r"_n(\d+)$")
+
+
+class Rescore:
+    """The measures being rewritten, and what happened to each run.
+
+    Holds the list in its **archived order** rather than rebuilding it: two identical
+    scorings must produce a byte-identical `measures.json`, so a reordering would show
+    up in `git diff` as a change that means nothing.
+    """
+
+    def __init__(self, output: Output, runs: list[Run]):
+        self.output = output
+        self.runs = runs
+        self.by_id = {r.id: r for r in runs}
+        self.rescored: list[str] = []
+        self.skipped: list[str] = []
+
+
+def rescored_measures(directory: Path, scenario) -> Rescore | None:
+    """The measures `directory` holds, or None with the reason said out loud.
+
+    A directory name **is** the experiment's identity (`outputs.experiment_name`), so it
+    is also the check: re-scoring one matrix with another scenario's validators would
+    rewrite measures that were never that matrix's, and comparing the two names catches
+    it before anything is written.
+    """
+    found = REPETITIONS.search(directory.name)
+    output = Output(directory.parent, scenario, int(found.group(1)) if found else None)
+    if output.directory.resolve() != directory.resolve():
+        print(
+            f"refused: this scenario names {output.directory.name}, and you asked to "
+            f"re-score {directory.name}. A directory name is the experiment's identity, "
+            f"so re-scoring across the two would rewrite measures that are not its own",
+            file=sys.stderr,
+        )
+        return None
+
+    runs = output.read_measures()
+    if not runs:
+        print(
+            f"error: no {'measures.json'} in {output.directory}, so there is nothing to "
+            f"re-score. `replay` without --rescore still reconstitutes the trees",
+            file=sys.stderr,
+        )
+        return None
+    return Rescore(output, runs)
+
+
+def rescore_run(scored: Rescore, scenario, run_dir: Path, context: Path, base: Path) -> str:
+    """Re-scores one archived run against its fresh context, and says what happened.
+
+    A **judge is not re-run.** Its verdict costs tokens, and `replay` exists on the
+    promise that it costs none. The archived payload is reused instead, which is the right
+    answer rather than a compromise: that verdict is a measurement somebody paid for, and
+    correcting a script metric must not silently discard it. An archive without it refuses
+    the run rather than scoring it short.
+    """
+    run = scored.by_id.get(run_dir.name)
+    if run is None:
+        scored.skipped.append(run_dir.name)
+        return "not in measures.json, left alone"
+    # `empty` means the run produced nothing - never launched, or launched and billed
+    # nothing. No scoring can turn that into a measurement, and overwriting its state
+    # would hide an incomplete matrix behind a full-looking one.
+    if run.state == EMPTY:
+        scored.skipped.append(run.id)
+        return "produced nothing, so nothing to score"
+
+    results = []
+    for validator in scenario.validators:
+        if validator.mode == "script":
+            result = validation_mod.run_script(
+                validator, context, scenario.protocol["timeout"], cwd=base
+            )
+            payload, stderr = result.payload, result.stderr
+        else:
+            archived = run_dir / "validation" / f"{validator.mode}.json"
+            if not archived.is_file():
+                scored.skipped.append(run.id)
+                return f"no archived {validator.mode} verdict to reuse, left alone"
+            payload, stderr = json.loads(archived.read_text()), ""
+        # The run's score is being replaced, so the archived payload is replaced with it.
+        # Leaving the old one would put a `measures.json` and a `validation/script.json`
+        # side by side that disagree, and a reader has no way to tell which is the score.
+        scored.output.write_validation(run.id, validator.mode, payload, stderr)
+        results.append((validator.mode, payload))
+
+    metrics, reasons, state, detail = measure_mod.merge(results, scenario.declared_metrics)
+    was = run.state
+    run.metrics, run.reasons = metrics, reasons
+    # Set unconditionally, in both directions. A run whose validator used to fail becomes
+    # valid when the fix works - which is the whole point - and a run that used to score
+    # must be allowed to stop scoring, or a broken validator would read as the old result.
+    run.state, run.detail = state, detail
+    scored.rescored.append(run.id)
+
+    if state != VALID:
+        return f"{state}: {detail}"
+    return "re-scored" if was == VALID else f"re-scored, was {was}"
+
+
+def publish_rescore(scored: Rescore, scenario) -> int:
+    """Writes the measures and the ledger back, then rebuilds the synthesis.
+
+    `usage`, `duration` and `attempts` are never touched: they are facts about the run,
+    not about the scoring, and a re-score that rewrote them would claim to have measured
+    something it did not. That is also why `Output.record` is not reused here - it adds to
+    `attempts`, and "attempts are counted per run so an abusive resume leaves a trace" is
+    an invariant a re-scoring must not spend.
+
+    `state.json` **must** move with the measures, though, and it is the one thing that
+    could not simply be left alone. It carries the per-run state that decides whether a
+    synthesis is publishable at all, so a validator repaired here would still be counted
+    among the failures and the matrix would keep refusing to publish - the exact case this
+    flag exists for.
+    """
+    path = scored.output.write_measures(scored.runs)
+    print(f"\n  {len(scored.rescored)} of {len(scored.runs)} runs re-scored, no tokens spent")
+    print(f"  written {path}")
+    if scored.skipped:
+        print(f"  left alone: {', '.join(sorted(scored.skipped))}")
+
+    state = scored.output.read_state()
+    if state.get("runs"):
+        for run_id_ in scored.rescored:
+            entry = state["runs"].get(run_id_)
+            run = scored.by_id[run_id_]
+            if entry is None:
+                continue
+            entry["state"] = run.state
+            # Removed and not left behind when the run now scores: a stale detail would
+            # explain a failure that no longer exists.
+            if run.detail:
+                entry["detail"] = run.detail
+            else:
+                entry.pop("detail", None)
+        scored.output.write_state(state)
+
+    return _write_synthesis(scored.output, scenario, scored.runs)
 
 
 # What a replay cannot put back. The prompt and the agent's final prose lived in the work

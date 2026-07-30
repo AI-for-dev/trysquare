@@ -123,8 +123,20 @@ counts in the successful runs.
 Read `runs/<id>/validation/script.stderr`. The run itself is fine - only the scoring
 failed - so **it does not need remeasuring**: fix the validator and re-score.
 
+```bash
+trysquare replay results/<experiment> --scenario scenarios/<scenario>.toml --rescore
+```
+
+That rebuilds each tree from the tag and the archived diff, re-runs the script validators
+against it, and rewrites `measures.json`, `state.json` and the synthesis. No tokens. The run
+whose validator failed becomes valid again, and the matrix publishes.
+
 A validator failure is deliberately *not* resumable, because re-measuring a run that
 already produced a result would let a resume change it.
+
+The same command fills a metric declared *after* a matrix ran: add the name to the
+scenario's `metrics`, return it from the validator, and every archived run is scored on it
+at once. That is what "a metric already paid for can be scored later" means in practice.
 
 ## The synthesis warns about cost columns
 
