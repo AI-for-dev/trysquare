@@ -1,4 +1,10 @@
-# trysquare
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)"
+            srcset="docs/_static/logo/trysquare-lockup-dark.svg">
+    <img src="docs/_static/logo/trysquare-lockup-light.svg" alt="trysquare" height="46">
+  </picture>
+</h1>
 
 > A try square tells a joiner whether a joint is true. This one tells you whether a
 > measured difference is.

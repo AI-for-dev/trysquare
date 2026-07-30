@@ -67,16 +67,21 @@ exclude_patterns = [
 html_theme = "furo"
 html_static_path = ["_static"]
 html_title = "trysquare"
-# The mark carries no wordmark, because html_title already sets the word beside it. Two
-# files rather than one: the mark is two-tone, so it needs a variant per ground, and
+# The brand is the lockup, so sidebar_hide_name suppresses the text furo would otherwise
+# set beside it - the word is already in the drawing, and writing it twice reads as a
+# mistake. html_title still names the browser tab.
+#
+# Two files rather than one: the lockup is two-tone, so it needs a variant per ground, and
 # currentColor would not have helped anyway - it does not reach an SVG referenced as an
 # image, so a monochrome file would go black in both themes.
 html_favicon = "_static/logo/trysquare-tile.svg"
+html_css_files = ["custom.css"]
 html_theme_options = {
     "source_repository": "",
     "navigation_with_keys": True,
-    "light_logo": "logo/trysquare-mark-light.svg",
-    "dark_logo": "logo/trysquare-mark-dark.svg",
+    "light_logo": "logo/trysquare-lockup-light.svg",
+    "dark_logo": "logo/trysquare-lockup-dark.svg",
+    "sidebar_hide_name": True,
 }
 
 # A warning is a defect in the documentation, and the same standard applies here as

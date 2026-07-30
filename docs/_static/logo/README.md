@@ -10,6 +10,11 @@ The mark is **the graduated two-tone**: `trysquare-mark-light.svg` on a light gr
 `trysquare-mark-dark.svg` on a dark one. Everything else in this directory serves a
 constraint that one cannot.
 
+Where they are used today: the **lockup** is the brand, in the documentation sidebar
+(`html_theme_options` in `docs/conf.py`, with `sidebar_hide_name` so the word is not
+written twice) and at the head of the repository README. The **tile** is the favicon. The
+mark on its own is for anywhere the word is already present.
+
 | file | colour | use |
 | --- | --- | --- |
 | `trysquare-mark-light.svg` | slate + brass | **the mark**, light ground, above 32px |
@@ -19,8 +24,8 @@ constraint that one cannot.
 | `trysquare-mark.svg` | `currentColor` | inlined in a page, follows the text colour |
 | `trysquare-mark-small.svg` | `currentColor` | the same, below 32px |
 | `trysquare-tile.svg` | slate ground | favicon, avatar, social image |
-| `trysquare-lockup-light.svg` | slate + brass | mark and word, light ground |
-| `trysquare-lockup-dark.svg` | paper + brass | mark and word, dark ground |
+| `trysquare-lockup-light.svg` | slate + brass | **the brand**: sidebar, README, light ground |
+| `trysquare-lockup-dark.svg` | paper + brass | **the brand**: sidebar, README, dark ground |
 | `trysquare-square.svg` | `currentColor` | the square upright, austere variant |
 | `trysquare-square-graduated.svg` | `currentColor` | the same, blade graduated |
 | `trysquare-square-twotone.svg` | slate + brass | the same, in colour |

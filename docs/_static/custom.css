@@ -1,0 +1,9 @@
+/* The lockup is 207px wide and furo's sidebar offers about 203, so left to itself the
+   brand is scaled to the very edge of its container and reads as cropped rather than
+   placed. Hold it back to leave a margin on both sides.
+
+   Furo sets `max-width: 100%` on .sidebar-logo; this is the same specificity, so it wins
+   on source order - which is why the stylesheet is registered after the theme's own. */
+.sidebar-logo {
+  max-width: 84%;
+}
