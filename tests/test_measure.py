@@ -8,7 +8,6 @@ import json
 import unittest
 
 from trysquare.measure import (
-    EMPTY,
     VALID,
     VALIDATOR_FAILED,
     Run,

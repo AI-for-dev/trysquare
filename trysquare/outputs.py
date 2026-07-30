@@ -29,7 +29,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from .measure import EMPTY, VALID, VALIDATOR_FAILED, Run
+from .measure import EMPTY, VALIDATOR_FAILED, Run
 
 STATE = "state.json"
 MEASURES = "measures.json"
