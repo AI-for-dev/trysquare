@@ -44,6 +44,15 @@ MISSING = "missing"
 RESUMABLE = (MISSING, EMPTY)
 
 
+def slug(value) -> str:
+    """A value reduced to one path component.
+
+    Tags legitimately contain a slash (`release/1.0`), which would otherwise turn one
+    directory name into two and put the result somewhere nobody named.
+    """
+    return str(value).replace("/", "-").replace(" ", "-")
+
+
 def experiment_name(scenario, repetitions: int | None = None) -> str:
     """The directory name, which is the experiment's identity."""
     n = repetitions if repetitions is not None else scenario.protocol["repetitions"]
@@ -54,7 +63,7 @@ def experiment_name(scenario, repetitions: int | None = None) -> str:
         scenario.agent["model"],
         f"n{n}",
     ]
-    return "_".join(str(p).replace("/", "-").replace(" ", "-") for p in parts)
+    return "_".join(slug(p) for p in parts)
 
 
 def run_id(scenario_name: str, cell: str, repetition: int) -> str:
@@ -114,9 +123,16 @@ class Output:
         Concurrency and timeout are written down whatever their origin. They
         condition the retry count and therefore every cost column, so a matrix
         that does not record its own load cannot have its costs read.
+
+        The repository is recorded by its **logical** name only. Where it actually came
+        from - a directory, or a URL and the commit its tag pointed at - is written per
+        run by `runner.archive`, because this method is called from `resolve()` during a
+        `--dry-run`, and a field derived from the disk or the network would stop a dry
+        run from being free.
         """
         return {
             "scenario": self.scenario.name,
+            "repo": self.scenario.task["repo"],
             "etalon": self.scenario.task["etalon"],
             "provider": self.scenario.agent["provider"],
             "model": self.scenario.agent["model"],

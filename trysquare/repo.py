@@ -10,6 +10,12 @@ shared gitdir: a recursive copy then gives every run the same gitdir, so one
 agent running `git commit` moves the comparison base of every run in flight and
 nobody notices.
 
+**A remote is pinned as a working tree, never as a bare mirror.** A bare mirror is
+smaller and answers `git show` and `git ls-tree` perfectly well, so it looks right.
+But `etalon.checkout` is walked as files by a shipped validator, a bare repository
+passes its `is_dir()` check and yields an empty reference, and the whole matrix then
+reports plausible numbers about nothing. See `pin`.
+
 **Exclude what we injected.** The files the harness drops are not the agent's
 work. Without `.git/info/exclude`, scope scoring counts them as changes the agent
 made, and every configured cell drops to zero: a measurement of our own tooling
@@ -23,11 +29,18 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .config import is_remote
+
 GIT_TIMEOUT = 180
 
 
 class RepoError(Exception):
-    pass
+    def __init__(self, *args, detail: str = ""):
+        super().__init__(*args)
+        # Git's own stderr, kept apart from the message. A wrapper that wants to explain
+        # a failure needs the *reason*; splicing in the whole message buries it under a
+        # command line carrying the URL and the target path all over again.
+        self.detail = detail
 
 
 @dataclass
@@ -49,30 +62,79 @@ def git(args: list[str], cwd: Path | None = None, check: bool = True) -> str:
         timeout=GIT_TIMEOUT,
     )
     if check and proc.returncode != 0:
-        raise RepoError(f"git {' '.join(args)} failed: {proc.stderr.strip()}")
+        stderr = proc.stderr.strip()
+        raise RepoError(f"git {' '.join(args)} failed: {stderr}", detail=stderr)
     return proc.stdout
 
 
-def clone(source: Path, etalon: str, target: Path) -> Path:
-    """Clones `source` at tag `etalon` into `target`."""
-    if not source.exists():
-        raise RepoError(f"repository not found: {source}")
+def clone_argv(source: str, etalon: str, target: Path, keep_tags: bool = False) -> list[str]:
+    """The flags a clone is made with, separated so they can be asserted.
+
+    `--single-branch --branch <etalon>` is the reproducibility guarantee: the clone is
+    the pinned state and nothing else.
+
+    `--no-tags` is right for a run's clone, where nothing needs the tag ref once HEAD is
+    detached on it. A pinned source keeps its tags, because every run clones *from* that
+    directory **by tag name**.
+
+    Measured rather than assumed: git does in fact keep the tag named by `--branch` even
+    under `--no-tags`, so a pinned source would probably work either way. Nothing
+    documents that interaction, though, and the pinned source's whole job is to answer a
+    clone by tag - so it does not rest on undocumented behaviour. The cost is the tag
+    refs of one branch.
+    """
+    args = ["clone", "--quiet"]
+    if not keep_tags:
+        args.append("--no-tags")
+    return [*args, "--single-branch", "--branch", etalon, source, str(target)]
+
+
+def clone(source: Path | str, etalon: str, target: Path, keep_tags: bool = False) -> Path:
+    """Clones `source` at tag `etalon` into `target`.
+
+    `source` may be a local directory or a git URL. A URL is handed to git verbatim:
+    `resolve()` would turn it into a path, which is the defect `config.is_remote`
+    exists to prevent.
+
+    The `exists()` check stays as a backstop. `runner.prepare_source` checks earlier
+    and says more, but a caller that reaches here with nothing on disk should still be
+    told, not left with a bare git error.
+    """
+    if is_remote(str(source)):
+        where = str(source)
+    else:
+        source = Path(source)
+        if not source.exists():
+            raise RepoError(f"repository not found: {source}")
+        where = str(source.resolve())
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         shutil.rmtree(target)
-    git(
-        [
-            "clone",
-            "--quiet",
-            "--no-tags",
-            "--single-branch",
-            "--branch",
-            etalon,
-            str(source.resolve()),
-            str(target),
-        ]
-    )
+    git(clone_argv(where, etalon, target, keep_tags=keep_tags))
     return target
+
+
+def pin(url: str, etalon: str, target: Path) -> Path:
+    """Clones a remote at `etalon` once, as a working tree runs can clone from.
+
+    A working tree and not a bare mirror. `etalon.checkout` is walked as *files* by a
+    shipped validator (`validators/neon.py` -> `game_sources`), and a bare repository
+    passes its `is_dir()` check, yields an empty reference, and turns every signature
+    comparison into a plausible number about nothing. A bare mirror would have been
+    smaller and would have measured nothing, silently.
+    """
+    return clone(url, etalon, target, keep_tags=True)
+
+
+def commit_of(source: Path, etalon: str) -> str | None:
+    """The commit a tag designates, for the archive.
+
+    Peeled with `^{commit}` so an annotated and a lightweight tag record the same kind
+    of object: two archives naming different object kinds for the same tag are not
+    comparable. Also the only trace left when a tag is moved between two matrices.
+    """
+    out = git(["rev-parse", "--verify", "--quiet", f"{etalon}^{{commit}}"], cwd=source, check=False)
+    return out.strip() or None
 
 
 def etalon_file(source: Path, etalon: str, path: str) -> str:

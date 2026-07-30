@@ -147,7 +147,11 @@ def cmd_run(args) -> int:
 
     print(f"{scenario.title or scenario.name}")
     print(f"  {len(scenario.cells)} cells x {plan.output.repetitions} repetitions")
-    print(f"  etalon {scenario.task['etalon']} of {plan.repo_path}")
+    print(f"  etalon {scenario.task['etalon']} of {plan.repo_source}")
+    if plan.repo_source != str(plan.repo_path):
+        # A URL. Announcing only the pinned directory would show the operator a path
+        # under $TMPDIR, which says nothing about what is about to be measured.
+        print(f"  pinned at {plan.repo_path} (cloned on the first run)")
     print(f"  output {plan.output.directory}")
     for note in plan.notes:
         print(f"  ! {note}")
@@ -273,7 +277,9 @@ def cmd_replay(args) -> int:
     """Re-scores archived runs by reconstituting their trees. Costs no tokens."""
     scenario = load_scenario(args.scenario)
     config = config_mod.load(args.config, start=Path(args.scenario).resolve().parent)
-    source = config.repo(scenario.task["repo"])
+    # Pinned like a run would: a replay costs no tokens, but it has always cost a clone,
+    # and a scenario naming a URL has nothing to reconstitute from until it is pinned.
+    source = runner_mod.prepare_source(config, scenario.task["repo"], scenario.task["etalon"])
 
     directory = args.directory
     runs = [directory] if (directory / "diff.patch").is_file() else sorted(

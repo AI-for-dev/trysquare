@@ -164,3 +164,39 @@ Fixed, but if a stale directory survives from an interrupted run, delete
 `<workdir>/harness/` and rerun. Harness preparation is serialised behind a lock with a
 readiness marker, so a half-written clone is redone rather than reused - reusing a
 partial harness produces a plausible measurement, which is worse than a crash.
+
+## A repository URL could not be cloned
+
+```text
+error: could not clone [repos] neon at etalon 'etalon-v1'
+  url: https://host/neon.git
+  git: fatal: Remote branch etalon-v1 not found in upstream origin
+Nothing was measured. Fix the entry in /path/trysquare.toml, check network access, or
+list what the remote has: git ls-remote --tags https://host/neon.git
+```
+
+Raised **before** anything is written, so nothing was spent and no output directory was
+created. The same message covers the three causes, because they are the same clone: a URL
+that is wrong, a network that is unreachable, and an etalon tag that does not exist
+upstream. `git ls-remote --tags <url>` distinguishes the third.
+
+Note that a `--dry-run` cannot catch any of them: a dry run spends nothing, and reaching a
+network is spending.
+
+## A resume against a URL wants the network again
+
+The pinned clone lives under `workdir`, which is disposable and which macOS purges on
+reboot. Once it is gone, the next `--resume` clones it again. That is intended: the
+durable archive keeps sources, and the runs already paid for are still on disk and are not
+paid for twice.
+
+## A repository path does not exist
+
+```text
+error: [repos] neon resolves to /path/neon, which does not exist. Fix it in
+/path/trysquare.toml
+```
+
+Relative paths in the config resolve against the config file, not against the current
+directory. The check touches the disk, so like the URL failures above it happens when a
+run starts rather than during a `--dry-run`.

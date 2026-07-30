@@ -11,6 +11,7 @@ table, and the runs already paid for are the ones being protected.
 
 from __future__ import annotations
 
+import hashlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -19,9 +20,9 @@ from pathlib import Path
 from . import agent as agent_mod
 from . import repo as repo_mod
 from . import validation as validation_mod
-from .config import Config
+from .config import CONFIG_NAME, Config
 from .measure import EMPTY, VALID, Run, merge
-from .outputs import Output
+from .outputs import Output, slug
 from .scenario import Cell, Scenario
 
 
@@ -32,7 +33,17 @@ class Plan:
     scenario: Scenario
     config: Config
     output: Output
+
+    # The local directory runs clone from. For a URL this does not exist until
+    # `execute` or `replay` has pinned it, which is deliberate: `resolve` must not touch
+    # the network any more than it touches the disk, or `--dry-run` stops being free.
     repo_path: Path
+
+    # What the config declared - the URL, or the path. For display and for the archive:
+    # a pinned directory under `$TMPDIR` tells an operator nothing about what is being
+    # measured, and tells a reader six months later even less.
+    repo_source: str
+
     todo: list[tuple[str, dict]]
     overrides: dict
     blindness: dict
@@ -61,7 +72,15 @@ def resolve(
         declared = scenario.protocol.get(key, scenario.agent.get(key))
         notes.append(f"OVERRIDE: {key} {declared} -> {value}")
 
-    repo_path = config.repo(scenario.task["repo"])
+    # A repository entry may be a directory or a URL. Either way this only computes
+    # where it will be read from; nothing is cloned or reached for until `execute`.
+    url = config.remote(scenario.task["repo"])
+    if url:
+        repo_path = source_dir(config, scenario.task["repo"], url, scenario.task["etalon"])
+        repo_source = url
+    else:
+        repo_path = config.repo(scenario.task["repo"])
+        repo_source = str(repo_path)
 
     # Every brick must be where the scenario says, checked before anything is
     # spent. A missing brick used to surface as a validator failure after a matrix
@@ -104,6 +123,7 @@ def resolve(
         config=config,
         output=output,
         repo_path=repo_path,
+        repo_source=repo_source,
         todo=interleave(todo),
         overrides=overrides,
         blindness=validation_mod.blindness(scenario),
@@ -168,7 +188,70 @@ def looks_like_path(value: str) -> bool:
 
 
 _HARNESS_LOCK = threading.Lock()
+_SOURCE_LOCK = threading.Lock()
 READY = ".trysquare-ready"
+
+
+def source_dir(config: Config, name: str, url: str, etalon: str) -> Path:
+    """Where a remote repository is pinned. A pure path computation, no disk.
+
+    Keyed by **tag**, like `harness/{name}-{tag}`, and that is what deletes the entire
+    staleness question: a directory already there is by construction already at the tag
+    being asked for. Nothing to refetch, nothing to verify, and a tag moved upstream
+    cannot leak into a matrix in flight. The cost is re-cloning when a matrix changes
+    etalon, which is the right trade against a cache-invalidation state machine.
+
+    Keyed by a hash of the URL as well, so editing the URL in the config lands somewhere
+    else instead of silently reusing the previous repository's clone - the same class of
+    defect as reusing a half-written harness.
+    """
+    digest = hashlib.blake2s(url.encode(), digest_size=4).hexdigest()
+    return config.workdir() / "sources" / f"{slug(name)}-{digest}-{slug(etalon)}"
+
+
+def prepare_source(config: Config, name: str, etalon: str) -> Path:
+    """The local repository runs clone from, pinning a remote exactly once.
+
+    Called from `execute` before anything is written, so an unreachable URL costs a
+    refusal and an untouched disk instead of a ledger full of empty measures; and again
+    from `one_run`, so no caller can reach a clone without having pinned first. On the
+    hit path that second call is one lock and one `is_file()` against a run that lasts
+    minutes.
+
+    Serialised for the reason `prepare_harness` documents: cells run concurrently and
+    every one of them arrives here at the same moment. The readiness marker records the
+    URL as well as the tag, so a directory named after a hash can say what it is, and a
+    marker left by a different URL forces a fresh clone rather than being trusted.
+    """
+    url = config.remote(name)
+    if url is None:
+        path = config.repo(name)
+        if not path.exists():
+            raise repo_mod.RepoError(
+                f"[repos] {name} resolves to {path}, which does not exist. "
+                f"Fix it in {config.path or CONFIG_NAME}"
+            )
+        return path
+
+    target = source_dir(config, name, url, etalon)
+    stamp = f"{name}@{etalon}\n{url}\n"
+    with _SOURCE_LOCK:
+        marker = target / READY
+        if marker.is_file() and marker.read_text() == stamp:
+            return target
+        try:
+            repo_mod.pin(url, etalon, target)
+        except repo_mod.RepoError as e:
+            raise repo_mod.RepoError(
+                f"could not clone [repos] {name} at etalon {etalon!r}\n"
+                f"  url: {url}\n"
+                f"  git: {e.detail or e}\n"
+                f"Nothing was measured. Fix the entry in {config.path or CONFIG_NAME}, "
+                f"check network access, or list what the remote has: "
+                f"git ls-remote --tags {url}"
+            ) from e
+        marker.write_text(stamp)
+    return target
 
 
 def prepare_harness(config: Config, name: str, tag: str) -> Path:
@@ -184,12 +267,17 @@ def prepare_harness(config: Config, name: str, tag: str) -> Path:
     A readiness marker rather than mere existence, so a clone left half-written by
     an interrupted attempt is redone instead of silently reused. Reusing a partial
     harness is the kind of failure that produces a plausible measurement.
+
+    A `[harness]` entry may be a URL, exactly like a `[repos]` entry: the two sections
+    have the same shape, and one accepting an address the other refuses would be an
+    asymmetry nobody could guess. Nothing clones *from* this directory - it is loaded as
+    an extension - so it keeps `--no-tags`.
     """
-    clone_dir = config.workdir() / "harness" / f"{name}-{tag}"
+    clone_dir = config.workdir() / "harness" / f"{slug(name)}-{slug(tag)}"
     with _HARNESS_LOCK:
         if (clone_dir / READY).is_file():
             return clone_dir
-        source = config.harness_repo(name)
+        source = config.harness_remote(name) or config.harness_repo(name)
         repo_mod.clone(source, tag, clone_dir)
         install_dependencies(clone_dir)
         (clone_dir / READY).write_text(f"{name}@{tag}\n")
@@ -313,8 +401,12 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         system = read_brick(base, cell.delta.get("system"))
         thinking = cell.delta.get("thinking") or scenario.agent["thinking"]
 
+        # Pinned here as well as in `execute`, so a clone cannot be reached without it.
+        # Idempotent: on the hit path this is one lock and one `is_file()`.
+        source = prepare_source(plan.config, scenario.task["repo"], scenario.task["etalon"])
+
         work = plan.config.workdir() / plan.output.directory.name / run_id
-        clone = repo_mod.clone(plan.repo_path, scenario.task["etalon"], work / "repo")
+        clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
         prepared = repo_mod.Prepared(path=clone, etalon=scenario.task["etalon"])
         repo_mod.inject(
             prepared,
@@ -374,7 +466,7 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
                 directory,
                 repo=clone,
                 etalon=scenario.task["etalon"],
-                etalon_checkout=plan.repo_path,
+                etalon_checkout=source,
                 prompt_file=prompt_file,
                 session_dir=session_dir,
                 trace=trace,
@@ -469,6 +561,11 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
     per-message record does not: 15.9 MB of stream against 30 KB of session. What
     is archived is the tag, the diff and the configuration, which is exactly what
     `replay` needs to reconstitute a tree.
+
+    The repository and the commit its tag resolved to are recorded here. Without them a
+    published archive cannot say *what* it measured - and with a URL the address is the
+    only thing that identifies it. The commit also closes a hole that predates remotes:
+    a local repository whose tag was moved between two matrices left no trace at all.
     """
     directory = plan.output.run_dir(run_id)
     (directory / "diff.patch").write_text(repo_mod.diff(clone))
@@ -476,7 +573,9 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
         run_id,
         {
             "cell": cell.name,
+            "repo": plan.repo_source,
             "etalon": plan.scenario.task["etalon"],
+            "etalon_commit": repo_mod.commit_of(plan.repo_path, plan.scenario.task["etalon"]),
             "provider": plan.scenario.agent["provider"],
             "model": plan.scenario.agent["model"],
             "thinking": thinking,
@@ -489,7 +588,14 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
 
 
 def execute(plan: Plan, on_run=None) -> list[Run]:
-    """Runs the plan, writing state as it goes so an interruption is resumable."""
+    """Runs the plan, writing state as it goes so an interruption is resumable.
+
+    The repository is pinned **first**, before a single directory is created. After
+    `output.prepare()` an unreachable URL would leave behind an experiment directory
+    holding a ledger of runs that never had a repository to run against; before it, the
+    refusal reaches the operator and the disk is as untouched as after a dry run.
+    """
+    prepare_source(plan.config, plan.scenario.task["repo"], plan.scenario.task["etalon"])
     plan.output.prepare()
     state = plan.output.load_or_create_state(plan.overrides)
     plan.output.write_state(state)

@@ -5,12 +5,14 @@ ten, and an environment variable is invisible inheritance: the reader of a
 scenario cannot see it, the archive does not record it, and the value that
 actually ran is whatever the shell happened to hold.
 
-**A config file may only supply machine paths and load fallbacks.** Provider,
-model, thinking level, etalon and repetitions are mandatory in the scenario and
-raise when absent. If they could be inherited from here, the same scenario file
-would measure something different on another machine, and that is precisely the
-defect that made the thinking cell identical to the baseline in every published
-matrix.
+**A config file may only supply machine paths and load fallbacks.** Provider, model,
+thinking level, etalon and repetitions are mandatory in the scenario and raise when
+absent. If they could be inherited from here, the same scenario file would measure
+something different on another machine, and that is precisely the defect that made the
+thinking cell identical to the baseline in every published matrix.
+
+A repository entry may be a directory or a git URL. Both are addresses, and an address
+decides where the code is read from, never what is measured of it.
 
 Precedence: scenario (the experiment) > CLI (explicit and announced) > config
 (the machine) > built-in defaults.
@@ -19,11 +21,18 @@ Precedence: scenario (the experiment) > CLI (explicit and announced) > config
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 CONFIG_NAME = "trysquare.toml"
+
+# A repository entry may name a directory on this machine or a git URL. These two
+# forms tell them apart: `scheme://...`, and the scp-like `git@host:org/repo.git`
+# that git accepts and that no filesystem path looks like.
+SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+SCP_LIKE = re.compile(r"^[^/\\:]+@[^/\\:]+:")
 
 # Keys a config file is forbidden to carry. Listed so the refusal can name the
 # key and say why, rather than ignoring it silently.
@@ -76,25 +85,57 @@ class Config:
     path: Path | None = None
 
     def repo(self, name: str) -> Path:
-        """Resolves a logical repository name to a path.
+        """Resolves a logical repository name to a directory on this machine.
 
         A scenario writes `repo = "neon"`. It carries no machine path, which is
         what makes it portable and keeps one author's directory layout out of an
         experiment file.
+
+        Raises when the entry is a URL: a URL has no local directory until it has
+        been cloned, and answering with a plausible path that nothing has created
+        yet is how a caller ends up handing git something that is not there.
         """
         return self._resolve("repos", self.repos, name)
 
     def harness_repo(self, name: str) -> Path:
         return self._resolve("harness", self.harness, name)
 
-    def _resolve(self, section: str, table: dict, name: str) -> Path:
+    def remote(self, name: str) -> str | None:
+        """The git URL a logical name points at, or None when it names a directory.
+
+        The URL is returned **verbatim**. It is not expanded: a username or a token
+        taken from the shell is invisible inheritance in its purest form - it does
+        not appear in the archive, and the value that actually ran is whatever the
+        environment happened to hold. Abolishing that is what this module is for.
+        """
+        return self._remote("repos", self.repos, name)
+
+    def harness_remote(self, name: str) -> str | None:
+        return self._remote("harness", self.harness, name)
+
+    def _declared(self, section: str, table: dict, name: str) -> str:
+        """The raw entry, with the refusal that names what is known."""
         if name not in table:
             known = ", ".join(sorted(table)) or "none"
             raise ConfigError(
                 f"[{section}] has no entry {name!r} (known: {known}). "
                 f"Add it to {self.path or CONFIG_NAME}"
             )
-        return expand(table[name], relative_to=self.path)
+        return str(table[name])
+
+    def _remote(self, section: str, table: dict, name: str) -> str | None:
+        declared = self._declared(section, table, name)
+        return declared if is_remote(declared) else None
+
+    def _resolve(self, section: str, table: dict, name: str) -> Path:
+        declared = self._declared(section, table, name)
+        if is_remote(declared):
+            raise ConfigError(
+                f"[{section}] {name} is a git URL ({declared}), which has no local "
+                f"directory until it is cloned. It is pinned under the workdir by "
+                f"runner.prepare_source()"
+            )
+        return expand(declared, relative_to=self.path)
 
     def workdir(self) -> Path:
         return expand(self.defaults.get("workdir", BUILTIN_DEFAULTS["workdir"]))
@@ -103,12 +144,30 @@ class Config:
         return self.defaults.get(key, BUILTIN_DEFAULTS.get(key))
 
 
+def is_remote(value: str) -> bool:
+    """Whether a repository entry names a git URL rather than a directory.
+
+    This exists so a URL never reaches `expand()`. `Path("https://host/x")` collapses
+    the double slash into `https:/host/x`, which is a *relative* path: git would then
+    be handed a directory name resolved against the config file's parent, and the
+    failure is a clone of nothing rather than an error anyone can read.
+
+    `file://` counts as remote. `Path()` mangles it exactly the same way, and treating
+    it as a URL is also what lets the pinning path be tested end to end without a
+    network.
+    """
+    text = str(value)
+    return bool(SCHEME.match(text) or SCP_LIKE.match(text))
+
+
 def expand(value: str, relative_to: Path | None = None) -> Path:
     """Expands `~`, `$TMPDIR` and friends, then anchors relative paths.
 
     A relative path in a config file is relative to that file, not to the current
     working directory: the config describes a machine, and where the operator
     happens to stand when running a command is not part of it.
+
+    Only ever called on a path. A URL is kept verbatim - see `is_remote`.
     """
     text = os.path.expandvars(str(value))
     if "$TMPDIR" in str(value) and "$TMPDIR" in text:

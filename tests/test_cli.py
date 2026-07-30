@@ -62,6 +62,79 @@ class TestDryRun(unittest.TestCase):
         self.assertNotEqual(experiment_name(s, 3), experiment_name(s))
 
 
+class TestRemoteRepository(unittest.TestCase):
+    """A `[repos]` entry that is a URL, without ever reaching a network.
+
+    The host is under `.invalid`, reserved by RFC 2606, so a mistake in the wiring
+    cannot accidentally succeed against a real server.
+    """
+
+    URL = "https://example.invalid/neon.git"
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        self.workdir = self.home / "work"
+        self.config = self.home / "trysquare.toml"
+        self.config.write_text(
+            f'[repos]\nneon = "{self.URL}"\n'
+            f'[harness]\nsubagent = "{self.home}"\n'
+            f'[defaults]\nworkdir = "{self.workdir}"\n'
+        )
+
+    def plan(self, directory: Path):
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        return runner.resolve(load(SCENARIO), config_mod.load(self.config), directory)
+
+    def test_a_dry_run_against_a_url_touches_neither_disk_nor_network(self):
+        """`--dry-run` spends nothing, and reaching a network is spending."""
+        import contextlib
+        import io
+
+        directory = out()
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = main(
+                ["run", SCENARIO, "-o", str(directory), "--config", str(self.config), "--dry-run"]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(list(directory.iterdir()), [])
+        self.assertFalse((self.workdir / "sources").exists())
+
+    def test_the_plan_names_the_url_rather_than_the_pinned_path(self):
+        """A path under $TMPDIR tells the operator nothing about what is measured."""
+        import contextlib
+        import io
+
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            main(["run", SCENARIO, "-o", str(out()), "--config", str(self.config), "--dry-run"])
+        self.assertIn(self.URL, printed.getvalue())
+
+    def test_the_pinned_directory_lives_under_the_workdir(self):
+        plan = self.plan(out())
+        self.assertEqual(plan.repo_source, self.URL)
+        self.assertEqual(plan.repo_path.parent, self.workdir / "sources")
+        self.assertFalse(plan.repo_path.exists(), "resolve touches no disk")
+
+    def test_an_unreachable_url_fails_before_anything_is_written(self):
+        """60 runs discovering the same unreachable URL is 60 empty measures where one
+        refusal was owed. This pins the order of the statements in `execute`."""
+        import unittest.mock
+
+        from trysquare import repo as repo_mod
+        from trysquare import runner
+
+        plan = self.plan(out())
+        boom = repo_mod.RepoError("could not read from remote repository")
+        with unittest.mock.patch.object(runner.repo_mod, "pin", side_effect=boom):
+            with self.assertRaises(repo_mod.RepoError) as e:
+                runner.execute(plan)
+        self.assertIn(self.URL, str(e.exception))
+        self.assertFalse(plan.output.directory.exists(), "no ledger for runs that cannot run")
+
+
 class TestRunPlan(unittest.TestCase):
     def plan(self, **overrides):
         from trysquare import config as config_mod

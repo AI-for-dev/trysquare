@@ -15,12 +15,22 @@
 
 # Measurable repositories, by logical name. A scenario writes `repo = "neon"`.
 # Relative paths are relative to this file, not to the current directory.
+#
+# An entry may also be a git URL. It is then cloned once, at the scenario's etalon tag,
+# into `workdir/sources/<name>-<hash of the url>-<tag>`, and every run clones from there.
+# Keyed by tag, so a clone that is already present is by construction already at the tag
+# being asked for: nothing is refetched, and a tag moved upstream cannot change what a
+# matrix in flight is measuring. `https://`, `ssh://`, `git://`, `file://` and the
+# scp-like `git@host:org/repo.git` are all recognised.
 [repos]
 neon = "../neon"
+# neon = "https://github.com/earendil-works/neon.git"
 
-# Repositories that provide harness bricks, pinned by tag in the scenario.
+# Repositories that provide harness bricks, pinned by tag in the scenario. A URL works
+# here too, on the same terms.
 [harness]
 subagent = "~/Work/Pi/subagent"
+# subagent = "https://github.com/earendil-works/pi-subagent.git"
 
 [defaults]
 # Clones live in the system temporary directory, which macOS purges on reboot.

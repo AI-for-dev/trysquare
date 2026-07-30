@@ -35,6 +35,7 @@ config file resolves that name:
 :caption: trysquare.toml
 [repos]
 neon = "../neon"             # relative paths are relative to this file
+# neon = "https://github.com/org/neon.git"      # a URL works too
 
 [harness]
 subagent = "~/Work/Pi/subagent"
@@ -53,6 +54,10 @@ Otherwise the same scenario file would measure something different on another
 machine, which is exactly the defect that once made a thinking-level cell identical
 to its baseline in every published matrix.
 :::
+
+A repository entry may be a git URL rather than a directory. It is cloned once, at the
+scenario's etalon tag, under `workdir`, and every run clones from there - so nothing has
+to be cloned by hand first. See [`[repos]`](../reference/config-schema.md#repos).
 
 ## Plan a run without spending anything
 
