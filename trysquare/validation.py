@@ -51,7 +51,7 @@ def write_context(
     repo: Path,
     etalon: str,
     etalon_checkout: Path,
-    prompt_file: Path,
+    prompt_file: Path | None,
     session_dir: Path,
     trace: Path | None,
     cell: str,
@@ -98,11 +98,15 @@ def write_context(
     context = {
         "repo": str(repo),
         "etalon": {"tag": etalon, "checkout": str(etalon_checkout)},
-        "prompt": str(prompt_file),
         "session": str(session_dir),
         "cell": cell,
         "repetition": repetition,
     }
+    # Absent rather than the string "None". A replay has no prompt to give back - it lived
+    # in the work directory - and a key holding "None" would send a validator to open a
+    # file called None instead of telling it the fact is missing.
+    if prompt_file is not None:
+        context["prompt"] = str(prompt_file)
     if test_command is not None:
         context["test_command"] = list(test_command)
     # The steps to run before the suite. Kept apart from the suite itself because their

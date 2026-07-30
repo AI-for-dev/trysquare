@@ -140,13 +140,31 @@ trysquare replay <experiment dir or run dir> --scenario <scenario> [--config <fi
 ```
 
 Clones the etalon at its tag, applies the archived `diff.patch`, and writes a fresh
-context. This is what makes "fix a signature and re-score runs already paid for" true
-rather than aspirational: the archive keeps the tag and the patch, not 150 copies of a
-working tree.
+context beside each reconstituted tree. This is what makes "fix a signature and re-score
+runs already paid for" true rather than aspirational: the archive keeps the tag and the
+patch, not 150 copies of a working tree.
+
+The context is written **fresh** rather than reused. The archived one holds absolute paths
+into the work directory of the original run, which lives under `$TMPDIR` by default and
+which the system may long since have purged - so it names a tree that no longer exists,
+while the tree just rebuilt would be named by nothing. `touched` is recomputed from that
+tree, `files` from the tag, and the session is the archived one.
 
 :::{note}
-It currently reconstitutes the trees; running the validators over them and rewriting
-the measures is the remaining step. See {ref}`not-implemented`.
+Three things a replay cannot give back: `prompt`, `response` and `trace`. The first two
+lived in the work directory, and the raw stream is deliberately never archived. A
+validator reading one of them refuses **by name** - "the context carries no `response`" -
+rather than scoring a run it could not see. That is also why there is no context version
+number: a named absence says more than a version could.
+
+A metric of **process** does replay, which is worth knowing because it looks as though it
+should not: the agent's tool calls are in the archived session, not only in the discarded
+stream.
+:::
+
+:::{note}
+It reconstitutes the trees and their contexts; running the validators over them and
+rewriting the measures is the remaining step. See {ref}`not-implemented`.
 :::
 
 ## `compare`

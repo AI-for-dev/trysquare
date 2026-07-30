@@ -28,8 +28,9 @@ from . import parity as parity_mod
 from . import repo as repo_mod
 from . import runner as runner_mod
 from . import table as table_mod
+from . import validation as validation_mod
 from .measure import Run, VALID
-from .outputs import Output, incomplete_note
+from .outputs import SESSION, Output, incomplete_note
 from .scenario import ScenarioError, load as load_scenario
 
 # Overrides that change what is measured. They enter the directory name, so they
@@ -346,14 +347,72 @@ def cmd_replay(args) -> int:
         return 1
 
     print(f"replaying {len(runs)} runs from {directory}")
+    at_etalon = repo_mod.etalon_files(source, scenario.task["etalon"])
+
     for run_dir in runs:
         patch = (run_dir / "diff.patch").read_text() if (run_dir / "diff.patch").is_file() else ""
         work = config.workdir() / "replay" / run_dir.name
         clone = repo_mod.clone(source, scenario.task["etalon"], work)
         repo_mod.apply_diff(clone, patch)
+        context = replay_context(run_dir, clone, source, scenario, at_etalon)
         print(f"  {run_dir.name}: reconstituted at {clone}")
-    print("\n  trees reconstituted; run the scenario's validators against them")
+        print(f"    context: {context}")
+
+    print("\n  trees reconstituted, each with a context beside it. Point the scenario's")
+    print("  validators at those contexts - re-scoring costs no tokens.")
+    if UNREPLAYABLE:
+        print(
+            f"  a validator reading {', '.join(UNREPLAYABLE)} will refuse by name: "
+            f"those lived in the work directory, which is disposable by design"
+        )
     return 0
+
+
+# What a replay cannot put back. The prompt and the agent's final prose lived in the work
+# directory, which the OS may purge; the raw stream is deliberately never archived
+# (`outputs.py:24-27`). A validator reading one of them refuses **by name**, thanks to
+# `Assay._given` - which is why no context version number is needed: "the context carries
+# no 'response'" tells a reader more than "this archive is version 1" ever could.
+UNREPLAYABLE = ("prompt", "response", "trace")
+
+
+def replay_context(run_dir: Path, clone: Path, source: Path, scenario, at_etalon: list) -> Path:
+    """Writes the context a re-scoring needs, beside the tree just reconstituted.
+
+    Until now `replay` rebuilt a tree and said "run the validators against them", while
+    the only context on disk was the **archived** one - full of absolute paths into a work
+    directory under `$TMPDIR` that the system may long have purged. So the archived
+    context named a tree that no longer existed, and the fresh tree was named by nothing.
+
+    "Fix a signature and re-score runs already paid for" is the promise that justifies
+    archiving a tag and a diff instead of a hundred and fifty working trees, and it was
+    not executable.
+
+    What goes in is what the archive actually holds: `touched` recomputed from the
+    reconstituted tree, `files` from the tag, and the **archived session** - which is what
+    makes a metric of process replayable at all, its tool calls being in the session and
+    not only in the stream that is thrown away.
+    """
+    configuration = run_dir / "configuration.json"
+    cell = ""
+    if configuration.is_file():
+        cell = json.loads(configuration.read_text()).get("cell", "")
+
+    return validation_mod.write_context(
+        clone.parent / "validation",
+        repo=clone,
+        etalon=scenario.task["etalon"],
+        etalon_checkout=source,
+        prompt_file=None,
+        session_dir=run_dir / SESSION,
+        trace=None,
+        cell=cell,
+        repetition=0,
+        test_command=scenario.task.get("test_command"),
+        touched=repo_mod.changed_files(clone),
+        files=at_etalon,
+        declared=scenario.declared_metrics,
+    )
 
 
 # --- compare ---------------------------------------------------------------

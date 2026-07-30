@@ -61,9 +61,24 @@ validators/neon.py /path/to/run/validation/script/context.json
   "cell": "rule / high",
   "repetition": 3,
   "test_command": ["node", "--test", "game/**/*.test.js"],
-  "prepare": []
+  "prepare": [],
+  "touched": ["game/neon.js"],
+  "files": ["README.md", "game/neon.js", "game/theme.js"],
+  "declared": ["overflow", "delivered", "tests"]
 }
 ```
+
+Read it with {mod}`trysquare.assay` rather than by hand - `run.touched`, `run.etalon`,
+`run.sources_at_etalon("game/*.js")`. Four names cover a whole validator, and the module
+carries the error contract with them.
+
+`touched` and `files` are computed by the harness. Three shipped validators each
+reimplemented the first with a raw `subprocess`, one of them landing on a **different
+answer** for the reference side, while `repo.changed_files` had held that knowledge all
+along. A fact computed in one place cannot be got three slightly different ways.
+
+`declared` is what the scenario contracted for, so a validator can be told which metric it
+forgot before anything is recorded rather than after the tokens are spent.
 
 :::{important}
 The context is handed as **one file, and it is archived with the run.** That is why
