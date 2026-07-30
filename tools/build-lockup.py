@@ -11,19 +11,24 @@ The font must permit it. JetBrains Mono is under the SIL Open Font License, whic
 embedding and derivative works; the fonts Apple ships with macOS do not, so a mark
 outlined from Menlo or SF Mono is a licensing problem that only surfaces once the project
 is public.
+
+The font is vendored under tools/fonts, with its licence, and its digest is checked before
+a glyph is read. A generator that takes whatever font is installed produces a wordmark
+that is wrong without looking wrong.
 """
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.ttLib import TTFont
 
-# Any OFL monospace will do. This one happens to be on the machine; state the path rather
-# than search for it, so a regenerated lockup is never quietly a different typeface.
-FONT = Path("/Applications/Raycast.app/Contents/Resources/JetBrainsMono-Regular.ttf")
+FONT = Path(__file__).resolve().parent / "fonts" / "JetBrainsMono-Regular.ttf"
+# JetBrains Mono 2.304, unmodified. See tools/fonts/README.md for where it came from.
+FONT_SHA256 = "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f"
 
 WORD = "trysquare"
 SIZE = 25.0  # px, against a mark 51px tall
@@ -96,6 +101,15 @@ def outline(word: str, font: TTFont) -> tuple[str, float]:
 def main() -> None:
     if not FONT.exists():
         raise SystemExit(f"font not found: {FONT}")
+
+    digest = hashlib.sha256(FONT.read_bytes()).hexdigest()
+    if digest != FONT_SHA256:
+        raise SystemExit(
+            f"{FONT.name} is not the font this lockup was drawn with.\n"
+            f"  expected {FONT_SHA256}\n"
+            f"  found    {digest}\n"
+            "Restore it, or update FONT_SHA256 and tools/fonts/README.md deliberately."
+        )
 
     font = TTFont(FONT)
     upem = font["head"].unitsPerEm

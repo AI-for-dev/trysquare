@@ -53,9 +53,12 @@ lower case throughout, so the eye centres it on the x-height band rather than th
 hand-tuned offset drifts the moment either half changes.
 
 The typeface is **JetBrains Mono**, under the SIL Open Font License, which permits
-outlining glyphs into a derivative work. The monospace faces macOS ships - Menlo, SF
-Mono, Courier - are licensed by Apple and do not, which is a problem that only surfaces
-once a project is public.
+outlining glyphs into a derivative work. It is vendored under `tools/fonts` with its
+licence, so the command above works on any machine and always draws the same letters; the
+script checks the font's digest first and refuses rather than emitting a wordmark in the
+wrong typeface. The monospace faces macOS ships - Menlo, SF Mono, Courier - are licensed
+by Apple and grant no such permission, which is a problem that only surfaces once a
+project is public.
 
 Palette: slate `#232B33`, brass `#A97C2A` (`#C79338` on dark), paper `#EEF1F3`, dark
 ground `#14181B`, inverse ink `#C9D3DB`. Steel and brass are the materials of the tool.
