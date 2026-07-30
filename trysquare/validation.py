@@ -92,6 +92,12 @@ def run_script(validator: Validator, context: Path, timeout: int, cwd: Path | No
     The working directory is deliberately *not* the measured clone: a validator
     that wrote a stray file there would be counted as the agent's work by scope
     scoring. Every path it needs is absolute in the context file.
+
+    Including the context file's own path, which is the whole reason it is resolved
+    here. This call changes the child's working directory, so a relative path handed to
+    it is measured from somewhere the caller never named - and `--output out` is the
+    documented way to invoke the tool, so every script validator failed with
+    `unreadable context` for want of one `resolve()`.
     """
     command = validator.config.get("command")
     if not command:
@@ -103,6 +109,7 @@ def run_script(validator: Validator, context: Path, timeout: int, cwd: Path | No
     if not script.exists():
         return Result(validator.mode, None, detail=f"validator not found: {script}")
 
+    context = context.resolve()
     try:
         proc = subprocess.run(
             [str(script), str(context)],
