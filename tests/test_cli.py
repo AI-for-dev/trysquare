@@ -99,6 +99,62 @@ class TestRunPlan(unittest.TestCase):
         self.assertTrue(any("INCOMPLETE" in n for n in plan.notes))
 
 
+class TestInstalledCommand(unittest.TestCase):
+    """The `trysquare` name, as a shell gets it.
+
+    A console script is declared in one file and implemented in another, and
+    nothing at build time checks that the two agree: a renamed module ships a
+    command that raises on the first character typed.
+    """
+
+    def declared_target(self) -> str:
+        import tomllib
+
+        with open(ROOT / "pyproject.toml", "rb") as f:
+            return tomllib.load(f)["project"]["scripts"]["trysquare"]
+
+    def test_the_declared_entry_point_resolves_to_a_callable(self):
+        import importlib
+
+        module, _, attribute = self.declared_target().partition(":")
+        resolved = getattr(importlib.import_module(module), attribute)
+        self.assertTrue(callable(resolved))
+
+    def test_the_command_delegates_to_the_shared_subcommands(self):
+        """Two launch paths that could diverge would be two tools under one name."""
+        from trysquare.scripts import cli_trysquare
+
+        self.assertIs(cli_trysquare.run_command, main)
+
+    def test_no_subcommand_prints_help_rather_than_failing_silently(self):
+        import contextlib
+        import io
+
+        from trysquare.scripts.cli_trysquare import main as installed
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = installed([])
+        self.assertEqual(code, 2)
+        self.assertIn("run", out.getvalue())
+
+    def test_an_interrupt_names_the_flag_that_resumes(self):
+        """Ctrl-C during a matrix is normal. A traceback there hides the fact that
+        the completed runs are on disk and need not be paid for twice."""
+        import contextlib
+        import io
+        import unittest.mock
+
+        from trysquare.scripts import cli_trysquare
+
+        err = io.StringIO()
+        with unittest.mock.patch.object(cli_trysquare, "run_command", side_effect=KeyboardInterrupt):
+            with contextlib.redirect_stderr(err):
+                code = cli_trysquare.main(["run", SCENARIO, "-o", str(out())])
+        self.assertEqual(code, 130)
+        self.assertIn("--resume", err.getvalue())
+
+
 class TestParityLayer1(unittest.TestCase):
     """The classification that keeps a label artefact from reading as a defect."""
 

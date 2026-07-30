@@ -98,8 +98,8 @@ reference/api
 pip install -e .                                   # or: uv sync
 cp trysquare.toml my-trysquare.toml                      # point [repos] at your repository
 
-uv run python -m trysquare run scenarios/2x3.toml -o out --dry-run   # plan, spend nothing
-uv run python -m trysquare run scenarios/2x3.toml -o out             # measure
+uv run trysquare run scenarios/2x3.toml -o out --dry-run   # plan, spend nothing
+uv run trysquare run scenarios/2x3.toml -o out             # measure
 ```
 
 ```{code-block} toml

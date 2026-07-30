@@ -27,7 +27,7 @@ library. A measurement tool that needs an install step is a measurement tool peo
 work around.
 
 ```bash
-uv run python -m unittest discover -s tests -t .     # 174 tests, no network
+uv run python -m unittest discover -s tests -t .     # 193 tests, no network
 ```
 
 Measuring anything also needs the agent binary (`pi`) on PATH and a provider you
@@ -38,14 +38,20 @@ runs offline.
 
 ```bash
 cp trysquare.toml my-trysquare.toml     # edit [repos] to point at your repository
-uv run python -m trysquare run scenarios/2x3.toml --output out --dry-run
+uv run trysquare run scenarios/2x3.toml --output out --dry-run
 ```
 
 `--dry-run` shows the whole plan and writes nothing. Drop it to measure.
 
 ```bash
-uv run python -m trysquare run scenarios/2x3.toml --output out
+uv run trysquare run scenarios/2x3.toml --output out
 ```
+
+`trysquare` is a console script, so `uv tool install .` - or `pip install -e .` in a
+virtual environment - puts the same command on PATH without `uv run` in front of it.
+`uv run trysquare --help` lists the subcommands, and `uv run trysquare <command>
+--help` the flags of one. A clone that is not installed at all still runs
+everything, through `python -m trysquare`.
 
 ## Commands
 
@@ -228,8 +234,8 @@ Parity is demonstrated in layers, and three of them are exact, at zero tokens:
     layer 4  launching the agent     not comparable, it samples
 
 ```bash
-uv run python -m trysquare parity <bench measures.json> --archive <bench traces dir>
-uv run python -m trysquare parity --smoke <experiment dir>          # layer 4
+uv run trysquare parity <bench measures.json> --archive <bench traces dir>
+uv run trysquare parity --smoke <experiment dir>          # layer 4
 ```
 
 Layer 4 checks only what does not depend on the sample: every run valid, the outputs

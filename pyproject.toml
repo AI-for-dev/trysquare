@@ -20,7 +20,10 @@ docs = [
 ]
 
 [project.scripts]
-trysquare = "trysquare.cli:main"
+# The installed command. It is a shell entry point rather than `cli:main` directly,
+# because a name typed in a shell has to answer for an interrupt and a closed pipe;
+# the subcommands themselves are `trysquare.cli`, shared with `python -m trysquare`.
+trysquare = "trysquare.scripts.cli_trysquare:main"
 
 [build-system]
 requires = ["hatchling"]
