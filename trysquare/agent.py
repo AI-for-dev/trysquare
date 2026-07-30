@@ -164,6 +164,50 @@ def first_error(stream: str) -> str:
     return ""
 
 
+def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
+    """Renders one archived session as a standalone page, by the agent itself.
+
+    The agent already knows how to read its own sessions, so nothing here reimplements
+    that: a renderer written here would drift from the format it renders, silently, and
+    the format is the agent's rather than ours.
+
+    `pi --export` takes no output path and writes `pi-session-<stem>.html` into the
+    current directory, so the target directory *is* the working directory. The file is
+    then renamed to `<stem>.html`, which puts the page beside the jsonl it came from under
+    the same stem - the archive stays readable by looking at it.
+
+    `--offline` because an export reads a file. A startup network call would make
+    re-rendering an archive depend on the network being up, which is the opposite of what
+    an archive is for.
+
+    Raises `RuntimeError` on anything that went wrong, so a caller has one exception to
+    catch and one session's failure need not cost the others.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            [PI, "--offline", "--export", str(session.resolve())],
+            cwd=target,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"timed out after {timeout}s") from e
+    except OSError as e:
+        raise RuntimeError(str(e)) from e
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout).strip()[:300] or f"exit {proc.returncode}")
+
+    produced = target / f"pi-session-{session.stem}.html"
+    if not produced.is_file():
+        raise RuntimeError(f"reported success but wrote no {produced.name}")
+    destination = target / f"{session.stem}.html"
+    produced.replace(destination)
+    return destination
+
+
 def ambient_thinking(settings: Path | None = None) -> str | None:
     """The thinking level a subagent will actually run at.
 

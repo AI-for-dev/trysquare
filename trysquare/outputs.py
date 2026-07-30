@@ -18,14 +18,20 @@ The layout, as a literal block so the underscores are not read as markup::
       synthesis.md      table and verdicts, written only when complete
       runs/<id>/
         context.json  configuration.json  diff.patch
-        session/*.jsonl
+        session/*.jsonl          the agent's per-message record, one file per attempt
         validation/<mode>.json   validation/<mode>.stderr
+
+The session files are the agent's own trace, copied here so it outlives the work
+directory - which is disposable by design and which the OS may purge. The raw event
+stream is *not* copied: it is almost entirely streaming deltas and says nothing the
+per-message record does not, at five hundred times the size.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from dataclasses import asdict
 from pathlib import Path
 
@@ -34,6 +40,7 @@ from .measure import EMPTY, VALIDATOR_FAILED, Run
 STATE = "state.json"
 MEASURES = "measures.json"
 SYNTHESIS = "synthesis.md"
+SESSION = "session"
 
 MISSING = "missing"
 
@@ -215,6 +222,49 @@ class Output:
         if not path.is_file():
             return []
         return [Run(**row) for row in json.loads(path.read_text())]
+
+    # --- sessions -------------------------------------------------------
+
+    def archive_sessions(self, run_id_: str, session_dir: Path, exclude=frozenset()) -> list[Path]:
+        """Makes a run's session archive equal to what this launch produced, as jsonl.
+
+        Two filters, and both exist to keep one launch's traces from being read as
+        another's.
+
+        `exclude` names session files the caller does not want, by file name. The work
+        directory keeps a run's session directory from one launch to the next - the run id
+        is stable, so the path is - so copying whatever is there would import a previous
+        measurement's traces.
+
+        And the archive is **replaced**, not added to. Relaunching an experiment overwrites
+        it, so a session left by the previous launch would be attributed to this one: the
+        file count would stop matching `attempts`, and a page rendered from the old trace
+        would sit there looking current.
+
+        An absent `session_dir` is not an error: the agent may have failed to start at all,
+        and that is a run to record, not an exception to raise.
+        """
+        target = self.runs_dir / run_id_ / SESSION
+        if target.exists():
+            shutil.rmtree(target)
+        if not session_dir.is_dir():
+            return []
+        wanted = [p for p in sorted(session_dir.glob("*.jsonl")) if p.name not in exclude]
+        if not wanted:
+            return []
+        target = self.run_dir(run_id_) / SESSION
+        target.mkdir(parents=True, exist_ok=True)
+        copied = []
+        for source in wanted:
+            destination = target / source.name
+            destination.write_bytes(source.read_bytes())
+            copied.append(destination)
+        return copied
+
+    def sessions(self, run_id_: str) -> list[Path]:
+        """A run's archived sessions, in order. Empty when none were archived."""
+        directory = self.runs_dir / run_id_ / SESSION
+        return sorted(directory.glob("*.jsonl")) if directory.is_dir() else []
 
     def write_synthesis(self, text: str, suffix: str = "") -> Path:
         name = f"synthesis{suffix}.md" if suffix else SYNTHESIS

@@ -11,6 +11,8 @@ Everything is rooted at `--output`. One directory per experiment.
     context.json           what the validator was handed
     configuration.json     what this run actually ran
     diff.patch             what the agent changed
+    session/<id>.jsonl         the agent's own trace, one file per attempt
+    session/<id>.html          the same trace as a page, on `render --html`
     validation/<mode>.json     each validator's output
     validation/<mode>.stderr   kept when a validator fails
 ```
@@ -131,12 +133,42 @@ each came from:
 
 Two places may declare a subagent's model, so the trace settles which one applied.
 
+### `session/*.jsonl`
+
+The agent's own trace, in the format the agent writes: **one file per attempt**, so the
+count matches `attempts` in `state.json`. A run that produced nothing archives its
+session too - it is the only evidence such a run leaves, and it is the run somebody most
+wants to read.
+
+Copied here byte for byte rather than left where it was written. The work directory is
+disposable by design, so an archive that pointed at it would keep the diff and lose the
+reasoning behind it on the next reboot.
+
+Relaunching an experiment **replaces** this directory, exactly as it replaces the rest.
+A session left by the previous launch would otherwise be attributed to this one - the file
+count would stop matching `attempts`, and a page rendered from the old trace would sit
+there looking current.
+
 :::{note}
-The **raw event stream is not archived.** It is almost entirely streaming deltas, which
-teach nothing the per-message record does not: 15.9 MB of stream against 30 KB of
-session. What is kept is the tag and the diff, which is exactly what `replay` needs to
-reconstitute a tree.
+The **raw event stream is still not archived**, and the distinction matters. The *stream*
+is what `pi --mode json` prints while it works, almost entirely streaming deltas: 15.9 MB
+of it against 30 KB of session, teaching nothing the per-message record does not. The
+*session* is the per-message record, and that is what is kept.
 :::
+
+(session-html)=
+### `session/*.html`, on `render --html`
+
+Each archived session renders to a standalone page beside it, under the same stem:
+`session/<id>.jsonl` gives `session/<id>.html`. The page embeds the whole session and
+loads nothing from the network, so it opens from a published archive on a machine that
+has none.
+
+The rendering is done by `pi --export`, which is to say by the agent itself. A renderer
+written here would drift from the format it renders, silently, and the format is the
+agent's rather than ours.
+
+It costs no tokens and it is opt-in - see {doc}`cli`.
 
 ## Where clones and sessions live
 
@@ -156,7 +188,13 @@ directory is read where it already is. Because it lives under a disposable `work
 `--resume` against a URL after the directory has been purged clones again, and so needs
 the network again.
 
-Sessions live there too, which is why `parity --smoke` takes a `--workdir`.
+Sessions are **written** there and **copied** into the archive, which is why
+`parity --smoke` still takes a `--workdir`: it reads them where they were written.
+
+A run's session directory survives from one launch to the next, since the run id is
+stable and so the path is. So an archive takes only what the launch it belongs to
+produced; copying whatever happened to be there would mix a previous measurement's traces
+into an archive whose `measures.json` does not describe them.
 
 (naming-gap)=
 ## A known gap in the naming scheme
@@ -188,8 +226,9 @@ so that a prompt edit lands somewhere new on its own.
 
 Stated rather than left to be discovered.
 
-- **HTML output.** `synthesis.html` and a `pages` command are designed but not written;
-  only `synthesis.md` is produced.
+- **HTML for the synthesis.** `synthesis.html` and a `pages` command are designed but not
+  written; only `synthesis.md` is produced. The *session* pages are written, by
+  `render --html` - see {ref}`session-html`.
 - **`compare` reports, it does not tabulate.** It applies the refusals and prints what
   differs, without a side-by-side table.
 - **`replay` reconstitutes, it does not re-score.** Running the validators over the
