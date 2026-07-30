@@ -83,7 +83,7 @@ its ledger.
 Rebuilds tables from stored measures. Costs nothing.
 
 ```bash
-trysquare render <scenario> -o <dir> [--repetitions N] [--reference CELL]
+trysquare render <scenario> -o <dir> [--repetitions N] [--reference CELL] [--html]
 ```
 
 Measuring and scoring are separate. When you find a scoring defect - and there were
@@ -100,6 +100,36 @@ trysquare render scenarios/2x3.toml -o out --reference "rule / off"
 A reference is a **rendering choice, not a measurement**. Changing it is how an
 interaction is read without paying twice, and it is why the previous tool's
 hand-renamed `_ref-thinking` file was a symptom rather than a solution.
+
+### `--html` rebuilds the session pages
+
+```bash
+trysquare render scenarios/2x3.toml -o out --html
+#   runs/658df337/session/2026-07-30T07-27-59-046Z_019fb1ec.html
+#   ...
+#   12 session pages written
+```
+
+One standalone page per archived session, written **in the run's own directory** beside
+the jsonl it came from. The rendering is `pi --export`, so it costs no tokens and needs no
+network - see {ref}`session-html`.
+
+Opt-in, because it is the only part of `render` that spends wall clock: roughly 0.3 s per
+session, and a matrix at ten repetitions holds sixty of them.
+
+It runs **before the table and independently of it**. No synthesis is written for an
+incomplete matrix, and an incomplete matrix is exactly when a trace is wanted, so a
+missing table must not take the pages down with it.
+
+Two things are said rather than left to be discovered:
+
+- a run with no archived session is **counted and named** - an output tree measured before
+  sessions were archived would otherwise answer with a silence that reads as success;
+- a session that will not render is reported on stderr and skipped. One broken trace does
+  not cost the rest, the same rule that applies to a run inside a matrix.
+
+Without `pi` on `PATH` the command refuses with a message and exit 1, rather than writing
+nothing and claiming success.
 
 ## `replay`
 

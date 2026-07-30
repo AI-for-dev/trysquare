@@ -87,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
     render = with_common(sub.add_parser("render", help="rebuild tables from stored measures"))
     render.add_argument("--repetitions", type=int, help="which matrix to read")
     render.add_argument("--reference", help="score against another cell, without remeasuring")
+    render.add_argument(
+        "--html",
+        action="store_true",
+        help="also export each archived session to HTML, in its own run directory",
+    )
     render.set_defaults(func=cmd_render)
 
     replay = sub.add_parser("replay", help="re-score archived runs without spending tokens")
@@ -206,6 +211,15 @@ def cmd_render(args) -> int:
     if not runs:
         print(f"error: no measures in {output.directory}", file=sys.stderr)
         return 1
+
+    # Before the table, and independent of it. `_write_synthesis` returns without
+    # writing anything when the matrix is incomplete, and an incomplete matrix is
+    # exactly when somebody wants to read the traces.
+    if args.html:
+        code = _export_sessions(output, runs)
+        if code:
+            return code
+
     suffix = ""
     if args.reference:
         # A reference is a rendering choice, not a measurement. Another one is a
@@ -213,6 +227,48 @@ def cmd_render(args) -> int:
         scenario.verdict["reference"] = args.reference
         suffix = "_ref-" + args.reference.replace(" / ", "-").replace(" ", "-")
     return _write_synthesis(output, scenario, runs, suffix)
+
+
+def _export_sessions(output: Output, runs: list[Run]) -> int:
+    """Rebuilds one HTML page per archived session, in the run's own directory.
+
+    Costs no tokens: it reads jsonl already on disk. A session that will not render is
+    reported and skipped, on the rule that holds everywhere else here - one broken run
+    must not cost the rest.
+
+    Runs with nothing archived are counted and named as such. An output tree measured
+    before sessions were archived would otherwise produce a silence that reads as
+    success.
+    """
+    if not agent_mod.available():
+        print(
+            f"error: {agent_mod.PI!r} is not on PATH, so no session can be exported",
+            file=sys.stderr,
+        )
+        return 1
+
+    written = bare = 0
+    for run in sorted(runs, key=lambda r: r.id):
+        sessions = output.sessions(run.id)
+        if not sessions:
+            bare += 1
+            continue
+        for session in sessions:
+            try:
+                path = agent_mod.export_html(session, session.parent)
+            except RuntimeError as e:
+                print(f"  !! {run.id}/{session.name}: {e}", file=sys.stderr)
+                continue
+            written += 1
+            print(f"  {path.relative_to(output.directory)}")
+
+    print(f"\n  {written} session page{'' if written == 1 else 's'} written")
+    if bare:
+        print(
+            f"  {bare} of {len(runs)} runs without an archived session: measured before "
+            f"sessions were archived, or the agent never started"
+        )
+    return 0
 
 
 def _write_synthesis(output: Output, scenario, runs: list[Run] | None = None, suffix: str = "") -> int:

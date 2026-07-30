@@ -62,7 +62,7 @@ everything, through `python -m trysquare`.
 | command | what it does |
 | --- | --- |
 | `run` | measures a scenario |
-| `render` | rebuilds tables from stored measures, without remeasuring |
+| `render` | rebuilds tables from stored measures, without remeasuring; `--html` rebuilds the session pages too |
 | `replay` | reconstitutes archived runs so they can be re-scored, at no token cost |
 | `compare` | compares two experiments, refusing what is not comparable |
 | `parity` | checks this harness against the previous bench, layer by layer |
@@ -75,7 +75,9 @@ out/2x3_etalon-v1_ilaas_gemma-4-31b_n10/
   state.json      cells, runs, valid / empty / failed, attempt counters
   measures.json   one line per run
   synthesis.md    table and verdicts, written only when the matrix is complete
-  runs/<id>/      context, configuration, diff, session, validation output
+  runs/<id>/      context, configuration, diff, validation output
+    session/*.jsonl   the agent's own trace, one file per attempt
+    session/*.html    the same trace as a page, on `render --html`
 ```
 
 Relaunching the same experiment **overwrites** it. The archive of previous versions
@@ -283,8 +285,9 @@ methodological invariants have tests at all.
 
 Stated rather than left to be discovered:
 
-- **HTML output.** `synthesis.html` and a `pages` command to regenerate readable
-  transcripts are designed but not written; only `synthesis.md` is produced.
+- **HTML for the synthesis.** `synthesis.html` and a `pages` command are designed but
+  not written; only `synthesis.md` is produced. Readable transcripts *are* produced -
+  `render --html` writes one page per archived session, in the run's own directory.
 - **`compare` reports, it does not tabulate.** It applies the refusals - different
   etalons, contaminated cost columns - and prints what differs, but does not yet
   render a side-by-side table.

@@ -419,6 +419,12 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         repo_mod.check_agent_models(prepared.agents)
 
         session_dir = work / "session"
+        # What is already there belongs to an earlier launch: the work directory is
+        # keyed by the run id, which is stable, so a resume finds the previous
+        # measurement's sessions still in place. Noted now so the archive can keep this
+        # launch's and only this launch's.
+        earlier = {p.name for p in session_dir.glob("*.jsonl")} if session_dir.is_dir() else set()
+
         args = agent_mod.argv(
             prompt=prompt,
             provider=scenario.agent["provider"],
@@ -438,6 +444,12 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         run.usage = outcome.usage
         run.duration = outcome.duration
         run.attempts = tries
+
+        # Archived before the emptiness test, and that ordering is the point. A run that
+        # produced nothing leaves the session as its only evidence, and it is exactly the
+        # run somebody will want to read. One file per attempt, so the count matches
+        # `run.attempts`.
+        plan.output.archive_sessions(run_id, session_dir, exclude=earlier)
 
         if not outcome.produced_something:
             run.state = EMPTY
