@@ -86,6 +86,17 @@ need no network, no clone, and no API key.
    :undoc-members:
 ```
 
+### `trysquare.assay`
+
+The one module a **validator author** imports. Everything else on this page is the
+harness; this is what the thing being run is written with.
+
+```{eval-rst}
+.. automodule:: trysquare.assay
+   :members: validator, Assay, Metric, CannotJudge, ToolCall, report, plain
+   :undoc-members:
+```
+
 ### `trysquare.outputs`
 
 ```{eval-rst}

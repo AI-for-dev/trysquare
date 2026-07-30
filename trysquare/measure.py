@@ -215,9 +215,20 @@ def merge(results: list[tuple[str, dict]], declared: tuple[str, ...]) -> tuple[d
     present; anything extra is kept but cannot be scored, which is what lets a
     general-purpose validator be reused across scenarios and lets a metric
     already paid for be scored later without remeasuring.
+
+    A validator may also name a metric under `unjudged`, meaning it could not judge
+    **that one** while the rest of the run is fine. The name counts as returned but no
+    value is recorded, so `rate` drops it from the denominator - which it always knew
+    how to do, "out of how many could say" - and the reason is kept so the hole is
+    readable. Recording `false` instead would file "could not judge" as "worked badly",
+    which is the one confusion this whole module is built against.
+
+    That the name is *returned* rather than simply omitted is what keeps the net tight:
+    a typo produces a genuinely absent key, so it is still an invalid run.
     """
     metrics: dict = {}
     reasons: dict = {}
+    answered: set[str] = set()
 
     for mode, payload in results:
         if payload is None:
@@ -228,9 +239,15 @@ def merge(results: list[tuple[str, dict]], declared: tuple[str, ...]) -> tuple[d
         if not isinstance(got, dict):
             return metrics, reasons, VALIDATOR_FAILED, f"validator {mode!r} returned no metrics"
         metrics.update(got)
+        answered.update(got)
         reasons.update(payload.get("reasons") or {})
 
-    missing = [m for m in declared if m not in metrics]
+        unjudged = payload.get("unjudged") or {}
+        if isinstance(unjudged, dict):
+            reasons.update(unjudged)
+            answered.update(unjudged)
+
+    missing = [m for m in declared if m not in answered]
     if missing:
         return (
             metrics,

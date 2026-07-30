@@ -17,6 +17,7 @@ from unittest import mock
 from trysquare import agent, config, outputs, repo, runner, validation
 from trysquare.measure import EMPTY, VALID, VALIDATOR_FAILED, Run
 from trysquare.scenario import Validator, parse
+from tests.gitrepo import a_repo
 from tests.test_scenario import GRID, MINIMAL
 
 
@@ -547,6 +548,84 @@ class TestBlindness(unittest.TestCase):
         self.assertNotIn("test_command", json.loads(path.read_text()))
 
 
+class TestWhatTheHarnessComputesOnce(unittest.TestCase):
+    """Two facts every validator wants, computed by the harness so they cannot drift.
+
+    Both were reimplemented per validator. `neon.py:67-78` and `issue1.py:167-180` each
+    carry the same "files the agent changed", down to the same copied comment, while
+    `repo.diff` held the knowledge all along. `citations.py:46-55` and `neon.py:95-100`
+    each run their own `git ls-tree`. A fact the harness computes cannot be got slightly
+    differently by three callers.
+    """
+
+    def test_the_harness_already_had_all_three_primitives(self):
+        """Not a behaviour test, a pin on a finding: `repo.changed_files`,
+        `repo.etalon_files` and `repo.etalon_file` predate this base. Three shipped
+        validators reimplemented them with a raw `subprocess` anyway, which is what the
+        context and the base are for - exposing what exists, not writing it again."""
+        for name in ("changed_files", "etalon_files", "etalon_file"):
+            self.assertTrue(callable(getattr(repo, name)), name)
+
+    def test_changed_files_sees_a_new_file(self):
+        """`--intent-to-add` is what makes an untracked file visible to `git diff`.
+        Without it a change written into a file created for the occasion is invisible."""
+        d = a_repo({"a.js": "one\n"})
+        (d / "b.js").write_text("two\n")
+        self.assertEqual(repo.changed_files(d), ["b.js"])
+
+    def test_changed_files_sees_an_edit(self):
+        d = a_repo({"a.js": "one\n"})
+        (d / "a.js").write_text("two\n")
+        self.assertEqual(repo.changed_files(d), ["a.js"])
+
+    def test_an_untouched_clone_changed_nothing(self):
+        """An empty list is a measurement - the agent did not work - so it must not be
+        confused with a failure to look."""
+        self.assertEqual(repo.changed_files(a_repo({"a.js": "one\n"})), [])
+
+    def test_etalon_files_reads_the_tag_and_not_the_working_tree(self):
+        d = a_repo({"a.js": "one\n", "game/b.js": "two\n"})
+        (d / "c.js").write_text("late\n")
+        self.assertEqual(repo.etalon_files(d, "etalon-v1"), ["a.js", "game/b.js"])
+
+    def test_both_travel_in_the_context(self):
+        d = Path(tempfile.mkdtemp())
+        path = validation.write_context(
+            d,
+            repo=Path("/r"),
+            etalon="etalon-v1",
+            etalon_checkout=Path("/e"),
+            prompt_file=Path("/p"),
+            session_dir=Path("/s"),
+            trace=None,
+            cell="none",
+            repetition=0,
+            touched=["game/neon.js"],
+            files=["game/neon.js", "README.md"],
+        )
+        context = json.loads(path.read_text())
+        self.assertEqual(context["touched"], ["game/neon.js"])
+        self.assertEqual(context["files"], ["game/neon.js", "README.md"])
+
+    def test_an_empty_touched_is_written_rather_than_dropped(self):
+        """The one case where absent and empty must not be confused: an agent that
+        changed nothing is a result, and a validator has to be able to read it."""
+        d = Path(tempfile.mkdtemp())
+        path = validation.write_context(
+            d,
+            repo=Path("/r"),
+            etalon="etalon-v1",
+            etalon_checkout=Path("/e"),
+            prompt_file=Path("/p"),
+            session_dir=Path("/s"),
+            trace=None,
+            cell="none",
+            repetition=0,
+            touched=[],
+        )
+        self.assertEqual(json.loads(path.read_text())["touched"], [])
+
+
 class TestScriptValidatorPaths(unittest.TestCase):
     """A validator is run from the context's directory, so the context path must be
     absolute.
@@ -592,6 +671,45 @@ class TestScriptValidatorPaths(unittest.TestCase):
         finally:
             os.chdir(previous)
         self.assertIsNone(result.detail or None, result.stderr)
+
+    def test_a_python_validator_runs_on_the_harness_interpreter(self):
+        """`#!/usr/bin/env python3` catches Python 3.9 on macOS, and the package needs
+        3.11 for `tomllib`. A validator importing `trysquare.assay` under the shebang's
+        interpreter would fail to import, which reads as an invalid run.
+
+        Proved by a script that is neither executable nor has a usable shebang: only
+        being handed to an interpreter can make it run.
+        """
+        root = Path(tempfile.mkdtemp())
+        script = root / "unrunnable.py"
+        script.write_text(
+            "#!/nowhere/python3\n"
+            "import json, sys\n"
+            "json.load(open(sys.argv[1]))\n"
+            'print(json.dumps({"metrics": {"ok": sys.version_info >= (3, 11)}}))\n'
+        )
+        script.chmod(0o644)
+        result = validation.run_script(
+            self.validator(script), self.context_under(root), timeout=30
+        )
+        self.assertIsNone(result.detail or None, result.stderr)
+        self.assertTrue(
+            result.payload["metrics"]["ok"],
+            "the validator ran on an interpreter older than the package requires",
+        )
+
+    def test_a_validator_in_another_language_is_left_alone(self):
+        """The courtesy is for `.py` only. "Any executable, in any language" stays
+        literally true for everything else."""
+        root = Path(tempfile.mkdtemp())
+        script = root / "echo.sh"
+        script.write_text('#!/bin/sh\ncat "$1" > /dev/null\necho \'{"metrics":{"ok":true}}\'\n')
+        script.chmod(0o755)
+        result = validation.run_script(
+            self.validator(script), self.context_under(root), timeout=30
+        )
+        self.assertIsNone(result.detail or None, result.stderr)
+        self.assertEqual(result.payload["metrics"], {"ok": True})
         self.assertEqual(result.payload, {"metrics": {"ok": True}})
 
     def test_an_absolute_output_works_as_it_always_did(self):
