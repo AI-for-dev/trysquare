@@ -51,6 +51,11 @@ Any executable, in any language. One argument: a path to a context file.
 validators/neon.py /path/to/run/validation/script/context.json
 ```
 
+The scenario writes its commands as **strings** - `test_command = "node --test ..."` - and
+they arrive here **already split**. The harness splits once, at load, with `shlex`, so no
+validator ever has to split a shell string, and every language receives an unambiguous
+argv. The file is ergonomic; the data is not ambiguous.
+
 ```json
 {
   "repo": "/tmp/trysquare/2x3_.../a7f3/repo",
@@ -61,9 +66,24 @@ validators/neon.py /path/to/run/validation/script/context.json
   "cell": "rule / high",
   "repetition": 3,
   "test_command": ["node", "--test", "game/**/*.test.js"],
-  "prepare": []
+  "prepare": [],
+  "touched": ["game/neon.js"],
+  "files": ["README.md", "game/neon.js", "game/theme.js"],
+  "declared": ["overflow", "delivered", "tests"]
 }
 ```
+
+Read it with {mod}`trysquare.assay` rather than by hand - `run.touched`, `run.etalon`,
+`run.sources_at_etalon("game/*.js")`. Four names cover a whole validator, and the module
+carries the error contract with them.
+
+`touched` and `files` are computed by the harness. Three shipped validators each
+reimplemented the first with a raw `subprocess`, one of them landing on a **different
+answer** for the reference side, while `repo.changed_files` had held that knowledge all
+along. A fact computed in one place cannot be got three slightly different ways.
+
+`declared` is what the scenario contracted for, so a validator can be told which metric it
+forgot before anything is recorded rather than after the tokens are spent.
 
 :::{important}
 The context is handed as **one file, and it is archived with the run.** That is why
@@ -76,9 +96,7 @@ a signature and re-score runs already paid for" true.
 as *text* and not every validator can run `git`.
 
 `test_command` is the suite that decides the `tests` metric, declared by the scenario and
-never guessed here. It arrives **already split**: the scenario carries the command as a
-string and the harness splits it once at load, so a validator runs an argv and never a
-shell.
+never guessed here. Run it as the argv it is - no shell, and nothing to split.
 
 `prepare` is what has to run before the suite - usually nothing. Its failures mean
 something else: no network or a dependency that will not install says *nobody judged*, so
@@ -96,7 +114,8 @@ fact from an empty command. It says this experiment scores no test suite - which
 something to refuse over, not something to score as a failure.
 :::
 
-A minimal validator:
+A minimal validator, by hand. Any executable in any language may do this, and this is
+what the contract is:
 
 ```python
 #!/usr/bin/env python3
@@ -109,6 +128,37 @@ repo = Path(context["repo"])
 metrics = {"has_readme": (repo / "README.md").is_file()}
 json.dump({"metrics": metrics, "reasons": {}}, sys.stdout)
 ```
+
+In Python, write it with {mod}`trysquare.assay` instead. The same validator, plus the
+error contract, plus a reason attached where the value was found:
+
+```python
+#!/usr/bin/env python3
+from trysquare.assay import Assay, Metric, validator
+
+SCOPE = frozenset({"counter.py"})
+
+
+@validator
+def evaluate(run: Assay) -> dict:
+    outside = run.touched - SCOPE
+    return {
+        "delivered": bool(run.touched),
+        "in_scope": Metric(not outside, f"also touched {', '.join(sorted(outside))}"),
+        "tests": run.tests(),
+        "touched": run.touched,
+    }
+
+
+if __name__ == "__main__":
+    raise SystemExit(evaluate.cli())
+```
+
+The whole thing is in `examples/validator.py`, and `tests/test_example.py` runs it against
+`tests/fixtures/tiny` on every CI build - so unlike a snippet in a document, it cannot rot.
+It is also where to see the pattern that matters: wrapping a metric the run cannot answer
+so that **one** unanswerable metric does not refuse the run and take every other metric
+with it.
 
 Make it executable. The contract says "any executable", so the bit is part of it.
 

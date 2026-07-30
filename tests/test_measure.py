@@ -184,6 +184,58 @@ class TestMerge(unittest.TestCase):
         self.assertEqual(len(metrics), 3)
 
 
+class TestUnjudgedMetrics(unittest.TestCase):
+    """A validator may say "not this metric" without losing the rest of the run.
+
+    `rate` already knew how to represent it - "out of how many **could say**", so an
+    absent key leaves the denominator - and only `merge` forbade it, by invalidating the
+    whole run for any declared metric that was missing.
+
+    Safe because the name is still returned: a **typo** produces a genuinely absent key
+    and still fails loudly, while an honest "I cannot say" shrinks a denominator, which
+    `table.py:228` renders as `7/8` on the face of the result.
+    """
+
+    DECLARED = ("overflow", "delivered", "red_first")
+
+    def payload(self):
+        return {
+            "metrics": {"overflow": True, "delivered": True},
+            "reasons": {},
+            "unjudged": {"red_first": "no session archived"},
+        }
+
+    def test_the_run_stays_valid(self):
+        _, _, state, detail = merge([("script", self.payload())], self.DECLARED)
+        self.assertEqual(state, VALID, detail)
+
+    def test_the_unjudged_metric_is_not_recorded_as_a_value(self):
+        """Recording it as `false` would be "could not judge" filed as "worked badly"."""
+        metrics, _, _, _ = merge([("script", self.payload())], self.DECLARED)
+        self.assertNotIn("red_first", metrics)
+
+    def test_its_reason_is_kept_so_the_hole_is_readable(self):
+        _, reasons, _, _ = merge([("script", self.payload())], self.DECLARED)
+        self.assertEqual(reasons["red_first"], "no session archived")
+
+    def test_a_typo_is_still_an_invalid_run(self):
+        """The whole reason the name is returned rather than simply omitted."""
+        payload = self.payload()
+        payload["unjudged"] = {"red_frist": "no session archived"}
+        _, _, state, detail = merge([("script", payload)], self.DECLARED)
+        self.assertEqual(state, VALIDATOR_FAILED)
+        self.assertIn("red_first", detail)
+
+    def test_a_validator_that_never_uses_it_is_unaffected(self):
+        """The key is an addition to the contract, not a change to it."""
+        metrics, _, state, _ = merge(
+            [("script", {"metrics": {"overflow": True, "delivered": True}})],
+            ("overflow", "delivered"),
+        )
+        self.assertEqual(state, VALID)
+        self.assertEqual(metrics, {"overflow": True, "delivered": True})
+
+
 class TestManual(unittest.TestCase):
     def test_a_form_fills_a_hole(self):
         run = Run("a", "none", 0, metrics={"overflow": True})

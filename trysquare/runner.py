@@ -470,6 +470,13 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         response_file = work / "response.txt"
         response_file.write_text(final_text(outcome.stream))
 
+        # Computed once here rather than by every validator that wants them. Reading the
+        # changed files writes to the clone's *index*, which is safe because each run owns
+        # its clone; the working tree is untouched, because the harness archives the diff
+        # after validation and a stray file would land there as the agent's work.
+        touched = repo_mod.changed_files(clone)
+        at_etalon = repo_mod.etalon_files(source, scenario.task["etalon"])
+
         results = []
         for validator in scenario.validators:
             blind = validator.mode == "judge"
@@ -488,6 +495,9 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
                 response_file=response_file,
                 test_command=list(scenario.test_argv) or None,
                 prepare=[list(step) for step in scenario.prepare_argv],
+                touched=touched,
+                files=at_etalon,
+                declared=validator.metrics,
             )
             if validator.mode == "script":
                 result = validation_mod.run_script(validator, context_file, timeout, cwd=base)

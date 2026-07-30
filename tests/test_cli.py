@@ -9,8 +9,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from trysquare import parity
+from tests.gitrepo import a_repo
+from tests.test_scenario import MINIMAL
+from trysquare import cli, parity, repo
+from trysquare.assay import Assay, CannotJudge
 from trysquare.cli import build_parser, main
+from trysquare.scenario import parse
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO = str(ROOT / "scenarios" / "2x3.toml")
@@ -303,6 +307,80 @@ class TestParityLayer1(unittest.TestCase):
     def test_an_empty_archive_says_so(self):
         problems = parity.layer1(self.fixture(self.rows({"base-0": (1, 1, 1)})), Path(tempfile.mkdtemp()))
         self.assertTrue(any("no archived session" in p for p in problems))
+
+
+class TestTheReplayContext(unittest.TestCase):
+    """A re-scoring needs a context, and until now nobody wrote one.
+
+    `replay` rebuilt a tree and said "run the validators against them", while the only
+    context on disk was the **archived** one - absolute paths into a work directory under
+    `$TMPDIR` that the system may long have purged. So the archived context named a tree
+    that no longer existed and the fresh tree was named by nothing, and the promise that
+    justifies archiving a tag and a diff rather than a hundred and fifty working trees
+    was not executable.
+    """
+
+    def archive(self, cell: str = "rule / high") -> Path:
+        run_dir = Path(tempfile.mkdtemp())
+        (run_dir / "diff.patch").write_text("")
+        (run_dir / "configuration.json").write_text(json.dumps({"cell": cell}))
+        (run_dir / "session").mkdir()
+        (run_dir / "session" / "attempt-1.jsonl").write_text("{}\n")
+        return run_dir
+
+    def reconstituted(self) -> Path:
+        """A tree standing for what `replay` just rebuilt: the etalon plus a change."""
+        clone = a_repo({"a.js": "one\n", "game/b.js": "two\n"})
+        (clone / "a.js").write_text("fixed\n")
+        return clone
+
+    def context(self) -> dict:
+        scenario = parse(MINIMAL)
+        source = a_repo({"a.js": "one\n", "game/b.js": "two\n"})
+        path = cli.replay_context(
+            self.archive(),
+            self.reconstituted(),
+            source,
+            scenario,
+            repo.etalon_files(source, "etalon-v1"),
+        )
+        return json.loads(path.read_text())
+
+    def test_it_names_a_tree_that_now_exists(self):
+        self.assertTrue(Path(self.context()["repo"]).is_dir())
+
+    def test_touched_is_recomputed_from_the_reconstituted_tree(self):
+        """Not read from the archive: the diff was just replayed, so the tree itself is
+        the authority on what it now contains."""
+        self.assertEqual(self.context()["touched"], ["a.js"])
+
+    def test_the_files_at_the_etalon_come_from_the_tag(self):
+        self.assertEqual(self.context()["files"], ["a.js", "game/b.js"])
+
+    def test_the_archived_session_is_what_it_points_at(self):
+        """What makes a metric of process replayable at all: the tool calls are in the
+        session, which is archived, and not only in the stream, which is not."""
+        self.assertTrue(list(Path(self.context()["session"]).glob("*.jsonl")))
+
+    def test_the_declared_metrics_travel_so_a_gap_can_be_named(self):
+        self.assertEqual(self.context()["declared"], ["overflow", "delivered"])
+
+    def test_what_a_replay_cannot_give_back_is_absent_rather_than_empty(self):
+        context = self.context()
+        for key in cli.UNREPLAYABLE:
+            self.assertNotIn(key, context, key)
+
+    def test_a_validator_reading_a_missing_piece_refuses_by_name(self):
+        """Which is why no context version number is needed: "the context carries no
+        'response'" tells a reader more than "this archive is version 1" ever could."""
+        with self.assertRaises(CannotJudge) as raised:
+            Assay(self.context()).response
+        self.assertIn("response", str(raised.exception))
+
+    def test_what_the_archive_does_hold_is_readable(self):
+        run = Assay(self.context())
+        self.assertEqual(run.touched, {"a.js"})
+        self.assertEqual(run.etalon, "etalon-v1")
 
 
 if __name__ == "__main__":

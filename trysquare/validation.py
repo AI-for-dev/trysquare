@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,7 +51,7 @@ def write_context(
     repo: Path,
     etalon: str,
     etalon_checkout: Path,
-    prompt_file: Path,
+    prompt_file: Path | None,
     session_dir: Path,
     trace: Path | None,
     cell: str,
@@ -59,6 +60,9 @@ def write_context(
     response_file: Path | None = None,
     test_command: list[str] | None = None,
     prepare: list[list[str]] | None = None,
+    touched: list[str] | None = None,
+    files: list[str] | None = None,
+    declared: tuple[str, ...] = (),
 ) -> Path:
     """Writes the context file a validator is handed.
 
@@ -78,21 +82,46 @@ def write_context(
     Absent when the scenario names no suite, and an absent key is a different fact
     from an empty command: it says this experiment scores no test suite, which is
     something a validator may need to refuse over rather than score.
+
+    `touched` and `files` are the two facts every validator wanted and each computed for
+    itself. `repo.changed_files`, `repo.etalon_files` and `repo.etalon_file` had held
+    that knowledge all along, and three shipped validators reimplemented it with a raw
+    `subprocess` regardless - one of them landing on a **different answer** for the
+    reference side. Computed here once, they cannot be got slightly differently by three
+    callers.
+
+    `declared` is the metric names the scenario contracted for. The harness already
+    refuses a run whose validator omitted one, but only after the tokens are spent;
+    handing them over lets the base say which one is missing before anything is
+    recorded. Safe for a blind context: metric names say nothing about a cell.
     """
     context = {
         "repo": str(repo),
         "etalon": {"tag": etalon, "checkout": str(etalon_checkout)},
-        "prompt": str(prompt_file),
         "session": str(session_dir),
         "cell": cell,
         "repetition": repetition,
     }
+    # Absent rather than the string "None". A replay has no prompt to give back - it lived
+    # in the work directory - and a key holding "None" would send a validator to open a
+    # file called None instead of telling it the fact is missing.
+    if prompt_file is not None:
+        context["prompt"] = str(prompt_file)
     if test_command is not None:
         context["test_command"] = list(test_command)
     # The steps to run before the suite. Kept apart from the suite itself because their
     # failures mean different things: one says nobody judged, the other is a measurement.
     if prepare:
         context["prepare"] = [list(step) for step in prepare]
+    # Written even when empty, and that is the one place where absent and empty must not
+    # be confused: an agent that changed nothing is a **result**, and a validator has to
+    # be able to read it. A missing key means nobody looked.
+    if touched is not None:
+        context["touched"] = sorted(touched)
+    if files is not None:
+        context["files"] = list(files)
+    if declared:
+        context["declared"] = list(declared)
     if response_file is not None:
         context["response"] = str(response_file)
     if trace is not None:
@@ -130,9 +159,23 @@ def run_script(validator: Validator, context: Path, timeout: int, cwd: Path | No
         return Result(validator.mode, None, detail=f"validator not found: {script}")
 
     context = context.resolve()
+
+    # A courtesy to Python validators, and only to them. `#!/usr/bin/env python3`
+    # catches whatever `python3` is on PATH, which on macOS is 3.9, while this package
+    # needs 3.11 for `tomllib`: a validator importing `trysquare.assay` would fail to
+    # import, and a failed import reads as an invalid run - on somebody else's machine
+    # only, which is the worst kind. Handing the file to the interpreter already running
+    # the harness makes the version right by construction rather than by promise.
+    #
+    # "Any executable, in any language" stays literally true for everything else: no
+    # other suffix is touched, and a `.py` file stays runnable by hand.
+    argv = [str(script), str(context)]
+    if script.suffix == ".py":
+        argv.insert(0, sys.executable)
+
     try:
         proc = subprocess.run(
-            [str(script), str(context)],
+            argv,
             cwd=context.parent,
             capture_output=True,
             text=True,
