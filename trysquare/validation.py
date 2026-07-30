@@ -46,6 +46,26 @@ class Result:
         return self.payload is not None
 
 
+def where(path: Path | str) -> str:
+    """A path as a context carries it: absolute, always.
+
+    "Every path it needs is absolute in the context" is a documented promise, and it is
+    what lets the child run somewhere that is deliberately **not** the measured clone. It
+    was true by accident rather than by construction: a run's paths come from the work
+    directory, which the config makes absolute, so nothing relative had ever been passed.
+
+    `replay` passed one. Its archive directory is whatever the operator typed - `results/...`
+    - so the archived session went into the context relative, the validator's child resolved
+    it from its own working directory, found nothing, and reported that the run had no
+    session. Which reads as a fact about the *agent*: sixty runs said "nothing about the
+    agent's process can be read" and the metric of process this file's docstring calls
+    replayable was unjudged on every one of them.
+
+    Resolved here, once, so no caller can be the one that forgets.
+    """
+    return str(Path(path).resolve())
+
+
 def write_context(
     directory: Path,
     repo: Path,
@@ -104,9 +124,9 @@ def write_context(
     recorded. Safe for a blind context: metric names say nothing about a cell.
     """
     context = {
-        "repo": str(repo),
-        "etalon": {"tag": etalon, "checkout": str(etalon_checkout)},
-        "session": str(session_dir),
+        "repo": where(repo),
+        "etalon": {"tag": etalon, "checkout": where(etalon_checkout)},
+        "session": where(session_dir),
         "cell": cell,
         "repetition": repetition,
     }
@@ -114,7 +134,7 @@ def write_context(
     # in the work directory - and a key holding "None" would send a validator to open a
     # file called None instead of telling it the fact is missing.
     if prompt_file is not None:
-        context["prompt"] = str(prompt_file)
+        context["prompt"] = where(prompt_file)
     if test_command is not None:
         context["test_command"] = test_command
     # The steps to run before the suite. Kept apart from the suite itself because their
@@ -131,9 +151,9 @@ def write_context(
     if declared:
         context["declared"] = list(declared)
     if response_file is not None:
-        context["response"] = str(response_file)
+        context["response"] = where(response_file)
     if trace is not None:
-        context["trace"] = str(trace)
+        context["trace"] = where(trace)
     if blind:
         context = {k: v for k, v in context.items() if k not in BLIND_KEYS}
 

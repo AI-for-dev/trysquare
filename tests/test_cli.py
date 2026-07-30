@@ -5,6 +5,8 @@ mode that exists precisely so wiring can be checked without paying for it.
 """
 
 import json
+import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -365,6 +367,18 @@ class TestTheReplayContext(unittest.TestCase):
     def test_the_declared_metrics_travel_so_a_gap_can_be_named(self):
         self.assertEqual(self.context()["declared"], ["overflow", "delivered"])
 
+    def test_every_path_is_absolute(self):
+        """A documented promise, and what lets the validator's child run somewhere that is
+        deliberately not the measured clone. It held by accident until `replay` handed over
+        an archive directory as the operator typed it: the archived session went in
+        relative, the child resolved it from its own directory, found nothing, and reported
+        that the *agent* had no session."""
+        context = self.context()
+        for key in ("repo", "session"):
+            with self.subTest(key=key):
+                self.assertTrue(Path(context[key]).is_absolute(), context[key])
+        self.assertTrue(Path(context["etalon"]["checkout"]).is_absolute())
+
     def test_what_a_replay_cannot_give_back_is_absent_rather_than_empty(self):
         context = self.context()
         for key in cli.UNREPLAYABLE:
@@ -381,6 +395,265 @@ class TestTheReplayContext(unittest.TestCase):
         run = Assay(self.context())
         self.assertEqual(run.touched, {"a.js"})
         self.assertEqual(run.etalon, "etalon-v1")
+
+
+# A validator whose answer depends on the tree it was handed. That dependence is the
+# whole instrument here: a run scored against another run's tree gives the other run's
+# answer, which is a wrong measurement and not a crash.
+TREE_DEPENDENT = """#!/usr/bin/env python3
+import json, sys
+from pathlib import Path
+
+context = json.loads(Path(sys.argv[1]).read_text())
+tree = Path(context["repo"])
+text = (tree / "a.js").read_text() if (tree / "a.js").is_file() else ""
+json.dump(
+    {
+        "metrics": {
+            "overflow": "over" in text,
+            "delivered": bool(context["touched"]),
+            # Undeclared, so unscorable, and recorded all the same. A metric of process
+            # reads the archived session, and reading it means resolving the path the
+            # context handed over from a working directory the caller never named.
+            "session_files": len(list(Path(context["session"]).glob("*.jsonl"))),
+        }
+    },
+    sys.stdout,
+)
+"""
+
+SCENARIO_TOML = """
+[scenario]
+name = "t"
+[task]
+repo = "neon"
+etalon = "etalon-v1"
+prompt = "do the thing"
+[agent]
+provider = "ilaas"
+model = "gemma-4-31b"
+thinking = "off"
+[protocol]
+repetitions = 2
+concurrency = 1
+timeout = 60
+[variants.none]
+[[validation]]
+mode = "script"
+command = "v.py"
+metrics = ["overflow", "delivered"]
+[verdict]
+criterion = "overflow"
+reference = "none"
+"""
+
+
+@unittest.skipUnless(shutil.which("git"), "git is not on PATH")
+class TestReplayRescore(unittest.TestCase):
+    """`replay --rescore`, and the collision that hid under it.
+
+    `replay` wrote every run's context to `clone.parent / "validation"` while cloning
+    *into* the work directory, so `clone.parent` was the one `replay/` every run shared and
+    sixty contexts overwrote each other. Nothing looked wrong: a distinct `context:` line
+    was printed for each.
+
+    **It never produced a wrong score**, and the distinction is worth keeping straight. The
+    scoring here writes a context and consumes it in the same turn of the loop, so each run
+    was always judged on its own tree. What the collision destroyed was the *artifact*: of
+    sixty contexts one survived, so the command's own instruction - point your validators at
+    those contexts - was executable for one run out of sixty, and a validator failure could
+    not be reproduced by hand. It is also a race waiting for the day this loop runs
+    concurrently, which is when it would start producing plausible wrong numbers.
+
+    Offline throughout, and no token: the repository is local, the validator is a script,
+    and `--rescore` re-runs scripts only.
+    """
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        self.source = a_repo({"a.js": "one\n", "game/b.js": "two\n"})
+
+        (self.home / "trysquare.toml").write_text(
+            f'[repos]\nneon = "{self.source}"\n'
+            f'[defaults]\nworkdir = "{self.home / "work"}"\n'
+        )
+        self.scenario = self.home / "s.toml"
+        self.scenario.write_text(SCENARIO_TOML)
+        validator = self.home / "v.py"
+        validator.write_text(TREE_DEPENDENT)
+        validator.chmod(0o755)
+
+        self.experiment = self.home / "results" / "t_etalon-v1_ilaas_gemma-4-31b_n2"
+        (self.experiment / "runs").mkdir(parents=True)
+        # Two runs that a correct scoring must tell apart: one changed `a.js`, one changed
+        # nothing at all.
+        self.archive("aaaaaaaa", "overflow\n")
+        self.archive("bbbbbbbb", None)
+        (self.experiment / "measures.json").write_text(
+            json.dumps(
+                [
+                    self.row("aaaaaaaa", 0, {"overflow": False, "delivered": False}),
+                    self.row("bbbbbbbb", 1, {"overflow": False, "delivered": False}),
+                ]
+            )
+        )
+        (self.experiment / "state.json").write_text(
+            json.dumps(
+                {
+                    "runs": {
+                        "aaaaaaaa": {"cell": "none", "repetition": 0, "state": "validator_failed",
+                                     "attempts": 1, "detail": "validator 'script' failed"},
+                        "bbbbbbbb": {"cell": "none", "repetition": 1, "state": "valid",
+                                     "attempts": 1},
+                    }
+                }
+            )
+        )
+
+    def row(self, run_id: str, repetition: int, metrics: dict) -> dict:
+        return {
+            "id": run_id,
+            "cell": "none",
+            "repetition": repetition,
+            "usage": {"input": 11, "output": 2, "turns": 3, "retries": 0},
+            "duration": 7,
+            "metrics": metrics,
+            "reasons": {},
+            "state": "validator_failed" if run_id == "aaaaaaaa" else "valid",
+            "detail": "",
+            "attempts": 1,
+        }
+
+    def archive(self, run_id: str, content: str | None) -> None:
+        run_dir = self.experiment / "runs" / run_id
+        (run_dir / "session").mkdir(parents=True)
+        (run_dir / "session" / "attempt-1.jsonl").write_text("{}\n")
+        (run_dir / "configuration.json").write_text(json.dumps({"cell": "none"}))
+        (run_dir / "diff.patch").write_text(self.patch(content) if content else "")
+
+    def patch(self, content: str) -> str:
+        """A real patch, made by git, because `apply_diff` runs `git apply` on it."""
+        tree = Path(tempfile.mkdtemp()) / "tree"
+        repo.clone(self.source, "etalon-v1", tree)
+        (tree / "a.js").write_text(content)
+        return repo.diff(tree)
+
+    def replay(self, *extra: str) -> int:
+        return main(
+            [
+                "replay",
+                str(self.experiment),
+                "--scenario",
+                str(self.scenario),
+                "--config",
+                str(self.home / "trysquare.toml"),
+                *extra,
+            ]
+        )
+
+    def measures(self) -> dict:
+        rows = json.loads((self.experiment / "measures.json").read_text())
+        return {r["id"]: r for r in rows}
+
+    # --- the collision --------------------------------------------------
+
+    def test_each_run_gets_its_own_context(self):
+        self.assertEqual(0, self.replay())
+        contexts = sorted((self.home / "work" / "replay").glob("*/validation/context.json"))
+        self.assertEqual(2, len(contexts))
+
+    def test_a_context_names_its_own_tree_and_not_a_neighbour_s(self):
+        self.replay()
+        for path in (self.home / "work" / "replay").glob("*/validation/context.json"):
+            run_id = path.parent.parent.name
+            with self.subTest(run=run_id):
+                self.assertEqual(run_id, Path(json.loads(path.read_text())["repo"]).parent.name)
+
+    def test_two_runs_that_differ_are_scored_differently(self):
+        """Each run judged on its own tree, which is what a scoring is for. This one passes
+        against the collision too - see the class docstring - and is here because it is the
+        property that must hold if the loop is ever made concurrent."""
+        self.assertEqual(0, self.replay("--rescore"))
+        rows = self.measures()
+        self.assertEqual(True, rows["aaaaaaaa"]["metrics"]["overflow"])
+        self.assertEqual(False, rows["bbbbbbbb"]["metrics"]["overflow"])
+
+    def test_a_relative_archive_directory_still_finds_the_session(self):
+        """The defect that made every metric of process unjudged on a real matrix. The
+        operator types `results/...`, so the archived session went into the context
+        relative; the validator's child runs beside the tree, resolved it from there, found
+        nothing, and reported that the run had no session - a sentence about the agent.
+        """
+        here = Path.cwd()
+        try:
+            os.chdir(self.home)
+            self.assertEqual(
+                0,
+                main(["replay", "results/t_etalon-v1_ilaas_gemma-4-31b_n2",
+                      "--scenario", str(self.scenario),
+                      "--config", str(self.home / "trysquare.toml"), "--rescore"]),
+            )
+        finally:
+            os.chdir(here)
+        self.assertEqual(1, self.measures()["aaaaaaaa"]["metrics"]["session_files"])
+
+    # --- what a re-scoring may and may not touch -------------------------
+
+    def test_a_repaired_validator_makes_the_run_valid_again(self):
+        self.replay("--rescore")
+        self.assertEqual("valid", self.measures()["aaaaaaaa"]["state"])
+
+    def test_the_ledger_moves_with_the_measures(self):
+        """`state.json` decides whether a synthesis is publishable at all, so a validator
+        repaired here would otherwise stay counted among the failures and the matrix would
+        keep refusing to publish - the case this flag exists for."""
+        self.replay("--rescore")
+        state = json.loads((self.experiment / "state.json").read_text())
+        self.assertEqual("valid", state["runs"]["aaaaaaaa"]["state"])
+        self.assertNotIn("detail", state["runs"]["aaaaaaaa"])
+
+    def test_cost_is_a_fact_about_the_run_and_is_left_alone(self):
+        before = self.measures()["aaaaaaaa"]
+        self.replay("--rescore")
+        after = self.measures()["aaaaaaaa"]
+        for field in ("usage", "duration", "attempts"):
+            with self.subTest(field=field):
+                self.assertEqual(before[field], after[field])
+
+    def test_the_synthesis_is_rebuilt_from_the_new_measures(self):
+        self.replay("--rescore")
+        self.assertTrue((self.experiment / "synthesis.md").is_file())
+
+    def test_without_rescore_nothing_is_rewritten(self):
+        before = (self.experiment / "measures.json").read_text()
+        self.assertEqual(0, self.replay())
+        self.assertEqual(before, (self.experiment / "measures.json").read_text())
+
+    # --- the refusals ---------------------------------------------------
+
+    def test_a_directory_that_is_not_this_scenario_s_is_refused(self):
+        """A directory name is the experiment's identity, so it is also the check: a
+        re-scoring across two matrices would rewrite measures that are not its own."""
+        other = self.home / "results" / "other_etalon-v1_ilaas_gemma-4-31b_n2"
+        (other / "runs").mkdir(parents=True)
+        (other / "runs" / "aaaaaaaa").mkdir()
+        (other / "runs" / "aaaaaaaa" / "diff.patch").write_text("")
+        self.assertEqual(
+            1,
+            main(["replay", str(other), "--scenario", str(self.scenario),
+                  "--config", str(self.home / "trysquare.toml"), "--rescore"]),
+        )
+
+    def test_a_run_that_produced_nothing_is_left_alone(self):
+        """No scoring turns "produced nothing" into a measurement, and overwriting its
+        state would hide an incomplete matrix behind a full-looking one."""
+        rows = json.loads((self.experiment / "measures.json").read_text())
+        for r in rows:
+            if r["id"] == "bbbbbbbb":
+                r["state"] = "empty"
+        (self.experiment / "measures.json").write_text(json.dumps(rows))
+        self.replay("--rescore")
+        self.assertEqual("empty", self.measures()["bbbbbbbb"]["state"])
 
 
 if __name__ == "__main__":

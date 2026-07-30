@@ -63,7 +63,7 @@ everything, through `python -m trysquare`.
 | --- | --- |
 | `run` | measures a scenario |
 | `render` | rebuilds tables from stored measures, without remeasuring; `--html` rebuilds the session pages too |
-| `replay` | reconstitutes archived runs so they can be re-scored, at no token cost |
+| `replay` | reconstitutes archived runs; `--rescore` re-runs the script validators and rewrites the measures, at no token cost |
 | `compare` | compares two experiments, refusing what is not comparable |
 | `parity` | checks this harness against the previous bench, layer by layer |
 | `form` | generates or ingests a blind manual scoring form |
@@ -291,9 +291,10 @@ Stated rather than left to be discovered:
 - **`compare` reports, it does not tabulate.** It applies the refusals - different
   etalons, contaminated cost columns - and prints what differs, but does not yet
   render a side-by-side table.
-- **`replay` reconstitutes, it does not re-score.** It rebuilds the trees from the
-  tag and the archived diff; running the scenario's validators over them and
-  rewriting the measures is the remaining step.
+- **A judge is not re-scored.** `replay --rescore` re-runs script validators and
+  reuses the archived judge verdict, because re-running a judge costs tokens and
+  `replay` exists on the promise that it costs none. Correcting a judged metric
+  therefore means measuring again.
 - **Parity layer 2 has been demonstrated but is not a command.** Two archived runs
   were reconstituted and re-scored by hand, and matched exactly; `parity --archive`
   currently runs layers 3 and 1 only.
