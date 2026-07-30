@@ -93,7 +93,7 @@ harness; this is what the thing being run is written with.
 
 ```{eval-rst}
 .. automodule:: trysquare.assay
-   :members: validator, Assay, Metric, CannotJudge, ToolCall, report, plain
+   :members: validator, Assay, Metric, CannotJudge, ProbeTimeout, ToolCall, report, plain, summarise
    :undoc-members:
 ```
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from tests.gitrepo import a_repo
 from trysquare import assay
-from trysquare.assay import Assay, CannotJudge, Metric
+from trysquare.assay import Assay, CannotJudge, Metric, ProbeTimeout
 
 
 class TestMetric(unittest.TestCase):
@@ -539,6 +539,133 @@ class TestTheDeclaredSuite(unittest.TestCase):
         run = Assay({"repo": str(d), "test_command": ["echo", "hi > stolen.txt"]})
         self.assertTrue(run.tests())
         self.assertFalse((d / "stolen.txt").exists())
+
+
+class TestTheProbe(unittest.TestCase):
+    """A criterion that is a behaviour executes instead of being recognised.
+
+    No pattern in the diff, no judge, no tokens, and a wrong answer is an assertion that
+    breaks. The generic half is here; the probe's text and its cases are the domain's.
+    """
+
+    def tree(self, **files) -> Assay:
+        d = Path(tempfile.mkdtemp())
+        for name, text in {"game/neon.js": "let hidden = 1;\n", **files}.items():
+            (d / name).parent.mkdir(parents=True, exist_ok=True)
+            (d / name).write_text(text)
+        return Assay({"repo": str(d)})
+
+    def probe_script(self, body: str) -> dict:
+        return {"probe.py": f"import json, sys\n{body}\n"}
+
+    def test_a_probe_answers_with_its_own_json(self):
+        run = self.tree()
+        answer = run.probe(
+            [sys.executable, "probe.py"],
+            write=self.probe_script('print(json.dumps({"ok": True, "reached": True}))'),
+        )
+        self.assertEqual(answer, {"ok": True, "reached": True})
+
+    def test_appending_reaches_what_the_module_kept_to_itself(self):
+        """The replacement for instrumentation by regular expression. A probe concatenated
+        into the module runs inside the scope it measures, so it enumerates nothing - and
+        the regex it replaces silently found nothing for a top-level `class`, a
+        `function*`, a destructured declaration, or a collision moved to a new file."""
+        run = self.tree()
+        answer = run.probe(
+            [sys.executable, "game/neon.js.py"],
+            write={"game/neon.js.py": "hidden = 1\n"},
+            append={"game/neon.js.py": 'import json\nprint(json.dumps({"hidden": hidden}))\n'},
+        )
+        self.assertEqual(answer, {"hidden": 1})
+
+    def test_the_clone_is_never_written_to(self):
+        """The harness archives the diff *after* validation, and `repo.diff` runs
+        `git add -A --intent-to-add` first, so an untracked file left in the clone enters
+        the archived patch without condition - and is replayed at every re-scoring as the
+        agent's own work."""
+        run = self.tree()
+        clone = run.repo
+        run.probe(
+            [sys.executable, "probe.py"],
+            write=self.probe_script('print(json.dumps({"ok": True}))'),
+        )
+        self.assertEqual(sorted(p.name for p in clone.rglob("*")), ["game", "neon.js"])
+
+    def test_dropping_removes_what_a_glob_selects(self):
+        run = self.tree(**{"game/neon.test.js": "// a test\n"})
+        answer = run.probe(
+            [sys.executable, "probe.py"],
+            write=self.probe_script(
+                "import pathlib\n"
+                'print(json.dumps({"left": sorted(p.name for p in pathlib.Path("game").iterdir())}))'
+            ),
+            drop="*.test.js",
+        )
+        self.assertEqual(answer["left"], ["neon.js"])
+
+    def test_appending_to_something_absent_refuses(self):
+        run = self.tree()
+        with self.assertRaises(CannotJudge) as raised:
+            run.probe([sys.executable, "probe.py"], append={"nowhere.js": "x"})
+        self.assertIn("nowhere.js", str(raised.exception))
+
+    def test_an_interpreter_that_is_not_there_refuses(self):
+        with self.assertRaises(CannotJudge):
+            self.tree().probe(["/nowhere/node", "probe.mjs"])
+
+    def test_an_unreadable_answer_refuses(self):
+        """A probe that printed prose rather than JSON did not answer, and prose must not
+        be read as a negative answer."""
+        run = self.tree()
+        with self.assertRaises(CannotJudge) as raised:
+            run.probe(
+                [sys.executable, "probe.py"],
+                write={"probe.py": 'print("everything is fine")\n'},
+            )
+        self.assertIn("readable", str(raised.exception))
+
+    def test_a_probe_that_answered_negatively_is_an_answer(self):
+        """Exit code 0 with `ok: false` is the probe's contract: it reports through JSON,
+        so it must not signal a failed assertion by exiting non-zero."""
+        run = self.tree()
+        answer = run.probe(
+            [sys.executable, "probe.py"],
+            write=self.probe_script('print(json.dumps({"ok": False, "why": "wrong axis"}))'),
+        )
+        self.assertFalse(answer["ok"])
+        self.assertEqual(answer["why"], "wrong axis")
+
+    def test_a_timeout_refuses_by_default(self):
+        run = self.tree()
+        with self.assertRaises(ProbeTimeout):
+            run.probe(
+                [sys.executable, "probe.py"],
+                write={"probe.py": "import time\ntime.sleep(30)\n"},
+                timeout=1,
+            )
+
+    def test_but_a_domain_may_catch_it_and_score_a_failure(self):
+        """A probe is milliseconds, so a slow one usually means the **agent's** fix loops
+        forever - a failure of the work, not an inability to judge. Only the domain knows,
+        so refusing is the safe default and the domain may override it with a reason. The
+        shipped validator hardcoded the choice and could not express the other one."""
+        run = self.tree()
+        try:
+            run.probe(
+                [sys.executable, "probe.py"],
+                write={"probe.py": "import time\ntime.sleep(30)\n"},
+                timeout=1,
+            )
+            scored = None
+        except ProbeTimeout as e:
+            scored = Metric(False, f"the fix does not terminate: {e}")
+        self.assertFalse(scored)
+        self.assertIn("does not terminate", scored.reason)
+
+    def test_a_timeout_is_still_a_cannot_judge_for_anyone_who_does_not_look(self):
+        """So the unsafe reading is never the one you get by accident."""
+        self.assertTrue(issubclass(ProbeTimeout, CannotJudge))
 
 
 if __name__ == "__main__":

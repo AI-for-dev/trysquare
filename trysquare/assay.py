@@ -48,8 +48,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -120,6 +122,9 @@ NO_SUCH_SCRIPT = "Missing script"
 # How much output to hand back when no marker is found. Generous on purpose: node and go
 # finish on stack traces, so three lines or twenty would cut the answer in half.
 FALLBACK_LINES = 60
+
+# A probe is milliseconds. This exists only for a fix that loops forever.
+PROBE_TIMEOUT = 30
 
 
 def _unjudgeable(code: int, output: str) -> str:
@@ -208,6 +213,18 @@ class CannotJudge(Exception):
     Raised by a validator, and by the base whenever it is asked for something the
     context does not carry. It exits non-zero with a sentence and no traceback: it is
     not a defect, so a trace would only invite reading it as one.
+    """
+
+
+class ProbeTimeout(CannotJudge):
+    """A probe that ran too long, which the base declines to interpret.
+
+    A `CannotJudge` by default, because refusing is the safe reading. But a probe is
+    usually milliseconds, so exceeding a generous timeout often means the **agent's** fix
+    loops forever - which is a failure of the work, not an inability to judge. Only the
+    domain knows which, so it can catch this and score a failure with a reason that says
+    so. The base does not decide on its behalf, and the shipped validator that hardcoded
+    the choice could not express the other one.
     """
 
 
@@ -526,6 +543,97 @@ class Assay:
             if done.returncode == 0:
                 return Metric(True)
             return Metric(False, summarise(output))
+
+        return run
+
+    def probe(
+        self,
+        command: list[str],
+        write: dict | None = None,
+        append: dict | None = None,
+        drop: str | None = None,
+        timeout: int = PROBE_TIMEOUT,
+    ) -> dict:
+        """Runs a behavioural probe against a **copy** of the measured tree.
+
+        A criterion that is a behaviour executes instead of being recognised: no pattern
+        in the diff, no judge, no tokens, and a wrong answer is an assertion that breaks.
+        This is the generic half of that; the probe's own text and the cases it checks are
+        the domain's.
+
+        `write` creates or replaces files in the copy, `append` adds to the end of what is
+        already there, `drop` removes what a glob selects. Appending is what replaces
+        instrumentation by regular expression: a probe concatenated into the module runs
+        **inside the scope it measures**, so it has nothing to enumerate. Measured against
+        four trees on Node v26, that agrees with the regex everywhere the regex is right
+        and works in four realistic cases where the regex silently finds nothing - a
+        top-level `class`, a `function*`, a destructured declaration, and a collision
+        moved into a new file. The regex therefore carried the very bias instrumentation
+        exists to prevent.
+
+        Nothing generalises about *visibility* across languages, so the base holds no
+        notion of it. What generalises is the placement rule above: the probe runs in the
+        scope unit it measures - the module for JS and Rust, the package directory for Go,
+        nothing needed for Python.
+
+        The copy is **outside the clone**, and that is not tidiness. The harness archives
+        the diff *after* validation, and `repo.diff` runs `git add -A --intent-to-add`
+        first, so an untracked file left in the clone enters the archived patch without
+        condition and is replayed at every re-scoring as the agent's own work.
+
+        Returns the probe's parsed JSON. Raises `CannotJudge` when the probe could not be
+        run or did not answer, and `ProbeTimeout` - a `CannotJudge` - when it ran too
+        long. That default is the safe one; a domain that knows a slow probe means the
+        agent's fix loops forever can catch `ProbeTimeout` and score it as a failure, with
+        a reason saying so. The choice belongs to whoever knows, not to the base.
+        """
+        return self._call("probe", command, write, append, drop, timeout)
+
+    def _compute_probe(self):
+        source = self.repo
+
+        def run(command, write, append, drop, timeout) -> dict:
+            with tempfile.TemporaryDirectory(prefix="trysquare-probe-") as where:
+                root = Path(where) / "tree"
+                shutil.copytree(source, root, ignore=shutil.ignore_patterns(".git"))
+
+                for pattern in [drop] if drop else []:
+                    for victim in root.rglob(pattern):
+                        victim.unlink()
+                for name, text in (write or {}).items():
+                    (root / name).parent.mkdir(parents=True, exist_ok=True)
+                    (root / name).write_text(text)
+                for name, text in (append or {}).items():
+                    target = root / name
+                    if not target.is_file():
+                        raise CannotJudge(
+                            f"nothing to append to: {name} is not in the measured tree"
+                        )
+                    target.write_text(target.read_text(errors="replace") + text)
+
+                try:
+                    done = subprocess.run(
+                        list(command),
+                        cwd=root,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                    )
+                except subprocess.TimeoutExpired as e:
+                    raise ProbeTimeout(
+                        f"the probe did not finish within {timeout}s"
+                    ) from e
+                except OSError as e:
+                    raise CannotJudge(f"the probe could not run: {e}") from e
+
+            try:
+                return json.loads(done.stdout)
+            except json.JSONDecodeError as e:
+                detail = (done.stderr or done.stdout).strip().split("\n")
+                raise CannotJudge(
+                    f"the probe answered nothing readable ({e}): "
+                    f"{'; '.join(detail[-3:])}"
+                ) from e
 
         return run
 
