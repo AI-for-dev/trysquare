@@ -184,11 +184,19 @@ class TestRenderHtml(unittest.TestCase):
         return code, out.getvalue()
 
     def test_runs_without_an_archived_session_are_counted_and_named(self):
-        """An old output tree must not answer with a silence that reads as success."""
+        """An old output tree must not answer with a silence that reads as success.
+
+        The agent is mocked as present rather than skipped over: what is under test is the
+        reporting, which has nothing to do with whether `pi` is installed, and a test that
+        only runs on the author's machine guards nothing on CI.
+        """
+        from unittest import mock
+
         directory = self.measured("aaaa1111", "bbbb2222")
-        code, text = self.quietly(
-            ["render", SCENARIO, "-o", str(directory), "--repetitions", "1", "--html"]
-        )
+        with mock.patch.object(agent, "available", return_value=True):
+            code, text = self.quietly(
+                ["render", SCENARIO, "-o", str(directory), "--repetitions", "1", "--html"]
+            )
         self.assertEqual(code, 0)
         self.assertIn("0 session pages written", text)
         self.assertIn("2 of 2 runs without an archived session", text)
