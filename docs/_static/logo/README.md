@@ -19,7 +19,8 @@ constraint that one cannot.
 | `trysquare-mark.svg` | `currentColor` | inlined in a page, follows the text colour |
 | `trysquare-mark-small.svg` | `currentColor` | the same, below 32px |
 | `trysquare-tile.svg` | slate ground | favicon, avatar, social image |
-| `trysquare-lockup.svg` | slate + brass | mark and word together |
+| `trysquare-lockup-light.svg` | slate + brass | mark and word, light ground |
+| `trysquare-lockup-dark.svg` | paper + brass | mark and word, dark ground |
 | `trysquare-square.svg` | `currentColor` | the square upright, austere variant |
 | `trysquare-square-graduated.svg` | `currentColor` | the same, blade graduated |
 | `trysquare-square-twotone.svg` | slate + brass | the same, in colour |
@@ -39,8 +40,22 @@ file explicitly.
 **Below 24px, remove the graduations rather than scale them** - they turn into a smear.
 That is what `trysquare-mark-small.svg` is for.
 
-The wordmark in `trysquare-lockup.svg` is live text in a monospace stack. Outline it
-before publishing anywhere the fonts are not guaranteed, or it falls back silently.
+**The lockup carries no font.** Its wordmark is outlined, so it cannot fall back silently
+on a reader who lacks the typeface. Regenerate it rather than editing the path data:
+
+```bash
+uv run --with fonttools python tools/build-lockup.py
+```
+
+That script holds the font, the size, the tracking, and the alignment. The word is
+lower case throughout, so the eye centres it on the x-height band rather than the em box
+- the script takes the x-height from the font and aligns the mark to it, because a
+hand-tuned offset drifts the moment either half changes.
+
+The typeface is **JetBrains Mono**, under the SIL Open Font License, which permits
+outlining glyphs into a derivative work. The monospace faces macOS ships - Menlo, SF
+Mono, Courier - are licensed by Apple and do not, which is a problem that only surfaces
+once a project is public.
 
 Palette: slate `#232B33`, brass `#A97C2A` (`#C79338` on dark), paper `#EEF1F3`, dark
 ground `#14181B`, inverse ink `#C9D3DB`. Steel and brass are the materials of the tool.
