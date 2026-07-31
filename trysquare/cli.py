@@ -29,6 +29,7 @@ from . import agent as agent_mod
 from . import scaffold as scaffold_mod
 from . import config as config_mod
 from . import measure as measure_mod
+from . import pages as pages_mod
 from . import parity as parity_mod
 from . import progress as progress_mod
 from . import repo as repo_mod
@@ -531,6 +532,17 @@ def _write_synthesis(
     warning = table_mod.retry_warning(by_cell)
     path = output.write_synthesis("\n".join([*header, text, warning, ""]), suffix)
     print(f"\n  written {path}")
+
+    # The same synthesis as a page, wherever the markdown is written. Costs
+    # nothing: strings in, one self-contained file out, no token and no network.
+    sessions = {
+        r.id: names
+        for r in runs
+        if (names := [p.name for p in sorted((output.runs_dir / r.id / SESSION).glob("*.html"))])
+    }
+    html_path = path.with_suffix(".html")
+    html_path.write_text(pages_mod.synthesis_page(path.read_text(), sessions))
+    print(f"  written {html_path}")
     return 0
 
 
