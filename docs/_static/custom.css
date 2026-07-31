@@ -7,3 +7,42 @@
 .sidebar-logo {
   max-width: 84%;
 }
+
+/* The cost marker on the cheat sheet. A command that spends tokens is the one thing a
+   reader must not mistake, so it carries the brand's brass; free is stated in words
+   rather than left blank, because an empty cell reads as unknown rather than as free.
+
+   Brass is `#A97C2A` on a light ground and `#C79338` on a dark one - the darker tone
+   goes muddy against furo's dark background. The media query carries the OS preference
+   and the `[data-theme]` selectors carry furo's own toggle, which must win either way. */
+:root {
+  --ts-brass: #A97C2A;
+}
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --ts-brass: #C79338;
+  }
+}
+body[data-theme="dark"] {
+  --ts-brass: #C79338;
+}
+body[data-theme="light"] {
+  --ts-brass: #A97C2A;
+}
+
+.ts-cost {
+  font-family: var(--font-stack--monospace);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: .15em .45em;
+  border: 1px solid var(--color-background-border);
+  border-radius: 2px;
+  color: var(--color-foreground-muted);
+}
+.ts-cost-spends {
+  color: var(--ts-brass);
+  border-color: var(--ts-brass);
+}
