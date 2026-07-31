@@ -213,6 +213,18 @@ That named refusal is also why an archived context needs no version number: "the
 carries no 'response'" tells a reader more than "this archive is version 1" ever could.
 A metric of process is replayable, though: the tool calls are in the archived session.
 
+The consequence worth watching for is on the **other** side of a `--rescore`. A metric
+that answered when the matrix ran becomes unjudged on a replay, so it drops out of the
+score table - and re-scoring to fix an unrelated metric is enough to lose it. The command
+says so, one line per metric:
+
+```text
+  ! documented no longer has a value on 6 of 6 runs: the context carries no 'response'
+```
+
+Nothing is corrupted, and the runs are untouched. The previous `measures.json` is in git,
+which is where this archive keeps its history.
+
 ## The synthesis warns about cost columns
 
 ```text
