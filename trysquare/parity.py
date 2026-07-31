@@ -34,7 +34,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .measure import Run
+from .measure import Run, counted
 from .table import cost_measures, criterion_measure, gap_rows
 
 
@@ -380,7 +380,7 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:
                 f"{meta['cell']}: declared thinking {declared!r}, session recorded {got!r}"
             )
     if checked:
-        observed.append(f"{checked} sessions checked for the declared thinking level")
+        observed.append(f"{counted(checked, 'session')} checked for the declared thinking level")
     return Report(observed=observed, problems=problems)
 
 
@@ -429,7 +429,8 @@ def _models_answered(experiment: Path, runs: dict) -> tuple[list[str], list[str]
         observed.append(f"{matched}/{checked} runs ran the model their pattern names")
     if unrecorded:
         observed.append(
-            f"{unrecorded} runs record no model_id, so what answered could not be checked"
+            f"{counted(unrecorded, 'run')} record no model_id, so what answered "
+            f"could not be checked"
         )
     return observed, problems
 

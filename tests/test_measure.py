@@ -11,6 +11,7 @@ from trysquare.measure import (
     VALIDATOR_FAILED,
     Run,
     consumed_tokens,
+    counted,
     events,
     fill_manual,
     kind,
@@ -79,6 +80,30 @@ class TestEvents:
         """A cut stream ends mid-line; the lines before the cut are evidence."""
         text = 'not json\n{"a": 1}\n{broken'
         assert list(events(text)) == [{"a": 1}]
+
+
+class TestCountingOutLoud:
+    """Counts are printed by four modules, so the helper lives beside the material.
+
+    The line that reached a real matrix was `no price on 1 archived valid runs`, written
+    where a helper living in the command line could not be reached.
+    """
+
+    def test_one_is_singular(self):
+        assert counted(1, "run") == "1 run"
+        assert counted(1, "archived valid run") == "1 archived valid run"
+
+    def test_more_than_one_takes_the_s(self):
+        assert counted(3, "run") == "3 runs"
+
+    def test_none_takes_the_s_too(self):
+        """`0 runs to perform`, which is what English does and a reader expects."""
+        assert counted(0, "run") == "0 runs"
+
+    def test_an_irregular_plural_is_given_rather_than_guessed(self):
+        """`--until-complete` counts passes, and `passs` is not a word."""
+        assert counted(1, "pass", "passes") == "1 pass"
+        assert counted(2, "pass", "passes") == "2 passes"
 
 
 class TestADetailStaysOnOneLine:

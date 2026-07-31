@@ -21,6 +21,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .measure import counted
 from .scenario import Scenario, Validator
 
 # Everything a script validator is told, and nothing more. Handed as one file
@@ -383,7 +384,7 @@ def describe_blindness(report: dict, cells: int) -> list[str]:
     for mode, info in report.items():
         if info["blind"]:
             lines.append(
-                f"  {mode}: blind over {cells} cells (pieces: {', '.join(info['pieces'])})"
+                f"  {mode}: blind over {counted(cells, 'cell')} (pieces: {', '.join(info['pieces'])})"
             )
         else:
             lines.append(

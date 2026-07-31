@@ -37,7 +37,7 @@ from . import repo as repo_mod
 from . import runner as runner_mod
 from . import table as table_mod
 from . import validation as validation_mod
-from .measure import EMPTY, Run, VALID
+from .measure import EMPTY, Run, VALID, counted
 from .verdict import plain
 from .outputs import SESSION, Output, incomplete_note, unmeasured_note
 from .scenario import ScenarioError, load as load_scenario
@@ -195,11 +195,6 @@ def build_parser() -> argparse.ArgumentParser:
 # --- run -------------------------------------------------------------------
 
 
-def counted(n: int, noun: str) -> str:
-    """`1 cell`, `2 cells`. Every plural this tool prints is a regular `s`."""
-    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
-
-
 def matrix_line(cells: int, repetitions: int) -> str:
     """`2 cells x 3 repetitions`, and `1 cell x 1 repetition` when that is the truth."""
     return f"{counted(cells, 'cell')} x {counted(repetitions, 'repetition')}"
@@ -321,15 +316,16 @@ def cmd_run(args) -> int:
             break
         passes += 1
         print(
-            f"\n  pass {passes} of at most {args.until_complete}: {again.runs} runs "
-            f"produced nothing, relaunching them and only them"
+            f"\n  pass {passes} of at most {args.until_complete}: "
+            f"{counted(again.runs, 'run')} produced nothing, relaunching them and only them"
         )
         measure(again)
 
     remaining = resumed().todo
     if remaining:
         print(
-            f"\n  {len(remaining)} runs still produced nothing after {passes} passes. "
+            f"\n  {counted(len(remaining), 'run')} still produced nothing after "
+            f"{counted(passes, 'pass', 'passes')}. "
             f"Attempts are counted in state.json; --resume can try again"
         )
 
@@ -358,7 +354,7 @@ def _forecast(plan) -> list[str]:
     if concurrency and timeout:
         bound = math.ceil(plan.runs / concurrency) * timeout
         lines.append(
-            f"  at most ~{math.ceil(bound / 60)} min: {plan.runs} runs, "
+            f"  at most ~{math.ceil(bound / 60)} min: {counted(plan.runs, 'run')}, "
             f"{concurrency} at a time, {timeout}s timeout each"
         )
     lines.extend(_spend([r for r in plan.output.read_measures() if r.is_valid], plan.runs))
@@ -387,19 +383,19 @@ def _spend(archived: list[Run], runs: int) -> list[str]:
     if priced:
         median = statistics.median(priced)
         over = (
-            f"{len(priced)} of {len(archived)}"
+            f"{len(priced)} of {counted(len(archived), 'valid run')}"
             if len(priced) < len(archived)
-            else f"{len(archived)}"
+            else counted(len(archived), "valid run")
         )
         return [
             f"  spend, from this experiment's archive: median ${median:.2f} over "
-            f"{over} valid runs -> ~${median * runs:.2f} for {runs} to perform"
+            f"{over} -> ~${median * runs:.2f} for {runs} to perform"
         ]
 
     inbound = statistics.median([r.usage.get("input", 0) for r in archived])
     outbound = statistics.median([r.usage.get("output", 0) for r in archived])
     return [
-        f"  spend: no price on {len(archived)} archived valid runs - this provider "
+        f"  spend: no price on {counted(len(archived), 'archived valid run')} - this provider "
         f"reports none. Median tokens per run, and for the plan:",
         f"    {plain(inbound)} in / {plain(outbound)} out -> ~{plain(inbound * runs)} in / "
         f"{plain(outbound * runs)} out for {runs} to perform",
@@ -692,7 +688,7 @@ def cmd_replay(args) -> int:
         if scored is None:
             return 1
 
-    print(f"replaying {len(runs)} runs from {directory}")
+    print(f"replaying {counted(len(runs), 'run')} from {directory}")
     at_etalon = repo_mod.etalon_files(source, scenario.task["etalon"])
 
     enabled = progress_mod.wanted(no_progress=args.no_progress)
@@ -1177,7 +1173,9 @@ def cmd_parity(args) -> int:
         return 0 if stripping.holds else 1
 
     runs = parity_mod.archived_runs(parity_mod.published_by_id(args.measures), args.archive)
-    print(f"\nlayer 2 - scoring, from tag + diff.patch ({len(runs)} runs, one clone each)")
+    print(
+        f"\nlayer 2 - scoring, from tag + diff.patch ({counted(len(runs), 'run')}, one clone each)"
+    )
     scoring = layer2_report(args)
     for line in scoring.lines:
         print(f"  {line}")
@@ -1229,7 +1227,7 @@ def cmd_form(args) -> int:
 
     path = output.directory / f"form-{scenario.name}.toml"
     path.write_text("\n".join(lines))
-    print(f"written {path}  ({len(order)} runs, metrics: {', '.join(manual)})")
+    print(f"written {path}  ({counted(len(order), 'run')}, metrics: {', '.join(manual)})")
     return 0
 
 
