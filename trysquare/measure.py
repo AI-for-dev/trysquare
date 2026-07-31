@@ -69,6 +69,29 @@ def events(text: str):
             continue
 
 
+def _usage_sum(evts, event_type: str, usage_of) -> dict:
+    """The accumulation a stream and a session share: one billed turn per usage.
+
+    What still differs between the two - the event type that carries a message,
+    and where the usage sits inside it - is exactly what the caller passes in.
+    Those two arguments *are* the shape difference, so comparing the two paths
+    still tests the extraction, while the arithmetic can no longer drift apart.
+    """
+    u = {"input": 0, "output": 0, "cacheRead": 0, "cost": 0.0, "turns": 0}
+    for event in evts:
+        if event.get("type") != event_type:
+            continue
+        usage = usage_of(event)
+        if not usage:
+            continue
+        u["turns"] += 1
+        u["input"] += usage.get("input", 0)
+        u["output"] += usage.get("output", 0)
+        u["cacheRead"] += usage.get("cacheRead", 0)
+        u["cost"] += (usage.get("cost") or {}).get("total", 0.0)
+    return u
+
+
 def strip(stream: str) -> dict:
     """Reduces a `pi --mode json` stream to the numbers a measurement needs.
 
@@ -83,21 +106,8 @@ def strip(stream: str) -> dict:
     thirteen retries gives 24 turns and 79.4k. Publishing those columns without
     looking at retries means publishing our own load on the provider.
     """
-    u = {"input": 0, "output": 0, "cacheRead": 0, "cost": 0.0, "turns": 0, "retries": 0}
-    for event in events(stream):
-        if event.get("type") == "auto_retry_start":
-            u["retries"] += 1
-            continue
-        if event.get("type") != "message_end":
-            continue
-        usage = (event.get("message") or {}).get("usage")
-        if not usage:
-            continue
-        u["turns"] += 1
-        u["input"] += usage.get("input", 0)
-        u["output"] += usage.get("output", 0)
-        u["cacheRead"] += usage.get("cacheRead", 0)
-        u["cost"] += (usage.get("cost") or {}).get("total", 0.0)
+    u = _usage_sum(events(stream), "message_end", lambda e: (e.get("message") or {}).get("usage"))
+    u["retries"] = sum(1 for e in events(stream) if e.get("type") == "auto_retry_start")
     return u
 
 
@@ -106,26 +116,16 @@ def strip_session(session: str) -> dict:
 
     A session has a different shape from the stream: its line types are
     `session`, `model_change`, `thinking_level_change` and `message`, and usage
-    is nested under `message.usage`. Two different paths to the same figures,
-    which is exactly what makes comparing them a real test of the stripping layer
-    rather than a tautology.
+    is nested under `message.usage`. That shape difference is what is passed to
+    `_usage_sum`, so comparing the two paths still tests the extraction - what
+    it no longer tests is the addition, which is now written once.
 
     `retries` is **not** recoverable here: it derives from `auto_retry_start`, a
     stream event that a session does not contain. Reported as None so a caller
     cannot mistake it for zero.
     """
-    u = {"input": 0, "output": 0, "cacheRead": 0, "cost": 0.0, "turns": 0, "retries": None}
-    for event in events(session):
-        if event.get("type") != "message":
-            continue
-        usage = (event.get("message") or event).get("usage")
-        if not usage:
-            continue
-        u["turns"] += 1
-        u["input"] += usage.get("input", 0)
-        u["output"] += usage.get("output", 0)
-        u["cacheRead"] += usage.get("cacheRead", 0)
-        u["cost"] += (usage.get("cost") or {}).get("total", 0.0)
+    u = _usage_sum(events(session), "message", lambda e: (e.get("message") or e).get("usage"))
+    u["retries"] = None
     return u
 
 

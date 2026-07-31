@@ -35,6 +35,22 @@ def mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
 
+def _bounds(one_draw, draws: int, seed: int) -> tuple[float, float]:
+    """Replays `one_draw` with a fresh seeded RNG and returns the 95% bounds.
+
+    The RNG is created fresh here rather than shared across calls, so each
+    interval depends only on its own inputs and the seed. Two runs of the tool
+    over the same measures give the same bounds, and so does a rerun months
+    later.
+    """
+    rng = random.Random(seed)
+    values = sorted(one_draw(rng) for _ in range(draws))
+    return (
+        values[int(0.025 * len(values))],
+        values[min(len(values) - 1, int(0.975 * len(values)))],
+    )
+
+
 def gap_interval(
     reference: list[float],
     cell: list[float],
@@ -44,28 +60,18 @@ def gap_interval(
 ) -> tuple[float, float]:
     """95% interval of `stat(cell) - stat(reference)`.
 
-    The RNG is created fresh here rather than shared across calls, so each
-    interval depends only on its own inputs and the seed. Two runs of the tool
-    over the same measures give the same bounds, and so does a rerun months
-    later.
-
     Draw order matters for byte-identical reproduction: the reference sample is
     drawn before the cell sample on every iteration.
     """
     if not reference or not cell:
         raise ValueError("an empty sample has no interval")
 
-    rng = random.Random(seed)
-    gaps = []
-    for _ in range(draws):
+    def one_draw(rng) -> float:
         a = rng.choices(reference, k=len(reference))
         b = rng.choices(cell, k=len(cell))
-        gaps.append(stat(b) - stat(a))
-    gaps.sort()
-    return (
-        gaps[int(0.025 * len(gaps))],
-        gaps[min(len(gaps) - 1, int(0.975 * len(gaps)))],
-    )
+        return stat(b) - stat(a)
+
+    return _bounds(one_draw, draws, seed)
 
 
 def interval(
@@ -85,12 +91,7 @@ def interval(
     if not values:
         raise ValueError("an empty sample has no interval")
 
-    rng = random.Random(seed)
-    draw = []
-    for _ in range(draws):
-        draw.append(stat(rng.choices(values, k=len(values))))
-    draw.sort()
-    return draw[int(0.025 * len(draw))], draw[min(len(draw) - 1, int(0.975 * len(draw)))]
+    return _bounds(lambda rng: stat(rng.choices(values, k=len(values))), draws, seed)
 
 
 def judge(

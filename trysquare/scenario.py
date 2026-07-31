@@ -15,6 +15,7 @@ from __future__ import annotations
 import itertools
 import shlex
 import tomllib
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -250,8 +251,7 @@ def _expand(axes: dict, values: dict, variants: dict) -> tuple[Cell, ...]:
     for name, delta in variants.items():
         cells.append(Cell(name, dict(delta)))
 
-    seen = [c.name for c in cells]
-    duplicate = {n for n in seen if seen.count(n) > 1}
+    duplicate = {n for n, k in Counter(c.name for c in cells).items() if k > 1}
     if duplicate:
         raise ScenarioError(f"cell declared twice: {', '.join(sorted(duplicate))}")
     return tuple(cells)
@@ -368,8 +368,8 @@ def _validators(declared: list) -> tuple[Validator, ...]:
     # measurement, rather than resolved by a last-one-wins rule nobody can see.
     # Independent validators are the whole point: a judge told the script's
     # verdict is anchored on it, and its agreement stops being a signal.
-    everything = [m for v in validators for m in v.metrics]
-    clash = {m for m in everything if everything.count(m) > 1}
+    counts = Counter(m for v in validators for m in v.metrics)
+    clash = {m for m, k in counts.items() if k > 1}
     if clash:
         raise ScenarioError(
             f"metric declared by two validators: {', '.join(sorted(clash))}. "
