@@ -360,6 +360,50 @@ class TestPreRunHonesty:
         said = "\n".join(_forecast(plan))
         assert "median $0.50 over 2 valid runs" in said
 
+    def archived(self, root, *usages: dict):
+        from trysquare.measure import Run
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        o = Output(root, load(SCENARIO))
+        o.prepare()
+        o.write_measures(
+            [Run(id=f"r{i}", cell="c", repetition=i, usage=u) for i, u in enumerate(usages)]
+        )
+
+    def said(self, root):
+        from trysquare.cli import _forecast
+
+        return "\n".join(_forecast(self.resolved(root)))
+
+    def test_an_archive_without_prices_is_not_an_empty_archive(self, tmp_path):
+        """Measured against a real provider: `pi` reported `cost: 0.0` on every run, and
+        `0.0` is falsy, so a matrix holding six valid runs still said there was nothing to
+        estimate from. It sent the operator to go and measure what they had measured."""
+        priceless = {"cost": 0.0, "input": 12_000, "output": 300, "turns": 6}
+        self.archived(tmp_path, dict(priceless), dict(priceless))
+        said = self.said(tmp_path)
+        assert "no archived run to estimate from" not in said
+        assert "no price" in said
+
+    def test_an_archive_without_prices_forecasts_in_tokens(self, tmp_path):
+        """A provider that reports no price still reports tokens, and the same estimate
+        discipline applies to them: the median of what this experiment already holds."""
+        priceless = {"cost": 0.0, "input": 12_000, "output": 300, "turns": 6}
+        self.archived(tmp_path, dict(priceless), dict(priceless))
+        said = self.said(tmp_path)
+        assert "12 000 in / 300 out" in said
+        assert "720 000 in / 18 000 out" in said
+
+    def test_a_partly_priced_archive_says_how_many_carried_one(self, tmp_path):
+        """`over 2 valid runs` read as "there are two", when there were four."""
+        self.archived(
+            tmp_path,
+            {"cost": 0.50, "input": 1, "output": 1, "turns": 1},
+            {"cost": 0.0, "input": 1, "output": 1, "turns": 1},
+        )
+        assert "over 1 of 2 valid runs" in self.said(tmp_path)
+
     def test_a_dry_run_names_the_missing_binary(self, monkeypatch, capsys):
         from trysquare import cli as cli_mod
 

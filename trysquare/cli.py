@@ -37,6 +37,7 @@ from . import runner as runner_mod
 from . import table as table_mod
 from . import validation as validation_mod
 from .measure import EMPTY, Run, VALID
+from .verdict import plain
 from .outputs import SESSION, Output, incomplete_note, unmeasured_note
 from .scenario import ScenarioError, load as load_scenario
 
@@ -326,11 +327,10 @@ def _forecast(plan) -> list[str]:
     the harness can actually know.
 
     The duration is a *bound*, arithmetic on declared numbers: runs, concurrency,
-    timeout. The spend is an *estimate from the archive*: the median cost of the
-    valid runs this experiment already holds, times the runs to perform. Never a
-    price list - the harness is provider-agnostic, a maintained price table goes
-    stale silently, and a wrong estimate is worse than none. A scenario that has
-    never run says so instead of guessing.
+    timeout. The spend is an *estimate from the archive*: the median of what the valid
+    runs this experiment already holds actually cost, times the runs to perform. Never
+    a price list - the harness is provider-agnostic, a maintained price table goes
+    stale silently, and a wrong estimate is worse than none.
     """
     if not plan.runs:
         return []
@@ -347,20 +347,49 @@ def _forecast(plan) -> list[str]:
             f"  at most ~{math.ceil(bound / 60)} min: {plan.runs} runs, "
             f"{concurrency} at a time, {timeout}s timeout each"
         )
-    costs = [
-        r.usage.get("cost", 0)
-        for r in plan.output.read_measures()
-        if r.is_valid and r.usage.get("cost")
-    ]
-    if costs:
-        median = statistics.median(costs)
-        lines.append(
-            f"  spend, from this experiment's archive: median ${median:.2f} over "
-            f"{len(costs)} valid runs -> ~${median * plan.runs:.2f} for {plan.runs} to perform"
-        )
-    else:
-        lines.append("  spend: no archived run to estimate from")
+    lines.extend(_spend([r for r in plan.output.read_measures() if r.is_valid], plan.runs))
     return lines
+
+
+def _spend(archived: list[Run], runs: int) -> list[str]:
+    """The spend estimate, over the three things an archive can be.
+
+    They used to share one message, and it named the wrong one. Measured against a real
+    provider: every run came back with `cost: 0.0`, `0.0` is falsy, and so a matrix
+    holding six valid runs announced `no archived run to estimate from` - which reads as
+    "you have never run this" and sends the operator to measure what they measured
+    yesterday.
+
+    An empty archive and an archive nobody priced are different facts, and the second is
+    the common one. It is also not a dead end: a provider that reports no price reports
+    tokens, so the same discipline - the median of what this experiment already holds -
+    forecasts in the unit that provider does give. A valid run has tokens by definition,
+    so there is always something to say.
+    """
+    if not archived:
+        return ["  spend: no archived run to estimate from"]
+
+    priced = [c for r in archived if (c := r.usage.get("cost") or 0)]
+    if priced:
+        median = statistics.median(priced)
+        over = (
+            f"{len(priced)} of {len(archived)}"
+            if len(priced) < len(archived)
+            else f"{len(archived)}"
+        )
+        return [
+            f"  spend, from this experiment's archive: median ${median:.2f} over "
+            f"{over} valid runs -> ~${median * runs:.2f} for {runs} to perform"
+        ]
+
+    inbound = statistics.median([r.usage.get("input", 0) for r in archived])
+    outbound = statistics.median([r.usage.get("output", 0) for r in archived])
+    return [
+        f"  spend: no price on {len(archived)} archived valid runs - this provider "
+        f"reports none. Median tokens per run, and for the plan:",
+        f"    {plain(inbound)} in / {plain(outbound)} out -> ~{plain(inbound * runs)} in / "
+        f"{plain(outbound * runs)} out for {runs} to perform",
+    ]
 
 
 def _blindness_lines(plan) -> list[str]:
