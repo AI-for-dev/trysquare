@@ -29,6 +29,17 @@ def out() -> Path:
     return Path(tempfile.mkdtemp())
 
 
+def compared(argv) -> tuple[int, str]:
+    """Runs the CLI in process, and returns its exit code with everything it said."""
+    import contextlib
+    import io
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        code = main(argv)
+    return code, stdout.getvalue() + stderr.getvalue()
+
+
 class TestParser:
     def test_output_is_required_for_a_run(self):
         with pytest.raises(SystemExit):
@@ -690,13 +701,7 @@ class TestCompare:
         return directory
 
     def compared(self, argv) -> tuple[int, str]:
-        import contextlib
-        import io
-
-        stdout, stderr = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            code = main(argv)
-        return code, stdout.getvalue() + stderr.getvalue()
+        return compared(argv)
 
     def test_two_experiments_tabulate_side_by_side(self, tmp_path):
         left = self.experiment(tmp_path, "left_n2")
@@ -758,13 +763,22 @@ class TestParityLayer1:
 
     def rows(self, values: dict, cell="base"):
         return [
-            {"identifiant": k, "cellule": cell, "input": v[0], "output": v[1], "tours": v[2]}
+            {
+                "identifiant": k,
+                "cellule": cell,
+                "input": v[0],
+                "output": v[1],
+                "tours": v[2],
+                # The bench's validity condition, so layer 3 has something to aggregate
+                # when these rows reach it through the command.
+                "note": {"livre": True, "tests": True},
+            }
             for k, v in values.items()
         ]
 
     def test_agreement_is_counted_and_reported(self):
         values = {"base-0": (100, 20, 2), "base-1": (300, 30, 3)}
-        problems = parity.layer1(self.fixture(self.rows(values)), self.archive(values))
+        problems = parity.layer1(self.fixture(self.rows(values)), self.archive(values)).lines
         assert len(problems) == 1
         assert "2/2 sessions reproduce" in problems[0]
 
@@ -773,7 +787,7 @@ class TestParityLayer1:
         labels are crossed, which is an artefact and not a disagreement."""
         published = {"base-0": (100, 20, 2), "base-1": (300, 30, 3)}
         sessions = {"base-0": (300, 30, 3), "base-1": (100, 20, 2)}
-        problems = parity.layer1(self.fixture(self.rows(published)), self.archive(sessions))
+        problems = parity.layer1(self.fixture(self.rows(published)), self.archive(sessions)).lines
         labels = [p for p in problems if p.startswith("LABEL")]
         assert len(labels) == 2
         assert all("no aggregate is affected" in p for p in labels)
@@ -785,18 +799,34 @@ class TestParityLayer1:
             {"identifiant": "b", "cellule": "other", "input": 300, "output": 30, "tours": 3},
         ]
         sessions = {"a": (300, 30, 3), "b": (100, 20, 2)}
-        problems = parity.layer1(self.fixture(published), self.archive(sessions))
+        problems = parity.layer1(self.fixture(published), self.archive(sessions)).lines
         assert any("DIFFERENT CELL" in p for p in problems)
 
     def test_a_real_stripping_difference_is_reported_per_field(self):
         published = {"base-0": (100, 20, 2)}
         sessions = {"base-0": (140, 20, 2)}
-        problems = parity.layer1(self.fixture(self.rows(published)), self.archive(sessions))
+        problems = parity.layer1(self.fixture(self.rows(published)), self.archive(sessions)).lines
         assert any("base-0/input" in p for p in problems)
 
     def test_an_empty_archive_says_so(self, tmp_path):
-        problems = parity.layer1(self.fixture(self.rows({"base-0": (1, 1, 1)})), tmp_path)
+        problems = parity.layer1(self.fixture(self.rows({"base-0": (1, 1, 1)})), tmp_path).lines
         assert any("no archived session" in p for p in problems)
+
+    def test_a_holding_layer_exits_zero(self):
+        """A count is not a defect. Printing both in one list made a parity that
+        held exit 1, and a caller had no way to tell the two apart."""
+        values = {"base-0": (100, 20, 2)}
+        measures = self.fixture(self.rows(values))
+        code, said = compared(["parity", str(measures), "--archive", str(self.archive(values))])
+        assert code == 0, said
+        assert "1/1 sessions reproduce" in said
+
+    def test_a_stripping_difference_exits_one(self):
+        measures = self.fixture(self.rows({"base-0": (100, 20, 2)}))
+        archive = self.archive({"base-0": (140, 20, 2)})
+        code, said = compared(["parity", str(measures), "--archive", str(archive)])
+        assert code == 1
+        assert "base-0/input" in said
 
 
 class TestTheReplayContext:

@@ -1011,14 +1011,13 @@ def cmd_parity(args) -> int:
         if workdir is None:
             workdir = config_mod.load(args.config).workdir()
         print(f"layer 4 - smoke pass over {args.smoke.name}")
-        problems = parity_mod.layer4(args.smoke, workdir)
-        failures = [p for p in problems if not p.endswith("declared thinking level")]
-        for line in problems:
+        report = parity_mod.layer4(args.smoke, workdir)
+        for line in report.lines:
             print(f"  {line}")
-        if not failures:
+        if report.holds:
             print("\n  every mechanical criterion holds. No statistical claim: a smoke")
             print("  pass at small n concludes nothing about any configuration.")
-        return 0 if not failures else 1
+        return 0 if report.holds else 1
 
     if not args.measures:
         print("error: give a measures file, or --smoke <experiment dir>", file=sys.stderr)
@@ -1038,10 +1037,10 @@ def cmd_parity(args) -> int:
         return 0
 
     print("\nlayer 1 - stripping, from the archived sessions")
-    problems = parity_mod.layer1(args.measures, args.archive)
-    for line in problems or ["  every session reproduces its recorded tokens and turns"]:
+    report = parity_mod.layer1(args.measures, args.archive)
+    for line in report.lines:
         print(f"  {line}")
-    return 0 if not problems else 1
+    return 0 if report.holds else 1
 
 
 # --- form ------------------------------------------------------------------
