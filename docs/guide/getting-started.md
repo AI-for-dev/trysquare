@@ -239,10 +239,9 @@ out/rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10/
   synthesis.md    the score, cost and gap tables, and the verdicts
   synthesis.html  the same synthesis as one self-contained page
   runs/<id>/
-    context.json         what the validator was handed
     configuration.json   what this run actually ran
     diff.patch           what the agent changed
-    validation/          each validator's output and stderr
+    validation/          each validator's output, stderr, and the context it was handed
     session/*.jsonl      the agent's own trace, one file per attempt
 ```
 
