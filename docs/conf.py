@@ -3,9 +3,8 @@
 The documentation is written in MyST Markdown, not reStructuredText: the rest of
 this project's prose is Markdown, and one syntax is easier to keep good than two.
 
-Building the docs needs Sphinx; **using trysquare does not**. The tool keeps zero
-runtime dependencies, so these live in the `docs` optional group and are never
-imported by the package.
+Building the docs needs Sphinx; **using trysquare does not**. These live in the
+`docs` optional group and are never imported by the package.
 """
 
 import sys

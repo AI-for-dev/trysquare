@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -627,16 +627,28 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
         "concurrency", plan.config.fallback("concurrency")
     )
 
+    # Runs are consumed as they finish, not in the order they were submitted. Walking
+    # the futures in submission order made one slow run hold back the ledger of every
+    # run that finished behind it: an interruption lost work that was done, and a
+    # counter watching this loop would sit still and then jump by a whole batch.
+    order = {rid: i for i, (rid, _) in enumerate(plan.todo)}
     done: list[Run] = []
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = {pool.submit(one_run, plan, rid, meta): rid for rid, meta in plan.todo}
-        for future in futures:
+        for future in as_completed(futures):
             run = future.result()
             done.append(run)
             plan.output.record(state, run.id, run)
             plan.output.write_state(state)
             if on_run:
                 on_run(run)
+
+    # Back into plan order before anything is written. The row order of `measures.json`
+    # is not cosmetic: `verdict.gap_interval` resamples with `random.choices`, which
+    # draws **by index**, so two identical matrices whose rows landed in a different
+    # order would publish different bounds under the same fixed seed. The order runs
+    # complete in is a race; the order they were planned in is not.
+    done.sort(key=lambda r: order.get(r.id, len(order)))
 
     existing = {r.id: r for r in plan.output.read_measures()}
     for run in done:

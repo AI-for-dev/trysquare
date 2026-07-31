@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       # The floor is what pyproject requires, the ceiling is what the author
-      # runs. A tool with no runtime dependencies has no excuse for a gap.
+      # runs. Nothing in between is left untested.
       matrix:
         python: ["3.11", "3.12", "3.13", "3.14"]
     steps:

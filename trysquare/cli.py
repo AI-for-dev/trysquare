@@ -27,6 +27,7 @@ from . import agent as agent_mod
 from . import config as config_mod
 from . import measure as measure_mod
 from . import parity as parity_mod
+from . import progress as progress_mod
 from . import repo as repo_mod
 from . import runner as runner_mod
 from . import table as table_mod
@@ -78,7 +79,18 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--config", type=Path, help="config file (default: nearest trysquare.toml)")
         return p
 
-    run = with_common(sub.add_parser("run", help="measure a scenario"))
+    def with_progress(p):
+        # Per subcommand rather than on the top-level parser: with subparsers a
+        # global flag has to precede the subcommand, which reads backwards and is
+        # typed wrong.
+        p.add_argument(
+            "--no-progress",
+            action="store_true",
+            help=f"never draw the live bar (also: {progress_mod.OFF}=1)",
+        )
+        return p
+
+    run = with_progress(with_common(sub.add_parser("run", help="measure a scenario")))
     run.add_argument("--repetitions", type=int, help="override, stamped into the directory name")
     run.add_argument("--concurrency", type=int, help="override, recorded in the state")
     run.add_argument("--timeout", type=int, help="override, recorded in the state")
@@ -87,7 +99,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--dry-run", action="store_true", help="show the plan and spend nothing")
     run.set_defaults(func=cmd_run)
 
-    render = with_common(sub.add_parser("render", help="rebuild tables from stored measures"))
+    render = with_progress(
+        with_common(sub.add_parser("render", help="rebuild tables from stored measures"))
+    )
     render.add_argument("--repetitions", type=int, help="which matrix to read")
     render.add_argument("--reference", help="score against another cell, without remeasuring")
     render.add_argument(
@@ -97,7 +111,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     render.set_defaults(func=cmd_render)
 
-    replay = sub.add_parser("replay", help="re-score archived runs without spending tokens")
+    replay = with_progress(
+        sub.add_parser("replay", help="re-score archived runs without spending tokens")
+    )
     replay.add_argument("directory", type=Path, help="an experiment directory, or one run inside it")
     replay.add_argument("--config", type=Path)
     replay.add_argument("--scenario", type=Path, required=True)
@@ -188,18 +204,25 @@ def cmd_run(args) -> int:
         print(f"error: {agent_mod.PI!r} is not on PATH", file=sys.stderr)
         return 1
 
-    def report(run: Run) -> None:
-        mark = "ok " if run.state == VALID else "!! "
-        detail = "" if run.state == VALID else f"  {run.state}: {run.detail}"
-        print(
-            f"  {mark}{run.cell:<24} {run.duration}s  "
-            f"{run.usage.get('input', 0)} in / {run.usage.get('output', 0)} out  "
-            f"{run.usage.get('turns', 0)} turns  "
-            f"{run.usage.get('retries', 0)} retries{detail}",
-            flush=True,
-        )
+    # The bar opens here rather than above: the plan header, the dry run and the
+    # missing-binary refusal all print and return before a single run exists to
+    # count. It closes before the synthesis, which is not part of the count either.
+    enabled = progress_mod.wanted(no_progress=args.no_progress)
+    with progress_mod.bar(plan.runs, "runs", enabled) as bar:
 
-    runner_mod.execute(plan, on_run=report)
+        def report(run: Run) -> None:
+            mark = "ok " if run.state == VALID else "!! "
+            detail = "" if run.state == VALID else f"  {run.state}: {run.detail}"
+            bar.line(
+                f"  {mark}{run.cell:<24} {run.duration}s  "
+                f"{run.usage.get('input', 0)} in / {run.usage.get('output', 0)} out  "
+                f"{run.usage.get('turns', 0)} turns  "
+                f"{run.usage.get('retries', 0)} retries{detail}"
+            )
+            bar.tick()
+
+        runner_mod.execute(plan, on_run=report)
+
     return _write_synthesis(plan.output, scenario)
 
 
@@ -224,7 +247,7 @@ def cmd_render(args) -> int:
     # writing anything when the matrix is incomplete, and an incomplete matrix is
     # exactly when somebody wants to read the traces.
     if args.html:
-        code = _export_sessions(output, runs)
+        code = _export_sessions(output, runs, no_progress=args.no_progress)
         if code:
             return code
 
@@ -237,7 +260,7 @@ def cmd_render(args) -> int:
     return _write_synthesis(output, scenario, runs, suffix)
 
 
-def _export_sessions(output: Output, runs: list[Run]) -> int:
+def _export_sessions(output: Output, runs: list[Run], no_progress: bool = False) -> int:
     """Rebuilds one HTML page per archived session, in the run's own directory.
 
     Costs no tokens: it reads jsonl already on disk. A session that will not render is
@@ -256,19 +279,25 @@ def _export_sessions(output: Output, runs: list[Run]) -> int:
         return 1
 
     written = bare = 0
-    for run in sorted(runs, key=lambda r: r.id):
-        sessions = output.sessions(run.id)
-        if not sessions:
-            bare += 1
-            continue
-        for session in sessions:
-            try:
-                path = agent_mod.export_html(session, session.parent)
-            except RuntimeError as e:
-                print(f"  !! {run.id}/{session.name}: {e}", file=sys.stderr)
+    # Counted per run, not per session file: a run may archive several, and the
+    # total has to be known before the first one is opened.
+    enabled = progress_mod.wanted(no_progress=no_progress)
+    with progress_mod.bar(len(runs), "sessions", enabled) as bar:
+        for run in sorted(runs, key=lambda r: r.id):
+            sessions = output.sessions(run.id)
+            if not sessions:
+                bare += 1
+                bar.tick()
                 continue
-            written += 1
-            print(f"  {path.relative_to(output.directory)}")
+            for session in sessions:
+                try:
+                    path = agent_mod.export_html(session, session.parent)
+                except RuntimeError as e:
+                    bar.warn(f"  !! {run.id}/{session.name}: {e}")
+                    continue
+                written += 1
+                bar.line(f"  {path.relative_to(output.directory)}")
+            bar.tick()
 
     print(f"\n  {written} session page{'' if written == 1 else 's'} written")
     if bare:
@@ -371,27 +400,34 @@ def cmd_replay(args) -> int:
     print(f"replaying {len(runs)} runs from {directory}")
     at_etalon = repo_mod.etalon_files(source, scenario.task["etalon"])
 
-    for run_dir in runs:
-        patch = (run_dir / "diff.patch").read_text() if (run_dir / "diff.patch").is_file() else ""
-        work = config.workdir() / "replay" / run_dir.name
-        # Into `work/repo`, which is the run's own layout rather than tidiness. The context
-        # is written beside the tree, in `clone.parent`, so cloning *into* `work` made that
-        # `replay/` - one path shared by every run, where sixty contexts overwrote each
-        # other and only the last survived. A distinct `context:` line was printed for each
-        # all the same, so nothing looked wrong.
-        #
-        # No score was ever wrong: a context is written and consumed in the same turn of
-        # this loop. What was lost is the artifact - "point your validators at those
-        # contexts" was executable for one run out of sixty, and a validator failure could
-        # not be reproduced by hand. And it is a race waiting for the day this loop runs
-        # concurrently, which is when it would start producing plausible wrong numbers.
-        clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
-        repo_mod.apply_diff(clone, patch)
-        context = replay_context(run_dir, clone, source, scenario, at_etalon)
-        print(f"  {run_dir.name}: reconstituted at {clone}")
-        print(f"    context: {context}")
-        if scored is not None:
-            print(f"    {rescore_run(scored, scenario, run_dir, context, base)}")
+    enabled = progress_mod.wanted(no_progress=args.no_progress)
+    with progress_mod.bar(len(runs), "replayed", enabled) as bar:
+        for run_dir in runs:
+            patch = (
+                (run_dir / "diff.patch").read_text()
+                if (run_dir / "diff.patch").is_file()
+                else ""
+            )
+            work = config.workdir() / "replay" / run_dir.name
+            # Into `work/repo`, which is the run's own layout rather than tidiness. The
+            # context is written beside the tree, in `clone.parent`, so cloning *into* `work`
+            # made that `replay/` - one path shared by every run, where sixty contexts
+            # overwrote each other and only the last survived. A distinct `context:` line was
+            # printed for each all the same, so nothing looked wrong.
+            #
+            # No score was ever wrong: a context is written and consumed in the same turn of
+            # this loop. What was lost is the artifact - "point your validators at those
+            # contexts" was executable for one run out of sixty, and a validator failure could
+            # not be reproduced by hand. And it is a race waiting for the day this loop runs
+            # concurrently, which is when it would start producing plausible wrong numbers.
+            clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
+            repo_mod.apply_diff(clone, patch)
+            context = replay_context(run_dir, clone, source, scenario, at_etalon)
+            bar.line(f"  {run_dir.name}: reconstituted at {clone}")
+            bar.line(f"    context: {context}")
+            if scored is not None:
+                bar.line(f"    {rescore_run(scored, scenario, run_dir, context, base)}")
+            bar.tick()
 
     if scored is not None:
         return publish_rescore(scored, scenario)

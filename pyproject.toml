@@ -3,14 +3,12 @@ name = "trysquare"
 version = "0.1.0"
 description = "A scenario harness for measuring coding agents reproducibly."
 requires-python = ">=3.11"
-# No runtime dependencies, on purpose. TOML parsing is `tomllib` from the
-# standard library, which is why the floor is 3.11. A measurement tool that
-# needs an install step is a measurement tool people work around.
-dependencies = []
+# `rich` draws the pinned progress bar a matrix needs when it runs for hours.
+# TOML parsing is `tomllib`, which is why the floor is 3.11.
+dependencies = ["rich>=13.7"]
 
 [project.optional-dependencies]
-# Documentation build only, never imported by the package. The tool itself keeps
-# zero runtime dependencies on purpose.
+# Documentation build only, never imported by the package.
 docs = [
     "sphinx>=8.1",
     "myst-parser[linkify]>=4.0",
