@@ -28,12 +28,21 @@ docs/
     troubleshooting.md  every refusal, and its reasoning
   reference/            lookup-oriented: what a key or a flag does
     cheatsheet.md       every command and flag, and what it costs
+    cheatsheet-body.html  the sheet itself, included raw by the page above
     cli.md
     scenario-schema.md
     config-schema.md
     outputs.md
     api.md              generated from docstrings
 ```
+
+The cheat sheet is the one page that is not prose. It is a poster - a card grid, a cost
+marker per command - so it is written as HTML and included raw, styled by
+`_static/cheatsheet.css`, whose selectors all sit under `.ts-sheet` and are therefore
+inert on every other page. It keeps the theme's sidebar and takes the rest of the width,
+including the column furo reserves for a per-page table of contents, since the sheet is
+one. `tests/test_cheatsheet.py` compares its flags against the parser, in both
+directions.
 
 The API page is generated from docstrings, which in this project carry the *reasoning*
 behind each rule rather than restating the signature. `autodoc_member_order = "bysource"`
