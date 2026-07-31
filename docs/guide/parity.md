@@ -69,7 +69,7 @@ trysquare parity --smoke <experiment dir>                 # layer 4
 Layer 3 runs on a **committed fixture**, so it protects against regression forever:
 
 ```bash
-uv run python -m unittest tests.test_parity
+uv run --group dev pytest tests/test_parity.py
 ```
 
 It reproduces the published gap table **exactly** - all 25 cells, five cells by five

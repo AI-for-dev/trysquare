@@ -78,7 +78,10 @@ A matrix is never rerun "to see". Optional stopping is the cure for a result you
 happen to like, so the harness removes the opportunity:
 
 - a **resume** may only relaunch runs that produced *nothing* - never launched, or
-  launched and consumed no tokens;
+  launched and consumed no tokens. `run --until-complete [N]` is that same resume,
+  bounded and automatic: at most N passes, each relaunching only what produced
+  nothing. It reaches nothing a hand-typed `--resume` could not, which is what lets a
+  matrix that runs for hours finish itself;
 - a validator failure is **re-scored** instead, at no token cost, because the run did
   produce a result and re-measuring it would let a resume change it;
 - **attempts are counted** per run, so an abusive resume leaves a trace in
