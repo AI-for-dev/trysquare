@@ -1,6 +1,6 @@
 """The command line.
 
-Seven subcommands, and `--output` roots every one of them that writes.
+Eight subcommands, and `--output` roots every one of them that writes.
 
 Overrides are always **announced at launch**. That is not politeness: the previous
 tool had a protocol declared in a document and defaults in the code that
@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from . import agent as agent_mod
+from . import scaffold as scaffold_mod
 from . import config as config_mod
 from . import measure as measure_mod
 from . import parity as parity_mod
@@ -100,6 +101,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--resume", action="store_true", help="fill only what produced nothing")
     run.add_argument("--dry-run", action="store_true", help="show the plan and spend nothing")
     run.set_defaults(func=cmd_run)
+
+    init = sub.add_parser("init", help="write the skeleton of a new experiment")
+    init.add_argument(
+        "directory",
+        nargs="?",
+        default=Path("."),
+        type=Path,
+        help="where to write it (default: here)",
+    )
+    init.set_defaults(func=cmd_init)
 
     validate = sub.add_parser(
         "validate", help="check a scenario end to end, without an output directory or a token"
@@ -256,6 +267,52 @@ def _blindness_lines(plan) -> list[str]:
     from .validation import describe_blindness
 
     return describe_blindness(plan.blindness, len(plan.scenario.cells))
+
+
+# --- init --------------------------------------------------------------------
+
+
+def cmd_init(args) -> int:
+    """Writes the skeleton of an experiment, and refuses to overwrite anything.
+
+    The skeleton is not runnable, deliberately: the validator is yours to write,
+    and `validate` refuses the fresh skeleton by name until it exists. See
+    `scaffold` for why nothing runnable may ship.
+    """
+    directory = args.directory
+    targets = {
+        "scenario.toml": scaffold_mod.SCENARIO,
+        "prompt.md": scaffold_mod.PROMPT,
+        "hypothesis.md": scaffold_mod.HYPOTHESIS,
+    }
+    if config_mod.discover(directory.resolve()) is None:
+        # No config anywhere above: write one here, or the first `validate` would
+        # refuse on the repository name before the operator has done anything wrong.
+        targets[config_mod.CONFIG_NAME] = scaffold_mod.CONFIG
+
+    existing = [name for name in targets if (directory / name).exists()]
+    if existing:
+        print(
+            f"refused: {', '.join(existing)} already in {directory}. "
+            f"init never overwrites; move them or point it elsewhere",
+            file=sys.stderr,
+        )
+        return 1
+
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, text in targets.items():
+        (directory / name).write_text(text)
+        print(f"  written {directory / name}")
+
+    print(
+        "\nYours to make it an experiment:\n"
+        f"  1. point [repos] my-repo at your repository, in {config_mod.CONFIG_NAME}\n"
+        "  2. set provider, model and the etalon tag in scenario.toml\n"
+        "  3. replace prompt.md with the task, and hypothesis.md with the bet\n"
+        "  4. write score.py - examples/validator.py in the trysquare repository is a whole one\n"
+        f"then, at no cost: trysquare validate {directory / 'scenario.toml'}"
+    )
+    return 0
 
 
 # --- validate ----------------------------------------------------------------

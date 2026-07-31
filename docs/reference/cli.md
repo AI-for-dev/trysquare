@@ -5,7 +5,19 @@ uv run python -m trysquare <command> [options]
 trysquare <command> [options]              # if installed
 ```
 
-`--output` roots everything that writes. Seven commands.
+`--output` roots everything that writes. Eight commands.
+
+## `init`
+
+Writes the skeleton of a new experiment - `scenario.toml`, `prompt.md`,
+`hypothesis.md`, and a `trysquare.toml` when none is found walking up - into a
+directory, refusing to overwrite anything. The validator is deliberately not
+written: nothing runnable ships, and `validate` refuses the fresh skeleton by
+name until `score.py` is yours.
+
+```bash
+trysquare init [directory]        # default: here
+```
 
 ## `run`
 

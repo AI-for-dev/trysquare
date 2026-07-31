@@ -37,7 +37,16 @@ class TestParser:
     def test_every_subcommand_exists(self):
         actions = [a for a in build_parser()._subparsers._group_actions if hasattr(a, "choices")]
         available = set(actions[0].choices)
-        assert available == {"run", "validate", "render", "replay", "compare", "parity", "form"}
+        assert available == {
+            "init",
+            "run",
+            "validate",
+            "render",
+            "replay",
+            "compare",
+            "parity",
+            "form",
+        }
 
     def test_the_bar_can_be_refused_on_every_command_that_draws_one(self):
         parser = build_parser()
@@ -82,6 +91,54 @@ class TestValidate:
         code, said = self.quietly(["validate", str(MACHINE)])
         assert code == 1
         assert "config" in said
+
+
+class TestInit:
+    """The skeleton is written once, refuses to overwrite, and is not runnable."""
+
+    def quietly(self, argv) -> tuple[int, str]:
+        import contextlib
+        import io
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = main(argv)
+        return code, stdout.getvalue() + stderr.getvalue()
+
+    def test_init_writes_the_skeleton_and_a_config_when_none_exists(self, tmp_path):
+        code, said = self.quietly(["init", str(tmp_path)])
+        assert code == 0
+        for name in ("scenario.toml", "prompt.md", "hypothesis.md", "trysquare.toml"):
+            assert (tmp_path / name).is_file(), name
+        assert "trysquare validate" in said
+
+    def test_init_never_overwrites(self, tmp_path):
+        (tmp_path / "scenario.toml").write_text("mine")
+        code, said = self.quietly(["init", str(tmp_path)])
+        assert code == 1
+        assert "never overwrites" in said
+        assert (tmp_path / "scenario.toml").read_text() == "mine"
+        assert not (tmp_path / "prompt.md").exists()
+
+    def test_a_fresh_skeleton_refuses_validation_by_name(self, tmp_path):
+        """The validator is deliberately not written: nothing runnable may ship."""
+        self.quietly(["init", str(tmp_path)])
+        code, said = self.quietly(["validate", str(tmp_path / "scenario.toml")])
+        assert code == 1
+        assert "score.py" in said
+
+
+class TestShippedExample:
+    def test_the_example_scenario_loads_and_dry_runs(self, tmp_path):
+        """The same anti-rot mechanism as examples/validator.py: run it for real."""
+        example = str(ROOT / "examples" / "scenario.toml")
+        argv = ["run", example, "-o", str(tmp_path), "--config", str(MACHINE), "--dry-run"]
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert main(argv) == 0
+        assert list(tmp_path.iterdir()) == []
 
 
 class TestDryRun:
