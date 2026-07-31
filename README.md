@@ -43,9 +43,11 @@ uv run trysquare run my-scenario.toml --output out --dry-run
 `--dry-run` shows the whole plan and writes nothing. Drop it to measure.
 
 No scenario ships with the tool: an experiment is about your repository and your
-question, and a shipped one would be somebody else's. **Writing a scenario** below is a
-complete file to start from, and `--dry-run` is where you find out it is wired
-correctly, for free.
+question, and a shipped one would be somebody else's. What ships instead is the shape:
+`trysquare init` writes a skeleton whose validator is deliberately yours to write, and
+`examples/scenario.toml` is a whole, readable scenario wired to the test fixture - the
+suite dry-runs it, so it cannot rot. **Writing a scenario** below walks the same file,
+and `--dry-run` is where you find out yours is wired correctly, for free.
 
 A `[repos]` entry may be a directory or a git URL. A URL is cloned once, at the scenario's
 etalon tag, under `workdir`, and every run clones from there - so nothing has to be cloned
@@ -58,13 +60,14 @@ uv run trysquare run my-scenario.toml --output out
 `trysquare` is a console script, so `uv tool install .` - or `pip install -e .` in a
 virtual environment - puts the same command on PATH without `uv run` in front of it.
 `uv run trysquare --help` lists the subcommands, and `uv run trysquare <command>
---help` the flags of one. `python -m trysquare` runs the same seven subcommands from
+--help` the flags of one. `python -m trysquare` runs the same eight subcommands from
 an installed environment, which is what the tests use.
 
 ## Commands
 
 | command | what it does |
 | --- | --- |
+| `init` | writes the skeleton of a new experiment, refusing to overwrite |
 | `run` | measures a scenario |
 | `validate` | checks a scenario end to end - files, config entries, preconditions - without an output directory or a token |
 | `render` | rebuilds tables from stored measures, without remeasuring; `--html` rebuilds the session pages too |
