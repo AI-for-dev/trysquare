@@ -3,6 +3,17 @@
 A worked walkthrough. For the exhaustive key list see
 {doc}`../reference/scenario-schema`.
 
+Two starting points, both alive rather than copied out of this page:
+
+```bash
+trysquare init my-experiment      # the shape: every mandatory field, as a placeholder
+```
+
+`examples/scenario.toml` in the repository is the same scenario finished - one axis, two
+cells, a real validator - wired to the test fixture, and the suite dry-runs it so it
+cannot rot. Start from the skeleton to be told what is mandatory; start from the example
+to read a whole one.
+
 ## Start from the question
 
 A scenario answers one question, and the question decides the cells. Write it as the
@@ -199,11 +210,16 @@ validator failed is invalid. Both are global.
 ## Check it before spending
 
 ```bash
-trysquare run mine.toml -o out --dry-run
+trysquare validate mine.toml
 ```
 
 This loads and validates everything, checks every referenced path, verifies the thinking
-precondition, reports how blind any judge is, and writes nothing.
+precondition, reports how blind any judge is, and needs no output directory at all. The
+refusals are shared with `run`, so it cannot pass what a run would reject.
+
+Once the file is settled, `run --dry-run` answers the other question - what the matrix
+will cost - by adding the plan: the runs to perform, a duration bound, and a spend
+estimate from this experiment's archive. It writes nothing either.
 
 Then smoke it small:
 

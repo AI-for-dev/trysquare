@@ -41,7 +41,7 @@ inconvenient.
 :link: guide/getting-started
 :link-type: doc
 
-Install, run the shipped example, read the output. Fifteen minutes.
+Install, write a skeleton, plan a run for free, measure, read the output.
 :::
 
 :::{grid-item-card} {octicon}`book` Core concepts

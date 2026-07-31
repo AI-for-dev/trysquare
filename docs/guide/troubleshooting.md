@@ -3,10 +3,14 @@
 Every refusal below is deliberate. The message is meant to be enough on its own; this
 page adds the reasoning.
 
+Most of them are reached by `trysquare validate <scenario>`, which costs nothing and
+needs no output directory. When something is wrong with a scenario, that is the cheap
+place to find out.
+
 ## "these files the scenario references do not exist"
 
 ```text
-error: these files the scenario references do not exist:
+refused: these files the scenario references do not exist:
   cell 'rule / off' -> context: /path/experiments/context/AGENTS.md
 Paths are relative to the scenario file.
 ```
@@ -26,6 +30,30 @@ looked normal in the log.
 Now a value that looks like a path and does not exist raises, and the whole scenario is
 checked **before the first token**.
 :::
+
+A skeleton straight out of `trysquare init` hits this on purpose, and names the one
+file it deliberately did not write:
+
+```text
+refused: these files the scenario references do not exist:
+  validation[script].command: /path/my-experiment/score.py
+```
+
+Nothing runnable ships: an experiment is about your repository and your question, so a
+shipped validator would score somebody else's. Write `score.py` -
+`examples/validator.py` is a whole one - and the refusal goes away.
+
+## "init never overwrites"
+
+```text
+refused: scenario.toml, prompt.md, hypothesis.md already in /path/my-experiment.
+init never overwrites; move them or point it elsewhere
+```
+
+Task material is experimental input: once a matrix has been published from a prompt,
+replacing that prompt with a placeholder changes what the numbers mean. So `init`
+refuses the whole directory rather than skipping the files it would clobber - a partial
+write leaves a scenario half from one experiment and half from a skeleton.
 
 ## "refused: the scenario declares thinking = ... "
 
@@ -165,6 +193,18 @@ published; `--resume` completes it, and a failed validator is re-scored by
 Expected after `--only`. Publishing a partial matrix as though it were whole is what
 this prevents.
 
+## "`--only` names no cell of this scenario"
+
+```text
+refused: --only names no cell of this scenario: 'rulle' (did you mean 'rule'?)
+Cells: nothing, rule
+```
+
+A cell name that matches nothing used to be *filtered* rather than refused, so
+`--only` with a typo in it ran zero runs and looked like an experiment with nothing
+left to do. The refusal lists every cell, because a grid names its cells by joining
+axis values (`rule / high`) and the exact spelling is easier to copy than to guess.
+
 ## A harness clone failed
 
 ```text
@@ -201,6 +241,36 @@ The pinned clone lives under `workdir`, which is disposable and which macOS purg
 reboot. Once it is gone, the next `--resume` clones it again. That is intended: the
 durable archive keeps sources, and the runs already paid for are still on disk and are not
 paid for twice.
+
+## "[repos] has no entry"
+
+```text
+error: [repos] has no entry 'tinyy' (known: tiny) (did you mean 'tiny'?). Add it to
+/path/trysquare.toml
+```
+
+The scenario names a repository logically and the config resolves the name, so the
+refusal says what is known and which file to add the line to. The suggestion appears
+only when the name is close to one that exists: a suggestion that is usually wrong
+teaches the reader to skip all of them, so a far miss stays silent.
+
+## "no trysquare.toml was found"
+
+```text
+error: the scenario names the repository 'tiny', and no trysquare.toml was found
+walking up from the scenario's directory, so [repos] declares nothing. Create one
+beside the scenario; two lines are enough:
+  [repos]
+  tiny = "/path/to/the/checkout"  # or a git URL
+```
+
+A different failure from the one above, and deliberately worded differently: there is
+no file to edit. "Add it to trysquare.toml" reads as *edit that file* when the actual
+fix is to create one, so the message writes out the two lines instead.
+
+The search walks up from the **scenario's** directory, not the shell's: an experiment
+carried to another machine must keep resolving against the config beside it.
+`trysquare init` writes one when it finds none.
 
 ## A repository path does not exist
 
