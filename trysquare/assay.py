@@ -57,6 +57,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from . import repo
+from .measure import events
 from .scenario import split_command
 
 USAGE = "usage: <validator> <context.json>"
@@ -172,14 +173,7 @@ def _tool_calls(session: str):
     order: list[str] = []
     failures: dict[str, bool] = {}
 
-    for line in session.split("\n"):
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for event in events(session):
         if event.get("type") != "message":
             continue
         message = event.get("message") or {}

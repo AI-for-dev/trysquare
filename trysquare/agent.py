@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .measure import consumed_tokens, strip
+from .measure import consumed_tokens, events, strip
 
 PI = "pi"
 
@@ -150,13 +150,7 @@ def run_until_productive(
 
 def first_error(stream: str) -> str:
     """The first error the stream reported, for a readable failure line."""
-    for line in stream.split("\n"):
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for event in events(stream):
         for key in ("errorMessage", "error", "finalError"):
             if event.get(key):
                 return str(event[key])

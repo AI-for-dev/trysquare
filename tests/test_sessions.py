@@ -88,6 +88,15 @@ def rendered(capsys, argv) -> tuple[int, str]:
     return code, captured.out + captured.err
 
 
+class TestWriteJson:
+    def test_a_rewrite_of_the_same_data_is_byte_identical(self, output):
+        """What lets `replay --rescore` promise to leave untouched what it did not change."""
+        output.prepare()
+        runs = [Run(id="aa", cell="nothing / off", repetition=0, usage={"cost": 0.5}, state=VALID)]
+        first = output.write_measures(runs).read_bytes()
+        assert output.write_measures(runs).read_bytes() == first
+
+
 class TestArchiving:
     def test_sessions_land_beside_the_run(self, output, session_dir):
         copied = output.archive_sessions("abcd1234", session_dir("one.jsonl", "two.jsonl"))
