@@ -187,6 +187,11 @@ Two things are said rather than left to be discovered:
 Without `pi` on `PATH` the command refuses with a message and exit 1, rather than writing
 nothing and claiming success.
 
+Whenever `synthesis.md` is written - by `run`, `render` or `replay --rescore` -
+`synthesis.html` is written beside it: the same synthesis as one self-contained
+page, no script and no external asset, linking each run's session pages when
+`render --html` has produced them. An archive must render offline in five years.
+
 ## `replay`
 
 Reconstitutes archived runs so they can be re-scored. Costs no tokens.

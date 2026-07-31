@@ -83,6 +83,7 @@ out/rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10/
   state.json      cells, runs, valid / empty / failed, attempt counters
   measures.json   one line per run
   synthesis.md    scores, costs, gaps and verdicts, written when the matrix is complete
+  synthesis.html  the same synthesis as a self-contained page, linking the session pages
   runs/<id>/      context, configuration, diff, validation output
     session/*.jsonl   the agent's own trace, one file per attempt
     session/*.html    the same trace as a page, on `render --html`
@@ -289,6 +290,7 @@ trysquare/
   validation.py validators, blinding, preconditions                     |
   assay.py      the base a validator is written on                       |
   runner.py     orchestration: interleaving, concurrency, archiving      |
+  pages.py      the synthesis as a self-contained page                   |
   progress.py   a pinned bar for the loops that take hours               |
   cli.py        argparse, overrides, reporting                          /
 
@@ -311,9 +313,6 @@ to ask for it.
 
 Stated rather than left to be discovered:
 
-- **HTML for the synthesis.** `synthesis.html` and a `pages` command are designed but
-  not written; only `synthesis.md` is produced. Readable transcripts *are* produced -
-  `render --html` writes one page per archived session, in the run's own directory.
 - **A judge is not re-scored.** `replay --rescore` re-runs script validators and
   reuses the archived judge verdict, because re-running a judge costs tokens and
   `replay` exists on the promise that it costs none. Correcting a judged metric

@@ -944,6 +944,12 @@ class TestReplayRescore:
         self.replay("--rescore")
         assert (self.experiment / "synthesis.md").is_file()
 
+    def test_the_synthesis_page_is_written_beside_the_markdown(self):
+        self.replay("--rescore")
+        page = (self.experiment / "synthesis.html").read_text()
+        assert page.startswith("<!doctype html>")
+        assert "<table>" in page
+
     def test_without_rescore_nothing_is_rewritten(self):
         before = (self.experiment / "measures.json").read_text()
         assert 0 == self.replay()
