@@ -14,10 +14,11 @@ import pytest
 from trysquare import parity, validation
 from trysquare.measure import final_text
 from trysquare.runner import looks_like_path, preflight, read_brick, referenced_paths
-from trysquare.scenario import Validator, parse
+from trysquare.scenario import Validator, load, parse
 from tests.test_scenario import GRID
 
 ROOT = Path(__file__).resolve().parent.parent
+SCENARIO = ROOT / "tests" / "fixtures" / "matrix.toml"
 
 
 class TestBrickResolution:
@@ -64,14 +65,16 @@ class TestPreflight:
         assert missing
         assert any("context" in m for m in missing)
 
-    def test_the_shipped_scenarios_pass_preflight(self):
-        """Which is what the incident above should have been caught by."""
-        from trysquare.scenario import load
+    def test_the_scenario_the_repository_carries_passes_preflight(self):
+        """Which is what the incident above should have been caught by.
 
-        for f in sorted((ROOT / "scenarios").glob("*.toml")):
-            with self.subTest(scenario=f.name):
-                s = load(f)
-                assert preflight(s, s.path.parent) == []
+        It swept `scenarios/*.toml` until that directory stopped shipping, and then went
+        on passing: no files, no iterations, green. A check that cannot fail is the very
+        defect this module is about, so it names the one scenario still in the tree
+        rather than a glob that is allowed to come back empty.
+        """
+        s = load(SCENARIO)
+        assert preflight(s, s.path.parent) == []
 
 
 class TestFinalText:
@@ -120,7 +123,6 @@ class TestJudgeDossier:
     def test_a_stale_verdict_is_removed(self, tmp_path):
         """Otherwise a previous attempt's answer would be read as this one's."""
         d = tmp_path
-        d.mkdir(exist_ok=True)
         (d / validation.JUDGE_VERDICT).write_text('{"metrics": {"stale": true}}')
         validation.judge_dossier(d, self.validator(), "r", {})
         assert not (d / validation.JUDGE_VERDICT).exists()
