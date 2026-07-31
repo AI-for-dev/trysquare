@@ -9,16 +9,17 @@ It is what replaced the example repository trysquare used to carry in its own so
 that was somebody else's project, and nothing here depends on it.
 """
 
+import itertools
 import json
 import shutil
 import subprocess
 import sys
-import tempfile
-import unittest
 from pathlib import Path
 
+import pytest
+
 from tests.gitrepo import a_repo
-from trysquare import validation
+from trysquare import repo, validation
 from trysquare.scenario import Validator
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,44 +49,50 @@ def fixture_files() -> dict[str, str]:
     }
 
 
-def a_measured_run(
-    change: dict | None = None,
-    response: str | None = None,
-    command: str | None = None,
-) -> Path:
+@pytest.fixture
+def a_measured_run(tmp_path):
     """A clone standing for one finished run, plus the context a validator is handed.
 
     Built from the versioned fixture: `git init` on a copy, so the two `git` primitives
     the base uses are exercised for real rather than faked.
     """
-    where = Path(tempfile.mkdtemp())
-    source = a_repo(fixture_files())
 
-    clone = where / "clone"
-    shutil.copytree(source, clone)
-    for name, text in (change or {}).items():
-        (clone / name).parent.mkdir(parents=True, exist_ok=True)
-        (clone / name).write_text(text)
+    runs = itertools.count()
 
-    from trysquare import repo
+    def make(
+        change: dict | None = None,
+        response: str | None = None,
+        command: str | None = None,
+    ) -> Path:
+        where = tmp_path / f"run{next(runs)}"
+        where.mkdir()
+        source = a_repo(fixture_files())
 
-    directory = where / "validation"
-    return validation.write_context(
-        directory,
-        repo=clone,
-        etalon="etalon-v1",
-        etalon_checkout=source,
-        prompt_file=None,
-        session_dir=where / "session",
-        trace=None,
-        cell="none",
-        repetition=0,
-        test_command=command or TEST_COMMAND,
-        touched=repo.changed_files(clone),
-        files=repo.etalon_files(source, "etalon-v1"),
-        declared=("delivered", "in_scope", "tests", "touched", "documented"),
-        response_file=_prose(where, response) if response is not None else None,
-    )
+        clone = where / "clone"
+        shutil.copytree(source, clone)
+        for name, text in (change or {}).items():
+            (clone / name).parent.mkdir(parents=True, exist_ok=True)
+            (clone / name).write_text(text)
+
+        directory = where / "validation"
+        return validation.write_context(
+            directory,
+            repo=clone,
+            etalon="etalon-v1",
+            etalon_checkout=source,
+            prompt_file=None,
+            session_dir=where / "session",
+            trace=None,
+            cell="none",
+            repetition=0,
+            test_command=command or TEST_COMMAND,
+            touched=repo.changed_files(clone),
+            files=repo.etalon_files(source, "etalon-v1"),
+            declared=("delivered", "in_scope", "tests", "touched", "documented"),
+            response_file=_prose(where, response) if response is not None else None,
+        )
+
+    return make
 
 
 def _prose(where: Path, text: str) -> Path:
@@ -106,20 +113,20 @@ def score(context: Path) -> dict:
     return result.payload
 
 
-class TestTheExampleScoresARun(unittest.TestCase):
-    def test_a_clean_fix_inside_scope(self):
+class TestTheExampleScoresARun:
+    def test_a_clean_fix_inside_scope(self, a_measured_run):
         payload = score(
             a_measured_run(
                 {"counter.py": "def total(items):\n    return sum(items)  # tidied\n"},
                 response="It adds up the basket. " * 10,
             )
         )
-        self.assertEqual(payload["metrics"]["delivered"], True)
-        self.assertEqual(payload["metrics"]["in_scope"], True)
-        self.assertEqual(payload["metrics"]["tests"], True)
-        self.assertEqual(payload["metrics"]["touched"], ["counter.py"])
+        assert payload["metrics"]["delivered"] is True
+        assert payload["metrics"]["in_scope"] is True
+        assert payload["metrics"]["tests"] is True
+        assert payload["metrics"]["touched"] == ["counter.py"]
 
-    def test_a_fix_that_reached_outside_says_where(self):
+    def test_a_fix_that_reached_outside_says_where(self, a_measured_run):
         payload = score(
             a_measured_run(
                 {
@@ -129,10 +136,10 @@ class TestTheExampleScoresARun(unittest.TestCase):
                 response="short",
             )
         )
-        self.assertEqual(payload["metrics"]["in_scope"], False)
-        self.assertIn("notes.md", payload["reasons"]["in_scope"])
+        assert payload["metrics"]["in_scope"] is False
+        assert "notes.md" in payload["reasons"]["in_scope"]
 
-    def test_a_suite_that_cannot_run_is_unjudged_and_the_rest_still_scores(self):
+    def test_a_suite_that_cannot_run_is_unjudged_and_the_rest_still_scores(self, a_measured_run):
         """The payoff of the whole design, on a cause that is version-independent.
 
         This assertion used to ride on a gutted test file, which leaves `unittest discover`
@@ -148,11 +155,11 @@ class TestTheExampleScoresARun(unittest.TestCase):
         payload = score(
             a_measured_run({"counter.py": "x = 1\n"}, command="/nowhere/runner")
         )
-        self.assertNotIn("tests", payload["metrics"])
-        self.assertIn("tests", payload["unjudged"])
-        self.assertEqual(payload["metrics"]["delivered"], True)
+        assert "tests" not in payload["metrics"]
+        assert "tests" in payload["unjudged"]
+        assert payload["metrics"]["delivered"] is True
 
-    def test_a_broken_fix_names_the_test_that_broke(self):
+    def test_a_broken_fix_names_the_test_that_broke(self, a_measured_run):
         """`unittest` is the one runner where the **fallback** is the better answer: it
         prints its summary line *after* the failure detail, so anchoring on a marker would
         cut off the very thing a reader needs. The generous tail keeps it, and says it is a
@@ -163,55 +170,55 @@ class TestTheExampleScoresARun(unittest.TestCase):
                 response="I broke it. " * 10,
             )
         )
-        self.assertEqual(payload["metrics"]["tests"], False)
-        self.assertIn("test_it_adds_up", payload["reasons"]["tests"])
+        assert payload["metrics"]["tests"] is False
+        assert "test_it_adds_up" in payload["reasons"]["tests"]
 
-    def test_an_agent_that_did_nothing_is_not_a_perfect_score(self):
+    def test_an_agent_that_did_nothing_is_not_a_perfect_score(self, a_measured_run):
         """The metric that exists because a run which changed nothing consumes tokens,
         passes the tests by construction, and overflows nothing."""
         payload = score(a_measured_run(response="I did nothing at all. " * 5))
-        self.assertEqual(payload["metrics"]["delivered"], False)
-        self.assertEqual(payload["metrics"]["touched"], [])
+        assert payload["metrics"]["delivered"] is False
+        assert payload["metrics"]["touched"] == []
 
-    def test_a_touched_set_comes_out_sorted(self):
+    def test_a_touched_set_comes_out_sorted(self, a_measured_run):
         payload = score(
             a_measured_run(
                 {"counter.py": "x = 1\n", "z.py": "y = 2\n", "a.py": "z = 3\n"},
                 response="everywhere " * 30,
             )
         )
-        self.assertEqual(payload["metrics"]["touched"], ["a.py", "counter.py", "z.py"])
+        assert payload["metrics"]["touched"] == ["a.py", "counter.py", "z.py"]
 
 
-class TestTheExampleDegradesHonestly(unittest.TestCase):
-    def test_a_metric_it_cannot_answer_leaves_the_metrics(self):
+class TestTheExampleDegradesHonestly:
+    def test_a_metric_it_cannot_answer_leaves_the_metrics(self, a_measured_run):
         """No prose archived, so `documented` is unjudged - and every other metric of the
         same run still scores. This is the shape a re-scoring takes."""
         payload = score(a_measured_run({"counter.py": "x = 1\n"}))
-        self.assertNotIn("documented", payload["metrics"])
-        self.assertIn("documented", payload["unjudged"])
-        self.assertEqual(payload["metrics"]["delivered"], True)
+        assert "documented" not in payload["metrics"]
+        assert "documented" in payload["unjudged"]
+        assert payload["metrics"]["delivered"] is True
 
-    def test_the_reason_names_what_was_missing(self):
+    def test_the_reason_names_what_was_missing(self, a_measured_run):
         payload = score(a_measured_run({"counter.py": "x = 1\n"}))
-        self.assertIn("response", payload["unjudged"]["documented"])
+        assert "response" in payload["unjudged"]["documented"]
 
-    def test_a_short_answer_is_scored_rather_than_unjudged(self):
+    def test_a_short_answer_is_scored_rather_than_unjudged(self, a_measured_run):
         """The distinction the whole base is built around: a bad answer and no answer are
         different facts."""
         payload = score(a_measured_run({"counter.py": "x = 1\n"}, response="terse"))
-        self.assertEqual(payload["metrics"]["documented"], False)
-        self.assertNotIn("documented", payload["unjudged"])
+        assert payload["metrics"]["documented"] is False
+        assert "documented" not in payload["unjudged"]
 
 
-class TestTheExampleIsSmallEnoughToBeAnExample(unittest.TestCase):
+class TestTheExampleIsSmallEnoughToBeAnExample:
     def test_it_is_runnable_by_hand(self):
         """The contract is "any executable", so a reader must be able to try it."""
         done = subprocess.run(
             [sys.executable, str(EXAMPLE)], capture_output=True, text=True
         )
-        self.assertEqual(done.returncode, 2)
-        self.assertIn("context.json", done.stderr)
+        assert done.returncode == 2
+        assert "context.json" in done.stderr
 
     def test_the_scoring_function_is_short(self):
         """Not style policing: if the example needs fifty lines, the base failed and this
@@ -224,14 +231,10 @@ class TestTheExampleIsSmallEnoughToBeAnExample(unittest.TestCase):
             for line in source[start:end]
             if line.strip() and not line.strip().startswith("#")
         ]
-        self.assertLess(len(code), 25, "\n".join(code))
+        assert len(code) < 25, "\n".join(code)
 
-    def test_the_context_it_reads_is_the_one_the_harness_writes(self):
+    def test_the_context_it_reads_is_the_one_the_harness_writes(self, a_measured_run):
         """Read through `Assay`, so nothing here reimplements the context's shape."""
         context = json.loads(a_measured_run({"counter.py": "x = 1\n"}).read_text())
         for key in ("repo", "etalon", "touched", "files", "test_command", "declared"):
-            self.assertIn(key, context)
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert key in context
