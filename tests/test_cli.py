@@ -19,7 +19,8 @@ from trysquare.cli import build_parser, main
 from trysquare.scenario import parse
 
 ROOT = Path(__file__).resolve().parent.parent
-SCENARIO = str(ROOT / "scenarios" / "2x3.toml")
+SCENARIO = str(ROOT / "tests" / "fixtures" / "matrix.toml")
+MACHINE = ROOT / "tests" / "fixtures" / "machine.toml"
 
 
 def out() -> Path:
@@ -62,7 +63,8 @@ class TestDryRun(unittest.TestCase):
 
     def test_a_dry_run_writes_nothing_and_spends_nothing(self):
         directory = out()
-        self.assertEqual(self.quietly(["run", SCENARIO, "--output", str(directory), "--dry-run"]), 0)
+        argv = ["run", SCENARIO, "--output", str(directory), "--config", str(MACHINE), "--dry-run"]
+        self.assertEqual(self.quietly(argv), 0)
         self.assertEqual(list(directory.iterdir()), [])
 
     def test_changing_repetitions_targets_another_directory(self):
@@ -85,14 +87,14 @@ class TestRemoteRepository(unittest.TestCase):
     cannot accidentally succeed against a real server.
     """
 
-    URL = "https://example.invalid/neon.git"
+    URL = "https://example.invalid/tiny.git"
 
     def setUp(self):
         self.home = Path(tempfile.mkdtemp())
         self.workdir = self.home / "work"
         self.config = self.home / "trysquare.toml"
         self.config.write_text(
-            f'[repos]\nneon = "{self.URL}"\n'
+            f'[repos]\ntiny = "{self.URL}"\n'
             f'[harness]\nsubagent = "{self.home}"\n'
             f'[defaults]\nworkdir = "{self.workdir}"\n'
         )
@@ -158,7 +160,7 @@ class TestRunPlan(unittest.TestCase):
         from trysquare.scenario import load
 
         s = load(SCENARIO)
-        c = config_mod.load(ROOT / "trysquare.toml")
+        c = config_mod.load(MACHINE)
         return runner.resolve(s, c, out(), overrides=overrides)
 
     def test_runs_are_interleaved_across_cells(self):
@@ -182,7 +184,7 @@ class TestRunPlan(unittest.TestCase):
         from trysquare.scenario import load
 
         plan = runner.resolve(
-            load(SCENARIO), config_mod.load(ROOT / "trysquare.toml"), out(), only=("rule / off",)
+            load(SCENARIO), config_mod.load(MACHINE), out(), only=("rule / off",)
         )
         self.assertEqual(plan.runs, 10)
         self.assertTrue(any("INCOMPLETE" in n for n in plan.notes))
@@ -210,7 +212,7 @@ class TestCompletionOrder(unittest.TestCase):
 
         plan = runner.resolve(
             load(SCENARIO),
-            config_mod.load(ROOT / "trysquare.toml"),
+            config_mod.load(MACHINE),
             out(),
             overrides={"repetitions": 1, "concurrency": 6},
         )
@@ -500,7 +502,7 @@ SCENARIO_TOML = """
 [scenario]
 name = "t"
 [task]
-repo = "neon"
+repo = "my-repo"
 etalon = "etalon-v1"
 prompt = "do the thing"
 [agent]
@@ -548,7 +550,7 @@ class TestReplayRescore(unittest.TestCase):
         self.source = a_repo({"a.js": "one\n", "game/b.js": "two\n"})
 
         (self.home / "trysquare.toml").write_text(
-            f'[repos]\nneon = "{self.source}"\n'
+            f'[repos]\nmy-repo = "{self.source}"\n'
             f'[defaults]\nworkdir = "{self.home / "work"}"\n'
         )
         self.scenario = self.home / "s.toml"

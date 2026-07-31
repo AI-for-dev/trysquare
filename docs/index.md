@@ -98,20 +98,20 @@ reference/api
 pip install -e .                                   # or: uv sync
 cp trysquare.toml my-trysquare.toml                      # point [repos] at your repository
 
-uv run trysquare run scenarios/2x3.toml -o out --dry-run   # plan, spend nothing
-uv run trysquare run scenarios/2x3.toml -o out             # measure
+uv run trysquare run my-scenario.toml -o out --dry-run     # plan, spend nothing
+uv run trysquare run my-scenario.toml -o out               # measure
 ```
 
 ```{code-block} toml
 :caption: The shape of a scenario
 
 [scenario]
-name = "2x3"
+name = "rule-vs-ticket"
 
 [task]
-repo = "neon"                # a logical name, resolved by the config file
+repo = "my-repo"             # a logical name, resolved by the config file
 etalon = "etalon-v1"         # a tag, cloned; never the working tree
-prompt = "../bricks/vague-ticket.md"
+prompt = "tickets/vague.md"  # relative to the scenario; inline text works too
 
 [agent]
 provider = "ilaas"           # mandatory, never inherited
@@ -128,18 +128,18 @@ context = ["nothing", "rule"]
 thinking = ["off", "high"]
 
 [values.context.rule]
-context = "../bricks/AGENTS.md"
+context = "AGENTS.md"
 
 [values.thinking.high]
 thinking = "high"
 
 [[validation]]
 mode = "script"
-command = "../validators/neon.py"
-metrics = ["overflow", "delivered", "tests"]
+command = "score.py"
+metrics = ["in_scope", "delivered", "tests"]
 
 [verdict]
-criterion = "overflow"
+criterion = "in_scope"
 reference = { context = "nothing", thinking = "off" }
 validity = ["delivered", "tests"]
 ```

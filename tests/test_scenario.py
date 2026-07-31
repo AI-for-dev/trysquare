@@ -11,10 +11,10 @@ from trysquare.scenario import ScenarioError, parse, split_command
 
 MINIMAL = {
     "scenario": {"name": "t"},
-    "task": {"repo": "neon", "etalon": "etalon-v1", "prompt": "do the thing"},
+    "task": {"repo": "my-repo", "etalon": "etalon-v1", "prompt": "do the thing"},
     "agent": {"provider": "ilaas", "model": "gemma-4-31b", "thinking": "off"},
     "protocol": {"repetitions": 10, "concurrency": 5, "timeout": 900},
-    "variants": {"none": {}, "+rule": {"context": "bricks/AGENTS.md"}},
+    "variants": {"none": {}, "+rule": {"context": "context/AGENTS.md"}},
     "validation": [{"mode": "script", "command": "v.py", "metrics": ["overflow", "delivered"]}],
     "verdict": {"criterion": "overflow", "reference": "none"},
 }
@@ -23,7 +23,7 @@ GRID = MINIMAL | {
     "variants": {},
     "axes": {"context": ["none", "rule", "ticket"], "thinking": ["off", "high"]},
     "values": {
-        "context": {"rule": {"context": "bricks/AGENTS.md"}, "ticket": {"prompt": "bricks/t.md"}},
+        "context": {"rule": {"context": "context/AGENTS.md"}, "ticket": {"prompt": "tickets/t.md"}},
         "thinking": {"high": {"thinking": "high"}},
     },
     "verdict": {"criterion": "overflow", "reference": {"context": "none", "thinking": "off"}},
@@ -75,7 +75,7 @@ class TestTheConfigFileHandedIn(unittest.TestCase):
     """
 
     CONFIG = {
-        "repos": {"neon": "../neon"},
+        "repos": {"my-repo": "../my-repo"},
         "harness": {"subagent": "~/Work/Pi/subagent"},
         "defaults": {"workdir": "$TMPDIR/trysquare", "concurrency": 5},
     }
@@ -133,7 +133,7 @@ class TestGrid(unittest.TestCase):
     def test_deltas_accumulate_across_axes(self):
         s = parse(GRID)
         cell = s.cell("rule / high")
-        self.assertEqual(cell.delta, {"context": "bricks/AGENTS.md", "thinking": "high"})
+        self.assertEqual(cell.delta, {"context": "context/AGENTS.md", "thinking": "high"})
 
     def test_a_misspelled_axis_value_is_loud(self):
         """The counterpart of leaving the baseline implicit.
@@ -352,8 +352,8 @@ class TestPrepareSteps(unittest.TestCase):
         self.assertEqual(s.task["prepare"], ["npm ci", "npm run build"])
 
     def test_no_prepare_is_the_common_case(self):
-        """NEON has no dependency to install, and that is what makes a validation
-        replayable from a tag and a diff months later."""
+        """A repository with nothing to install is what makes a validation replayable
+        from a tag and a diff months later."""
         self.assertEqual(parse(scoring_tests(test_command="npm test")).task.get("prepare"), None)
 
     def test_a_shell_word_in_prepare_is_refused_too(self):

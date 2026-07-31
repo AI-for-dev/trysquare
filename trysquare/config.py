@@ -87,7 +87,7 @@ class Config:
     def repo(self, name: str) -> Path:
         """Resolves a logical repository name to a directory on this machine.
 
-        A scenario writes `repo = "neon"`. It carries no machine path, which is
+        A scenario writes `repo = "my-repo"`. It carries no machine path, which is
         what makes it portable and keeps one author's directory layout out of an
         experiment file.
 

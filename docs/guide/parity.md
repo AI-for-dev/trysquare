@@ -127,7 +127,7 @@ That last one is the reason layer 4 exists. It makes the defect that rendered a 
 cell identical to its baseline in every published matrix unable to recur silently.
 
 ```text
-layer 4 - smoke pass over 2x3_etalon-v1_ilaas_gemma-4-31b_n2
+layer 4 - smoke pass over rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n2
   12 sessions checked for the declared thinking level
 
   every mechanical criterion holds. No statistical claim: a smoke

@@ -34,11 +34,11 @@ config file resolves that name:
 ```{code-block} toml
 :caption: trysquare.toml
 [repos]
-neon = "../neon"             # relative paths are relative to this file
-# neon = "https://github.com/org/neon.git"      # a URL works too
+my-repo = "../my-repo"       # relative paths are relative to this file
+# my-repo = "https://github.com/org/my-repo.git"     # a URL works too
 
 [harness]
-subagent = "~/Work/Pi/subagent"
+subagent = "~/work/my-extension"
 
 [defaults]
 workdir = "$TMPDIR/trysquare"
@@ -62,14 +62,14 @@ to be cloned by hand first. See [`[repos]`](../reference/config-schema.md#repos)
 ## Plan a run without spending anything
 
 ```bash
-uv run python -m trysquare run scenarios/2x3.toml --output out --dry-run
+uv run python -m trysquare run my-scenario.toml --output out --dry-run
 ```
 
 ```text
 A project rule against a well written ticket, at two reasoning budgets
   6 cells x 10 repetitions
-  etalon etalon-v1 of /path/to/neon
-  output out/2x3_etalon-v1_ilaas_gemma-4-31b_n10
+  etalon etalon-v1 of /path/to/my-repo
+  output out/rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10
   60 runs to perform
     3b72b8b4  careful ticket / high  #0
     78ef8aaf  careful ticket / off  #0
@@ -94,7 +94,7 @@ false, and a dry run against an existing experiment reset its ledger.
 ## Measure
 
 ```bash
-uv run python -m trysquare run scenarios/2x3.toml --output out
+uv run python -m trysquare run my-scenario.toml --output out
 ```
 
 ```text
@@ -113,7 +113,7 @@ The harness checks what it can before spending anything:
 
 ```text
 error: these files the scenario references do not exist:
-  cell 'rule / off' -> context: /path/to/bricks/AGENTS.md
+  cell 'rule / off' -> context: /path/to/AGENTS.md
 Paths are relative to the scenario file.
 ```
 
@@ -129,7 +129,7 @@ Both are deliberate. See {doc}`troubleshooting`.
 ## Read the output
 
 ```text
-out/2x3_etalon-v1_ilaas_gemma-4-31b_n10/
+out/rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10/
   state.json      per-run ledger: cell, state, attempt count
   measures.json   one line per run, the raw material every table is rebuilt from
   synthesis.md    the score, cost and gap tables, and the verdicts
@@ -200,8 +200,8 @@ Measuring and scoring are separate. When you find a scoring defect - and you wil
 fixing it must not cost another matrix:
 
 ```bash
-uv run python -m trysquare render scenarios/2x3.toml -o out
-uv run python -m trysquare render scenarios/2x3.toml -o out --reference "rule / off"
+uv run python -m trysquare render my-scenario.toml -o out
+uv run python -m trysquare render my-scenario.toml -o out --reference "rule / off"
 ```
 
 The second writes `synthesis_ref-rule-off.md` from the same measures. A reference is

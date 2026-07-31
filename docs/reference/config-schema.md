@@ -27,19 +27,19 @@ Measurable repositories, by logical name.
 
 ```toml
 [repos]
-neon = "../neon"                  # relative to this file, not to the cwd
+my-repo = "../my-repo"            # relative to this file, not to the cwd
 other = "/absolute/path/ok/too"
 remote = "https://github.com/org/repo.git"     # a URL works too
 ```
 
-A scenario writes `repo = "neon"`. Relative paths resolve against the config file,
+A scenario writes `repo = "my-repo"`. Relative paths resolve against the config file,
 because the config describes a machine and where the operator happens to be standing
 is not part of it.
 
 An unknown name names what is known:
 
 ```text
-[repos] has no entry 'ghost' (known: neon). Add it to /path/to/trysquare.toml
+[repos] has no entry 'ghost' (known: my-repo, other, remote). Add it to /path/to/trysquare.toml
 ```
 
 ### A URL instead of a directory

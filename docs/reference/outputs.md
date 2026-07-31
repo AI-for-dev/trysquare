@@ -35,7 +35,7 @@ The ledger, and what makes a matrix resumable.
 
 ```json
 {
-  "scenario": "2x3",
+  "scenario": "rule-vs-ticket",
   "etalon": "etalon-v1",
   "provider": "ilaas",
   "model": "gemma-4-31b",
@@ -218,7 +218,7 @@ is lost because `replay` rebuilds a tree from a tag and a diff.
 
 ```text
 <workdir>/
-├── sources/neon-3f2a1b9c-etalon-v1/   a [repos] URL, pinned once at the tag
+├── sources/my-repo-3f2a1b9c-etalon-v1/  a [repos] URL, pinned once at the tag
 ├── harness/subagent-v1.2/             a [harness] brick, pinned once at its tag
 └── <experiment>/<run id>/             one clone, session and trace per run
 ```

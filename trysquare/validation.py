@@ -235,7 +235,15 @@ def run_script(validator: Validator, context: Path, timeout: int, cwd: Path | No
 
 JUDGE_REQUEST = "judge-request.json"
 JUDGE_VERDICT = "verdict.json"
-JUDGE_BRICK = "bricks/judge-tool.ts"
+
+# The judge's extension ships **inside the package**, next to the code that runs it,
+# rather than in a directory of experiment material beside it. Two reasons, and the
+# second is the one that decided it: it is not a per-experiment choice, so it must not
+# live where per-experiment choices live; and an installed wheel has no repository
+# around it, so a path resolved against the sources would exist only for a clone. Being
+# an importable constant is what lets a validator written in Python drive a judge with
+# the same brick the harness uses, instead of copying it.
+JUDGE_BRICK = Path(__file__).resolve().parent / "judge-tool.ts"
 
 
 def judge_dossier(

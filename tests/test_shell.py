@@ -94,16 +94,16 @@ class TestConfigRules(unittest.TestCase):
         return d / config.CONFIG_NAME
 
     def test_machine_paths_resolve_logical_names(self):
-        path = self.write('[repos]\nneon = "../neon"\n[harness]\nsub = "~/w/sub"\n')
+        path = self.write('[repos]\nmy-repo = "../my-repo"\n[harness]\nsub = "~/w/sub"\n')
         c = config.load(path)
-        self.assertTrue(str(c.repo("neon")).endswith("neon"))
-        self.assertTrue(c.repo("neon").is_absolute(), "relative to the config file")
+        self.assertTrue(str(c.repo("my-repo")).endswith("my-repo"))
+        self.assertTrue(c.repo("my-repo").is_absolute(), "relative to the config file")
 
     def test_an_unknown_logical_name_names_what_is_known(self):
-        c = config.load(self.write('[repos]\nneon = "../neon"\n'))
+        c = config.load(self.write('[repos]\nmy-repo = "../my-repo"\n'))
         with self.assertRaises(config.ConfigError) as e:
             c.repo("ghost")
-        self.assertIn("neon", str(e.exception))
+        self.assertIn("my-repo", str(e.exception))
 
     def test_the_config_may_not_decide_what_is_measured(self):
         """The rule that stops a scenario from measuring differently elsewhere."""
@@ -129,7 +129,7 @@ class TestConfigRules(unittest.TestCase):
             "file:///tmp/x",
             "git@github.com:org/x.git",
         )
-        local = ("../neon", "/abs/neon", "~/w/sub", "./x", "$TMPDIR/x", "neon")
+        local = ("../my-repo", "/abs/my-repo", "~/w/sub", "./x", "$TMPDIR/x", "my-repo")
         for value in remote:
             with self.subTest(value=value):
                 self.assertTrue(config.is_remote(value))
@@ -145,9 +145,9 @@ class TestConfigRules(unittest.TestCase):
         config file's parent, and the failure is a clone of nothing rather than an error.
         """
         url = "https://h/x.git"
-        c = config.load(self.write(f'[repos]\nneon = "{url}"\n'))
-        self.assertEqual(c.remote("neon"), url)
-        self.assertNotEqual(c.remote("neon"), str(Path(url)))
+        c = config.load(self.write(f'[repos]\nmy-repo = "{url}"\n'))
+        self.assertEqual(c.remote("my-repo"), url)
+        self.assertNotEqual(c.remote("my-repo"), str(Path(url)))
 
     def test_a_url_does_not_inherit_from_the_shell(self):
         """A username or token taken from the environment is invisible inheritance.
@@ -155,18 +155,18 @@ class TestConfigRules(unittest.TestCase):
         It appears in no archive, and the value that actually ran would be whatever the
         shell happened to hold - the defect this whole module exists to abolish.
         """
-        c = config.load(self.write('[repos]\nneon = "git@h:$USER/x.git"\n'))
-        self.assertEqual(c.remote("neon"), "git@h:$USER/x.git")
+        c = config.load(self.write('[repos]\nmy-repo = "git@h:$USER/x.git"\n'))
+        self.assertEqual(c.remote("my-repo"), "git@h:$USER/x.git")
 
     def test_a_local_entry_has_no_url(self):
-        c = config.load(self.write('[repos]\nneon = "../neon"\n[harness]\nsub = "~/w/sub"\n'))
-        self.assertIsNone(c.remote("neon"))
+        c = config.load(self.write('[repos]\nmy-repo = "../my-repo"\n[harness]\nsub = "~/w/sub"\n'))
+        self.assertIsNone(c.remote("my-repo"))
         self.assertIsNone(c.harness_remote("sub"))
 
     def test_a_url_has_no_local_directory_until_it_is_cloned(self):
-        c = config.load(self.write('[repos]\nneon = "https://h/x.git"\n'))
+        c = config.load(self.write('[repos]\nmy-repo = "https://h/x.git"\n'))
         with self.assertRaises(config.ConfigError) as e:
-            c.repo("neon")
+            c.repo("my-repo")
         self.assertIn("https://h/x.git", str(e.exception))
 
     def test_a_harness_entry_may_be_a_url_too(self):
@@ -176,10 +176,10 @@ class TestConfigRules(unittest.TestCase):
         self.assertEqual(c.harness_remote("sub"), "https://h/sub.git")
 
     def test_an_unknown_logical_name_names_what_is_known_from_remote_too(self):
-        c = config.load(self.write('[repos]\nneon = "../neon"\n'))
+        c = config.load(self.write('[repos]\nmy-repo = "../my-repo"\n'))
         with self.assertRaises(config.ConfigError) as e:
             c.remote("ghost")
-        self.assertIn("neon", str(e.exception))
+        self.assertIn("my-repo", str(e.exception))
 
     def test_load_fallbacks_are_allowed(self):
         c = config.load(self.write("[defaults]\nconcurrency = 2\ntimeout = 60\n"))
@@ -219,7 +219,7 @@ class TestConfigRules(unittest.TestCase):
 
     def test_the_real_config_reads_as_a_config(self):
         self.assertEqual(
-            config.which_file({"repos": {"neon": "../neon"}, "defaults": {}}), "config"
+            config.which_file({"repos": {"my-repo": "../my-repo"}, "defaults": {}}), "config"
         )
 
     def test_an_empty_file_is_neither(self):
@@ -232,7 +232,7 @@ class TestPinnedSources(unittest.TestCase):
     def conf(self, entry: str):
         d = Path(tempfile.mkdtemp())
         path = d / config.CONFIG_NAME
-        path.write_text(f'[repos]\nneon = "{entry}"\n[defaults]\nworkdir = "{d / "work"}"\n')
+        path.write_text(f'[repos]\nmy-repo = "{entry}"\n[defaults]\nworkdir = "{d / "work"}"\n')
         return config.load(path)
 
     def fake_pin(self, calls: list, fail: bool = False):
@@ -251,7 +251,7 @@ class TestPinnedSources(unittest.TestCase):
         calls: list = []
         with mock.patch.object(runner.repo_mod, "pin", self.fake_pin(calls, fail)):
             for _ in range(times):
-                result = runner.prepare_source(c, "neon", "etalon-v1")
+                result = runner.prepare_source(c, "my-repo", "etalon-v1")
         return c, calls, result
 
     URL = "https://h/x.git"
@@ -260,16 +260,16 @@ class TestPinnedSources(unittest.TestCase):
         """Editing the URL must not silently reuse the previous repository's clone, and
         a cache hit must be at the tag being asked for rather than merely present."""
         c = self.conf(self.URL)
-        base = runner.source_dir(c, "neon", self.URL, "etalon-v1")
+        base = runner.source_dir(c, "my-repo", self.URL, "etalon-v1")
         self.assertEqual(base.parent, c.workdir() / "sources")
-        self.assertNotEqual(base, runner.source_dir(c, "neon", "https://h/other.git", "etalon-v1"))
-        self.assertNotEqual(base, runner.source_dir(c, "neon", self.URL, "etalon-v2"))
-        self.assertEqual(base, runner.source_dir(c, "neon", self.URL, "etalon-v1"), "stable")
+        self.assertNotEqual(base, runner.source_dir(c, "my-repo", "https://h/other.git", "etalon-v1"))
+        self.assertNotEqual(base, runner.source_dir(c, "my-repo", self.URL, "etalon-v2"))
+        self.assertEqual(base, runner.source_dir(c, "my-repo", self.URL, "etalon-v1"), "stable")
 
     def test_a_slash_in_a_tag_stays_one_directory(self):
         """`release/1.0` would otherwise put the clone somewhere nobody named."""
         c = self.conf(self.URL)
-        directory = runner.source_dir(c, "neon", self.URL, "release/1.0")
+        directory = runner.source_dir(c, "my-repo", self.URL, "release/1.0")
         self.assertEqual(directory.parent, c.workdir() / "sources")
         self.assertIn("release-1.0", directory.name)
 
@@ -293,12 +293,12 @@ class TestPinnedSources(unittest.TestCase):
     def test_a_marker_left_by_another_url_forces_a_fresh_clone(self):
         """A directory that cannot say which repository it holds must not be trusted."""
         c = self.conf(self.URL)
-        target = runner.source_dir(c, "neon", self.URL, "etalon-v1")
+        target = runner.source_dir(c, "my-repo", self.URL, "etalon-v1")
         target.mkdir(parents=True)
-        (target / runner.READY).write_text("neon@etalon-v1\nhttps://h/somewhere-else.git\n")
+        (target / runner.READY).write_text("my-repo@etalon-v1\nhttps://h/somewhere-else.git\n")
         calls: list = []
         with mock.patch.object(runner.repo_mod, "pin", self.fake_pin(calls)):
-            runner.prepare_source(c, "neon", "etalon-v1")
+            runner.prepare_source(c, "my-repo", "etalon-v1")
         self.assertEqual(len(calls), 1)
 
     def test_concurrent_cells_pin_exactly_once(self):
@@ -320,7 +320,7 @@ class TestPinnedSources(unittest.TestCase):
         with mock.patch.object(runner.repo_mod, "pin", pin):
             with ThreadPoolExecutor(max_workers=8) as pool:
                 futures = [
-                    pool.submit(runner.prepare_source, c, "neon", "etalon-v1") for _ in range(8)
+                    pool.submit(runner.prepare_source, c, "my-repo", "etalon-v1") for _ in range(8)
                 ]
                 results = [f.result() for f in futures]
         self.assertEqual(len(calls), 1)
@@ -601,9 +601,9 @@ class TestBlindness(unittest.TestCase):
 class TestWhatTheHarnessComputesOnce(unittest.TestCase):
     """Two facts every validator wants, computed by the harness so they cannot drift.
 
-    Both were reimplemented per validator. `neon.py:67-78` and `issue1.py:167-180` each
+    Both were reimplemented per validator. `my-repo.py:67-78` and `issue1.py:167-180` each
     carry the same "files the agent changed", down to the same copied comment, while
-    `repo.diff` held the knowledge all along. `citations.py:46-55` and `neon.py:95-100`
+    `repo.diff` held the knowledge all along. `citations.py:46-55` and `my-repo.py:95-100`
     each run their own `git ls-tree`. A fact the harness computes cannot be got slightly
     differently by three callers.
     """
@@ -650,12 +650,12 @@ class TestWhatTheHarnessComputesOnce(unittest.TestCase):
             trace=None,
             cell="none",
             repetition=0,
-            touched=["game/neon.js"],
-            files=["game/neon.js", "README.md"],
+            touched=["game/my-repo.js"],
+            files=["game/my-repo.js", "README.md"],
         )
         context = json.loads(path.read_text())
-        self.assertEqual(context["touched"], ["game/neon.js"])
-        self.assertEqual(context["files"], ["game/neon.js", "README.md"])
+        self.assertEqual(context["touched"], ["game/my-repo.js"])
+        self.assertEqual(context["files"], ["game/my-repo.js", "README.md"])
 
     def test_an_empty_touched_is_written_rather_than_dropped(self):
         """The one case where absent and empty must not be confused: an agent that
@@ -825,6 +825,43 @@ class TestAgentModels(unittest.TestCase):
         p = self.write_agent("---\nname: explorer\ndescription: x\n---\n")
         meta = repo.agent_frontmatter(p, override="ilaas/gemma-4-31b")
         repo.check_agent_models({"explorer": meta})
+
+
+class TestTheSubagentGate(unittest.TestCase):
+    """The gate is loaded by the injection, not by the scenario.
+
+    Injecting agent definitions does not make them the only reachable ones: the
+    subagent tool's scope is a parameter the model chooses, and the default reaches
+    the library's built-in agents, none of which declares a model. A scenario that
+    forgot to declare the gate would measure those instead, and say nothing.
+    """
+
+    def paths(self, bricks: dict, delta: dict) -> dict:
+        from trysquare.scenario import Cell
+
+        raw = MINIMAL | {
+            "harness": bricks,
+            "variants": {"none": {}, "c": delta or {"thinking": "high"}},
+            "verdict": {"criterion": "overflow", "reference": "none"},
+        }
+        return runner.brick_paths(
+            parse(raw), config.Config(path=Path("/x/trysquare.toml")), Cell("c", delta), Path("/x")
+        )
+
+    def test_injecting_agents_loads_the_gate(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "explorer.md").write_text("---\nname: explorer\nmodel: a/b\n---\n")
+        got = self.paths({"subagents": {"paths": ["explorer.md"]}}, {"harness": ["subagents"]})
+        self.assertEqual(got["extensions"], [runner.AGENT_GATE])
+
+    def test_a_cell_without_subagents_loads_nothing(self):
+        """The baseline must not carry an extension the treatment introduced."""
+        self.assertEqual(self.paths({}, {})["extensions"], [])
+
+    def test_the_gate_ships_inside_the_package(self):
+        """An installed wheel has no repository around it to resolve against."""
+        self.assertTrue(runner.AGENT_GATE.is_file())
+        self.assertEqual(runner.AGENT_GATE.parent, Path(runner.__file__).resolve().parent)
 
 
 if __name__ == "__main__":

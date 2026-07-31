@@ -13,7 +13,8 @@
 # the scenario - otherwise the same file would measure something different on
 # another machine.
 
-# Measurable repositories, by logical name. A scenario writes `repo = "neon"`.
+# Measurable repositories, by logical name. A scenario writes `repo = "my-repo"`,
+# and this is the only place that says where that is.
 # Relative paths are relative to this file, not to the current directory.
 #
 # An entry may also be a git URL. It is then cloned once, at the scenario's etalon tag,
@@ -22,15 +23,19 @@
 # being asked for: nothing is refetched, and a tag moved upstream cannot change what a
 # matrix in flight is measuring. `https://`, `ssh://`, `git://`, `file://` and the
 # scp-like `git@host:org/repo.git` are all recognised.
+#
+# Nothing is declared here, because a repository worth measuring is yours and not the
+# tool's. An unknown name is refused at load and lists what is known, so the first
+# scenario you run says exactly which line to add.
 [repos]
-neon = "../neon"
-# neon = "https://github.com/earendil-works/neon.git"
+# my-repo = "../my-repo"
+# my-repo = "https://github.com/me/my-repo.git"
 
 # Repositories that provide harness bricks, pinned by tag in the scenario. A URL works
-# here too, on the same terms.
+# here too, on the same terms. The two bricks the harness needs for itself - the judge's
+# verdict tool and the subagent gate - ship inside the package and are never declared.
 [harness]
-subagent = "~/Work/Pi/subagent"
-# subagent = "https://github.com/earendil-works/pi-subagent.git"
+# subagent = "https://github.com/me/my-extension.git"
 
 [defaults]
 # Clones live in the system temporary directory, which macOS purges on reboot.

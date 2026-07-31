@@ -46,7 +46,7 @@ class TestUnjudged(unittest.TestCase):
     """One metric may be unjudgeable while the rest of the run is fine.
 
     The real case is the probe that could not run: `issue1.py:310-316` returns
-    `{"ok": False, "erreur": "pas de game/ dans le clone"}`, which the harness records
+    `{"ok": False, "erreur": "pas de src/ dans le clone"}`, which the harness records
     as `par_face = false` - "could not judge" read as "worked badly", the confusion
     this whole project is built against.
     """
@@ -90,7 +90,7 @@ class TestSetsSerialiseSorted(unittest.TestCase):
         code = (
             "from trysquare import assay;"
             "import json;"
-            "print(json.dumps(assay.report({'t': {'game/neon.js', 'README.md', 'p.json'}})"
+            "print(json.dumps(assay.report({'t': {'src/basket.js', 'README.md', 'p.json'}})"
             "['metrics']['t']))"
         )
         runs = {
@@ -105,7 +105,7 @@ class TestSetsSerialiseSorted(unittest.TestCase):
 class TestTheErrorContract(unittest.TestCase):
     """"Could not judge" is not "worked badly", and one validator in four got it right.
 
-    `neon.py:174` calls `evaluate(context)` with no net, so a traceback lands in
+    Three of four validators called `evaluate(context)` with no net, so a traceback lands in
     `script.stderr` and reads six months later as a broken validator when the cause is
     usually the context.
     """
@@ -138,7 +138,7 @@ class TestTheErrorContract(unittest.TestCase):
         self.assertIn("no session archived", err)
 
     def test_any_other_exception_is_caught_too(self):
-        """The default has to be right: doing nothing is what `neon.py` did."""
+        """The default has to be right: doing nothing is what most validators did."""
 
         def evaluate(run):
             raise KeyError("boom")
@@ -243,9 +243,9 @@ class TestTheFakeRefusesToInvent(unittest.TestCase):
 
 
 ETALON = {
-    "game/neon.js": "export function step() {}\n// a comment\n",
-    "game/theme.js": "export const palette = {};\n",
-    "game/neon.test.js": "import {step} from './neon.js';\n",
+    "src/basket.js": "export function step() {}\n// a comment\n",
+    "src/theme.js": "export const palette = {};\n",
+    "src/basket.test.js": "import {step} from './basket.js';\n",
     "README.md": "# t\n",
 }
 
@@ -253,7 +253,7 @@ ETALON = {
 class TestSourcesAtEtalon(unittest.TestCase):
     """The reference side of any comparison, read **from the tag**.
 
-    `neon.py:88-91` falls back to the checkout's working tree when the harness provides
+    A validator that fell back to the checkout's working tree when the harness provides
     one, and `issue1.py:183-195` documents at length why that is wrong: trysquare puts
     the source repository there, whose working tree is on `main`, so the reference
     drifts the moment `main` moves or a classroom fixes the issue in place. Exactly what
@@ -271,20 +271,20 @@ class TestSourcesAtEtalon(unittest.TestCase):
         )
 
     def test_a_pattern_selects_and_the_contents_come_from_the_tag(self):
-        text = self.run.sources_at_etalon("game/*.js")
+        text = self.run.sources_at_etalon("src/*.js")
         self.assertIn("export function step", text)
         self.assertIn("export const palette", text)
         self.assertNotIn("# t", text)
 
     def test_an_exclusion_removes_what_the_pattern_caught(self):
-        text = self.run.sources_at_etalon("game/*.js", exclude="*.test.js")
-        self.assertNotIn("from './neon.js'", text)
+        text = self.run.sources_at_etalon("src/*.js", exclude="*.test.js")
+        self.assertNotIn("from './basket.js'", text)
         self.assertIn("export function step", text)
 
     def test_the_working_tree_is_never_read(self):
         """The whole point. Moving `main` on must not move the reference."""
-        (self.source / "game" / "neon.js").write_text("export function step() { fixed; }\n")
-        self.assertNotIn("fixed", self.run.sources_at_etalon("game/*.js"))
+        (self.source / "src" / "basket.js").write_text("export function step() { fixed; }\n")
+        self.assertNotIn("fixed", self.run.sources_at_etalon("src/*.js"))
 
     def test_a_pattern_matching_nothing_is_empty_rather_than_an_error(self):
         self.assertEqual(self.run.sources_at_etalon("src/*.ts"), "")
@@ -346,8 +346,8 @@ def session(*calls) -> dict:
     return {"session": str(d)}
 
 
-TEST_FILE = {"path": "game/neon.test.js"}
-SOURCE_FILE = {"path": "game/neon.js"}
+TEST_FILE = {"path": "src/basket.test.js"}
+SOURCE_FILE = {"path": "src/basket.js"}
 
 
 class TestToolCalls(unittest.TestCase):
@@ -369,26 +369,26 @@ class TestToolCalls(unittest.TestCase):
 
     def test_the_first_write_is_found_by_path(self):
         run = Assay(session(("read", SOURCE_FILE), ("edit", TEST_FILE)))
-        self.assertEqual(run.first_write("game/neon.test.js"), 1)
+        self.assertEqual(run.first_write("src/basket.test.js"), 1)
 
     def test_a_failed_call_is_not_a_write(self):
         """`pi` rejected two `edit` calls with no `path` on a real run. Counting them
         would date the work before it happened."""
         run = Assay(session(("edit", {}, True), ("edit", TEST_FILE)))
-        self.assertEqual(run.first_write("game/neon.test.js"), 1)
+        self.assertEqual(run.first_write("src/basket.test.js"), 1)
 
     def test_nothing_written_is_none_rather_than_an_error(self):
         run = Assay(session(("read", SOURCE_FILE)))
-        self.assertIsNone(run.first_write("game/neon.js"))
+        self.assertIsNone(run.first_write("src/basket.js"))
 
     def test_a_shell_redirection_counts_as_a_write(self):
-        run = Assay(session(("bash", {"command": "cat > game/neon.test.js <<'EOF'"})))
-        self.assertEqual(run.first_write("game/neon.test.js"), 0)
+        run = Assay(session(("bash", {"command": "cat > src/basket.test.js <<'EOF'"})))
+        self.assertEqual(run.first_write("src/basket.test.js"), 0)
 
     def test_a_test_file_is_not_the_source_file(self):
-        """`game/neon.test.js` ends with `neon.test.js`, never with `neon.js`."""
+        """`src/basket.test.js` ends with `basket.test.js`, never with `basket.js`."""
         run = Assay(session(("edit", TEST_FILE)))
-        self.assertIsNone(run.first_write("game/neon.js"))
+        self.assertIsNone(run.first_write("src/basket.js"))
 
     def test_an_unknown_tool_refuses_rather_than_answering_no(self):
         """The list of writing tools ages with `pi`, not with trysquare, so it has to
@@ -437,7 +437,7 @@ NODE_SPEC = (
     "ℹ fail 1\n"
     "\n"
     "✖ failing tests:\n"
-    "test at game/neon.test.js:12:1\n"
+    "test at src/basket.test.js:12:1\n"
     "✖ bounces off a brick (0.26ms)\n"
     "  AssertionError: expected -300 to equal 300\n"
 )
@@ -600,7 +600,7 @@ class TestTheProbe(unittest.TestCase):
 
     def tree(self, **files) -> Assay:
         d = Path(tempfile.mkdtemp())
-        for name, text in {"game/neon.js": "let hidden = 1;\n", **files}.items():
+        for name, text in {"src/basket.js": "let hidden = 1;\n", **files}.items():
             (d / name).parent.mkdir(parents=True, exist_ok=True)
             (d / name).write_text(text)
         return Assay({"repo": str(d)})
@@ -623,9 +623,9 @@ class TestTheProbe(unittest.TestCase):
         `function*`, a destructured declaration, or a collision moved to a new file."""
         run = self.tree()
         answer = run.probe(
-            [sys.executable, "game/neon.js.py"],
-            write={"game/neon.js.py": "hidden = 1\n"},
-            append={"game/neon.js.py": 'import json\nprint(json.dumps({"hidden": hidden}))\n'},
+            [sys.executable, "src/basket.js.py"],
+            write={"src/basket.js.py": "hidden = 1\n"},
+            append={"src/basket.js.py": 'import json\nprint(json.dumps({"hidden": hidden}))\n'},
         )
         self.assertEqual(answer, {"hidden": 1})
 
@@ -640,19 +640,19 @@ class TestTheProbe(unittest.TestCase):
             [sys.executable, "probe.py"],
             write=self.probe_script('print(json.dumps({"ok": True}))'),
         )
-        self.assertEqual(sorted(p.name for p in clone.rglob("*")), ["game", "neon.js"])
+        self.assertEqual(sorted(p.name for p in clone.rglob("*")), ["basket.js", "src"])
 
     def test_dropping_removes_what_a_glob_selects(self):
-        run = self.tree(**{"game/neon.test.js": "// a test\n"})
+        run = self.tree(**{"src/basket.test.js": "// a test\n"})
         answer = run.probe(
             [sys.executable, "probe.py"],
             write=self.probe_script(
                 "import pathlib\n"
-                'print(json.dumps({"left": sorted(p.name for p in pathlib.Path("game").iterdir())}))'
+                'print(json.dumps({"left": sorted(p.name for p in pathlib.Path("src").iterdir())}))'
             ),
             drop="*.test.js",
         )
-        self.assertEqual(answer["left"], ["neon.js"])
+        self.assertEqual(answer["left"], ["basket.js"])
 
     def test_appending_to_something_absent_refuses(self):
         run = self.tree()

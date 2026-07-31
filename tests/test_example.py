@@ -5,8 +5,8 @@ need, the worked example the documentation points at, and the proof that the bas
 usable. Because CI runs it, the example cannot rot the way a snippet in a document does -
 which is the failure mode of every documented example anywhere.
 
-It also replaces what NEON used to prove. NEON is an example and is leaving trysquare's
-sources; nothing here depends on it.
+It is what replaced the example repository trysquare used to carry in its own sources:
+that was somebody else's project, and nothing here depends on it.
 """
 
 import json

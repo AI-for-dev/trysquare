@@ -1,0 +1,17 @@
+# The config file `matrix.toml` is planned against.
+#
+# A fixture rather than the `trysquare.toml` shipped at the root: that one is a
+# template an operator copies and edits, so a test resolving names through it
+# would fail the day someone edits their own copy of the example - and would
+# quietly pin the template's contents as a test contract nobody declared.
+
+[repos]
+# Relative to this file, not to the current directory. `tiny` is the fake
+# repository the example validator is exercised against.
+tiny = "tiny"
+
+[defaults]
+workdir = "$TMPDIR/trysquare-tests"
+concurrency = 5
+timeout = 900
+attempts = 3

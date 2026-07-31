@@ -1,9 +1,9 @@
 """The judge, the brick resolution that nearly wasted a matrix, and layer 4.
 
 The first group exists because of a real incident: a scenario referenced
-`bricks/vague-ticket.md`, the path did not resolve, and `read_brick` silently
+`tickets/vague.md`, the path did not resolve, and `read_brick` silently
 returned the string itself - so twelve runs were paid for with the literal text
-"bricks/vague-ticket.md" as the agent's task. Every run looked normal.
+"tickets/vague.md" as the agent's task. Every run looked normal.
 """
 
 import json
@@ -31,7 +31,7 @@ class TestBrickResolution(unittest.TestCase):
     def test_a_missing_path_raises_instead_of_becoming_literal_text(self):
         """The silent fallback that sent a path to the agent as its task."""
         with self.assertRaises(RuntimeError) as e:
-            read_brick(self.base, "bricks/typo.md")
+            read_brick(self.base, "tickets/typo.md")
         self.assertIn("does not exist", str(e.exception))
 
     def test_inline_text_is_still_allowed(self):
@@ -39,7 +39,7 @@ class TestBrickResolution(unittest.TestCase):
         self.assertEqual(read_brick(self.base, text), text)
 
     def test_what_counts_as_a_path(self):
-        for value in ("bricks/x.md", "a/b", "x.md", "notes.txt"):
+        for value in ("tickets/x.md", "a/b", "x.md", "notes.txt"):
             self.assertTrue(looks_like_path(value), value)
         for value in ("do the thing", "off", "high", "a sentence with spaces"):
             self.assertFalse(looks_like_path(value), value)

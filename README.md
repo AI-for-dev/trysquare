@@ -26,7 +26,7 @@ Python >= 3.11, because TOML parsing is `tomllib` from the standard library.
 `uv sync` - or `pip install -e .` - installs the rest.
 
 ```bash
-uv run python -m unittest discover -s tests -t .     # 435 tests, no network
+uv run python -m unittest discover -s tests -t .     # 397 tests, no network
 ```
 
 Measuring anything also needs the agent binary (`pi`) on PATH and a provider you
@@ -37,17 +37,22 @@ runs offline.
 
 ```bash
 cp trysquare.toml my-trysquare.toml     # edit [repos] to point at your repository
-uv run trysquare run scenarios/2x3.toml --output out --dry-run
+uv run trysquare run my-scenario.toml --output out --dry-run
 ```
 
 `--dry-run` shows the whole plan and writes nothing. Drop it to measure.
+
+No scenario ships with the tool: an experiment is about your repository and your
+question, and a shipped one would be somebody else's. **Writing a scenario** below is a
+complete file to start from, and `--dry-run` is where you find out it is wired
+correctly, for free.
 
 A `[repos]` entry may be a directory or a git URL. A URL is cloned once, at the scenario's
 etalon tag, under `workdir`, and every run clones from there - so nothing has to be cloned
 by hand first, and a tag moved upstream cannot change what a matrix in flight is measuring.
 
 ```bash
-uv run trysquare run scenarios/2x3.toml --output out
+uv run trysquare run my-scenario.toml --output out
 ```
 
 `trysquare` is a console script, so `uv tool install .` - or `pip install -e .` in a
@@ -70,7 +75,7 @@ an installed environment, which is what the tests use.
 `--output <dir>` roots everything that writes. One directory per experiment:
 
 ```
-out/2x3_etalon-v1_ilaas_gemma-4-31b_n10/
+out/rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10/
   state.json      cells, runs, valid / empty / failed, attempt counters
   measures.json   one line per run
   synthesis.md    scores, costs, gaps and verdicts, written when the matrix is complete
@@ -87,14 +92,14 @@ experiment to choose between, which is optional stopping through the back door.
 
 ```toml
 [scenario]
-name = "2x3"
+name = "rule-vs-ticket"
 title = "A project rule against a well written ticket"
-hypothesis = "../hypotheses/2x3.md"     # declared before measuring
+hypothesis = "hypothesis.md"    # declared before measuring
 
 [task]
-repo = "neon"                # a logical name, resolved by the config file
+repo = "my-repo"             # a logical name, resolved by the config file
 etalon = "etalon-v1"         # a tag, cloned; never the working tree
-prompt = "../bricks/vague-ticket.md"
+prompt = "tickets/vague.md"  # inline text works too
 
 [agent]
 provider = "ilaas"           # mandatory, never inherited
@@ -111,25 +116,25 @@ context = ["nothing", "rule", "careful ticket"]
 thinking = ["off", "high"]
 
 [values.context.rule]        # only the delta from [agent] / [task]
-context = "../bricks/AGENTS.md"
+context = "AGENTS.md"
 
 [values.thinking.high]
 thinking = "high"
 
 [[validation]]
 mode = "script"
-command = "../validators/neon.py"
-metrics = ["overflow", "delivered", "tests"]     # a contract, not a comment
+command = "score.py"
+metrics = ["in_scope", "delivered", "tests"]     # a contract, not a comment
 
 [verdict]
-criterion = "overflow"
+criterion = "in_scope"
 reference = { context = "nothing", thinking = "off" }
 validity = ["delivered", "tests"]
 ```
 
-Cells come from a **grid** (`[axes]` plus `[values]`), from **named variants**
-(`[variants.<name>]`), or from both - concise for the regular part, precise for the
-irregular one.
+Paths in a scenario are relative to the scenario file. Cells come from a **grid**
+(`[axes]` plus `[values]`), from **named variants** (`[variants.<name>]`), or from
+both - concise for the regular part, precise for the irregular one.
 
 **The baseline of an axis is its first value**, and it needs no delta block, which
 shows that the baseline *is* a cell of the matrix. Every other value must declare a
@@ -141,9 +146,15 @@ of the baseline that would be published twice under two names.
 Any executable in any language:
 
 ```
-../validators/neon.py <path to context.json>
+score.py <path to context.json>
   -> {"metrics": {...}, "reasons": {...}} on stdout, exit 0
 ```
+
+`examples/validator.py` is one, whole, written on `trysquare.assay` - the base that
+supplies the entry point, the error contract, and the primitives (files touched,
+sources at the etalon, the declared test suite) every validator was reimplementing.
+The scoring function in it is nine lines. It is run against `tests/fixtures/tiny` by
+the test suite, so it cannot rot the way a snippet in a document does.
 
 The context file is handed as the single argument and **archived with the run**,
 which is what makes a validation replayable by hand months later - and what makes
@@ -164,8 +175,8 @@ stops being an independent signal.
 
 A path is checked **before the first token**. A missing brick used to surface as a
 validator failure after a matrix had been paid for - or worse, a mistyped prompt path
-became the literal string `bricks/vague-ticket.md` sent to the agent as its task,
-and every run looked entirely normal.
+became the literal string `tickets/vague.md` sent to the agent as its task, and
+every run looked entirely normal.
 
 ## An LLM judge
 
@@ -177,15 +188,15 @@ mode = "judge"
 provider = "ilaas"                  # pinned, and distinct from the model under test
 model = "gemma-4-31b"               # a judge that is the model being judged is not a judge
 thinking = "off"
-rubric = "../rubrics/impact-note.md"
+rubric = "rubric.md"
 pieces = ["prompt", "response", "diff"]
 metrics = ["note_usable", "cites_paths", "says_what_is_missing"]
 ```
 
 There is no schema option or response format in the agent, so **the verdict is a
-tool**, not parsed prose. `bricks/judge-tool.ts` registers a `verdict` tool whose
-parameters are built from the metrics the scenario declared, and the runtime
-validates the call before it reaches the harness. The format is therefore guaranteed;
+tool**, not parsed prose. The harness ships `trysquare/judge-tool.ts`, which registers
+a `verdict` tool whose parameters are built from the metrics the scenario declared,
+and the runtime validates the call before it reaches the harness. The format is therefore guaranteed;
 whether the tool is called at all still depends on the model, and a judge that never
 calls it leaves the run **invalid** rather than scoring zero.
 
@@ -272,14 +283,25 @@ trysquare/
   repo.py       clone at a tag, inject bricks, exclude them              |  shell
   agent.py      the invocation, and running it                          |
   validation.py validators, blinding, preconditions                     |
+  assay.py      the base a validator is written on                       |
   runner.py     orchestration: interleaving, concurrency, archiving      |
   progress.py   a pinned bar for the loops that take hours               |
   cli.py        argparse, overrides, reporting                          /
+
+  judge-tool.ts the judge's verdict tool          \  shipped inside the package:
+  agent-gate.ts the subagent scope gate           /  neither is an experiment's choice
+
+examples/validator.py   a whole validator, run by the suite against tests/fixtures/tiny
 ```
 
 The split is by whether code touches the world. Everything in the pure half is
 testable without a network, a clone, or an API key - which is why the
 methodological invariants have tests at all.
+
+The two `.ts` bricks live in the package rather than beside it because an installed
+wheel has no repository around it, and because neither is a per-experiment choice:
+the gate is loaded by the act of injecting subagents, not by a scenario remembering
+to ask for it.
 
 ## Not implemented yet
 
