@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """Building the agent invocation, and running it.
 
 The argument list is the experiment. Everything here is explicit on purpose:

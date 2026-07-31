@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """Proving this harness reproduces the bench it replaces.
 
 Parity is demonstrated in layers, and three of them are checkable **exactly**, at

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """What counts as a measurement, and how metrics are combined.
 
 Two rules carry most of the weight here, and both exist because their absence

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """`synthesis.html`: the same synthesis, readable in a browser, offline, forever.
 
 One self-contained file. No JavaScript, no external stylesheet, no font fetched

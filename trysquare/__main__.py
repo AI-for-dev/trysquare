@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """`python -m trysquare`, which is the installed `trysquare` command exactly.
 
 Both go through `scripts.cli_trysquare`, so a clone and an install answer an

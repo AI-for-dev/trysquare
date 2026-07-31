@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-3-Clause
 // agent-gate.ts - makes the scenario's subagents the only ones that can run.
 //
 // Dropping agent definitions into the clone's `.pi/agents/` does not activate

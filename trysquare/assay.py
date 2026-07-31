@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """The base a validator is written with.
 
 An *assay* is an analysis performed on a sample, which is exactly the trade: one

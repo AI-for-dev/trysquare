@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """The config file, and the hard rule about what it may not contain.
 
 There are no environment variables anywhere in this tool. Its predecessor had
