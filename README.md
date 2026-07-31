@@ -72,7 +72,7 @@ an installed environment, which is what the tests use.
 | `validate` | checks a scenario end to end - files, config entries, preconditions - without an output directory or a token |
 | `render` | rebuilds tables from stored measures, without remeasuring; `--html` rebuilds the session pages too |
 | `replay` | reconstitutes archived runs; `--rescore` re-runs the script validators and rewrites the measures, at no token cost |
-| `compare` | compares two experiments, refusing what is not comparable |
+| `compare` | compares two experiments side by side, refusing what is not comparable |
 | `parity` | checks this harness against the previous bench, layer by layer |
 | `form` | generates or ingests a blind manual scoring form |
 
@@ -314,9 +314,6 @@ Stated rather than left to be discovered:
 - **HTML for the synthesis.** `synthesis.html` and a `pages` command are designed but
   not written; only `synthesis.md` is produced. Readable transcripts *are* produced -
   `render --html` writes one page per archived session, in the run's own directory.
-- **`compare` reports, it does not tabulate.** It applies the refusals - different
-  etalons, contaminated cost columns - and prints what differs, but does not yet
-  render a side-by-side table.
 - **A judge is not re-scored.** `replay --rescore` re-runs script validators and
   reuses the archived judge verdict, because re-running a judge costs tokens and
   `replay` exists on the promise that it costs none. Correcting a judged metric

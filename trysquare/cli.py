@@ -844,6 +844,32 @@ def cmd_compare(args) -> int:
             f"  ! cost columns set aside: retries {lr} on the left, {rr} on the right\n"
             f"    -> tokens and durations would reflect our own load"
         )
+
+    left_runs, right_runs = _measured(args.left), _measured(args.right)
+    if not left_runs or not right_runs:
+        sides = [d.name for d, r in ((args.left, left_runs), (args.right, right_runs)) if not r]
+        print(f"  no measures.json in {', '.join(sides)}: nothing to tabulate")
+        return 0
+
+    by_left: dict[str, list[Run]] = {}
+    for r in left_runs:
+        by_left.setdefault(r.cell, []).append(r)
+    by_right: dict[str, list[Run]] = {}
+    for r in right_runs:
+        by_right.setdefault(r.cell, []).append(r)
+
+    # The metric contract lives in the scenario, which `compare` deliberately does
+    # not take: two experiments may come from two scenarios. What both sides
+    # actually measured is in the rows themselves.
+    everything = [*left_runs, *right_runs]
+    declared = tuple(dict.fromkeys(k for r in everything for k in r.metrics))
+    tests, _ = table_mod.scored_metrics(everything, declared)
+    print()
+    print(
+        table_mod.compare_table(
+            table_mod.compare_rows(by_left, by_right, tests), tests, args.left.name, args.right.name
+        )
+    )
     return 0
 
 
@@ -855,6 +881,14 @@ def _read_experiment(directory: Path) -> dict | None:
     data = json.loads(state.read_text())
     data["_dir"] = directory
     return data
+
+
+def _measured(directory: Path) -> list[Run]:
+    """The archived measures, or nothing - which the caller says out loud."""
+    path = directory / "measures.json"
+    if not path.is_file():
+        return []
+    return [Run(**row) for row in json.loads(path.read_text())]
 
 
 def _retries(experiment: dict) -> int:

@@ -296,6 +296,54 @@ def spend_table(rows: list[dict], measures: tuple[Measure, ...], draws: int, see
     )
 
 
+def compare_rows(
+    left: dict[str, list[Run]], right: dict[str, list[Run]], tests: tuple[str, ...]
+) -> list[dict]:
+    """One row per cell across two experiments, one `x/n -> y/n` per test.
+
+    Rates only, and no verdict. Costs are never tabulated across matrices: their
+    runs did not see the same provider load, so the columns would compare our
+    scheduling. And resampling certifies gaps *within* one matrix - a
+    cross-experiment claim needs a scenario that measures both cells in one.
+
+    A cell present on one side only is named, with `-` on the other: dropping it
+    would hide exactly the difference a comparison exists to show.
+    """
+    names = [*left, *(c for c in right if c not in left)]
+    rows = []
+    for name in names:
+        cells = []
+        for metric in tests:
+            sides = []
+            for by_cell in (left, right):
+                runs = valid_runs(by_cell.get(name, []))
+                hits, total = rate(runs, metric) if runs else (0, 0)
+                sides.append(f"{hits}/{total}" if total else "-")
+            cells.append(" -> ".join(sides))
+        rows.append({"cell": name, "scores": cells})
+    return rows
+
+
+def compare_table(rows: list[dict], tests: tuple[str, ...], left: str, right: str) -> str:
+    """The side-by-side score table, in markdown."""
+    if not rows or not tests:
+        return "No boolean metric on either side: nothing to tabulate."
+
+    body = _markdown(list(tests), [(row["cell"], row["scores"]) for row in rows])
+    return "\n".join(
+        [
+            f"### Scores, `{left}` -> `{right}`",
+            "",
+            *body,
+            "",
+            "`x/n -> y/n`: the left experiment, then the right. `-`: that side has no",
+            "run that could judge it. Rates only, and no verdict: costs are never",
+            "compared across matrices, and a certified gap needs both cells measured",
+            "in one.",
+        ]
+    )
+
+
 def scored_metrics(
     runs: list[Run], declared: tuple[str, ...]
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
