@@ -157,6 +157,18 @@ def build_parser() -> argparse.ArgumentParser:
 # --- run -------------------------------------------------------------------
 
 
+def _load(args):
+    """The scenario and the config it will run under, from one command's arguments.
+
+    The config is searched from the scenario's own directory, not the operator's:
+    an experiment carried to another machine must keep resolving against the
+    `trysquare.toml` that sits beside it.
+    """
+    scenario = load_scenario(args.scenario)
+    config = config_mod.load(args.config, start=Path(args.scenario).resolve().parent)
+    return scenario, config
+
+
 def collect_overrides(args) -> dict:
     out = {}
     for key in (*STAMPED, *RECORDED):
@@ -167,8 +179,7 @@ def collect_overrides(args) -> dict:
 
 
 def cmd_run(args) -> int:
-    scenario = load_scenario(args.scenario)
-    config = config_mod.load(args.config, start=Path(args.scenario).resolve().parent)
+    scenario, config = _load(args)
     overrides = collect_overrides(args)
 
     plan = runner_mod.resolve(
@@ -382,8 +393,7 @@ def _write_synthesis(
 
 def cmd_replay(args) -> int:
     """Re-scores archived runs by reconstituting their trees. Costs no tokens."""
-    scenario = load_scenario(args.scenario)
-    config = config_mod.load(args.config, start=Path(args.scenario).resolve().parent)
+    scenario, config = _load(args)
     base = Path(args.scenario).resolve().parent
     # Pinned like a run would: a replay costs no tokens, but it has always cost a clone,
     # and a scenario naming a URL has nothing to reconstitute from until it is pinned.
