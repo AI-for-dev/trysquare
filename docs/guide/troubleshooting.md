@@ -165,8 +165,8 @@ counts in the successful runs.
 !! rule / high   63s  16954 in / 1588 out  7 turns  validator_failed: validator 'script' exited 1
 ```
 
-Read `runs/<id>/validation/script.stderr`. The run itself is fine - only the scoring
-failed - so **it does not need remeasuring**: fix the validator and re-score.
+Read `validation/script.stderr` in that run's directory. The run itself is fine - only
+the scoring failed - so **it does not need remeasuring**: fix the validator and re-score.
 
 ```bash
 trysquare replay results/<experiment> --scenario <scenario>.toml --rescore

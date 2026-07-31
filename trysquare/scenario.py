@@ -141,6 +141,11 @@ class Scenario:
     def declared_metrics(self) -> tuple[str, ...]:
         return tuple(m for v in self.validators for m in v.metrics)
 
+    @property
+    def manual_metrics(self) -> tuple[str, ...]:
+        """The metrics a human fills in, and the reason an output tree stays blind."""
+        return tuple(m for v in self.validators if v.mode == "form" for m in v.metrics)
+
     def cell(self, name: str) -> Cell:
         for c in self.cells:
             if c.name == name:

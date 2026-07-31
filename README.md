@@ -84,7 +84,7 @@ out/rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10/
   measures.json   one line per run
   synthesis.md    scores, costs, gaps and verdicts, written when the matrix is complete
   synthesis.html  the same synthesis as a self-contained page, linking the session pages
-  runs/<id>/      context, configuration, diff, validation output
+  runs/<cell>/<id>/   context, configuration, diff, validation output
     session/*.jsonl   the agent's own trace, one file per attempt
     session/*.html    the same trace as a page, on `render --html`
 ```
@@ -92,6 +92,11 @@ out/rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10/
 Relaunching the same experiment **overwrites** it. The archive of previous versions
 is git. A timestamped directory per launch would accumulate variants of one
 experiment to choose between, which is optional stopping through the back door.
+
+Runs are grouped by cell, except when a `form` validator declares that a human scores
+by hand: there the tree is `runs/<id>/`, flat and opaque, because somebody who knows
+they are grading the best-equipped cell grades it better. `run --group-by-cell` and
+`--no-group-by-cell` settle it either way.
 
 ## Writing a scenario
 
