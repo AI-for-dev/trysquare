@@ -140,6 +140,37 @@ class TestPinningARemote:
         assert written["repo"] == self.url
         assert written["etalon_commit"] == self.head
 
+    def test_the_archive_records_the_model_that_answered(self):
+        """The same distinction one level up: `model` is a pattern the agent resolves,
+        so the declared value is an intention and only the session says what ran.
+
+        `model_id` is null when no session names one - filling the gap with the
+        intention is how a fallback to the machine's default would hide.
+        """
+        import json
+
+        from trysquare.scenario import load
+
+        root = Path(__file__).resolve().parent.parent
+        scenario = load(root / "tests" / "fixtures" / "matrix.toml")
+        plan = runner.resolve(scenario, self.config, self.home / "out")
+        clone = repo.clone(self.pin(), "etalon-v1", self.home / "run2" / "repo")
+        prepared = repo.Prepared(path=clone, etalon="etalon-v1")
+
+        runner.archive(plan, "bare", clone, prepared, scenario.cells[0], "off")
+        bare = json.loads((plan.output.run_dir("bare") / "configuration.json").read_text())
+        assert bare["model_id"] is None
+
+        session = plan.output.run_dir("answered") / "session"
+        session.mkdir(parents=True)
+        (session / "s.jsonl").write_text(
+            json.dumps({"type": "model_change", "model": "gemma-4-31b"})
+        )
+        runner.archive(plan, "answered", clone, prepared, scenario.cells[0], "off")
+        answered = json.loads((plan.output.run_dir("answered") / "configuration.json").read_text())
+        assert answered["model_id"] == "gemma-4-31b"
+        assert answered["model"] == scenario.agent["model"]
+
     def test_a_tag_that_does_not_exist_names_the_tag_and_the_url(self):
         with pytest.raises(repo.RepoError) as e:
             self.pin("etalon-v9")

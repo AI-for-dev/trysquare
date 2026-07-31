@@ -21,7 +21,7 @@ from . import agent as agent_mod
 from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
-from .measure import EMPTY, VALID, Run, merge
+from .measure import EMPTY, VALID, Run, merge, models
 from .outputs import RESUMABLE, Output, slug
 from .scenario import Cell, Scenario
 
@@ -641,6 +641,19 @@ def judge(
     return validation_mod.run_judge(validator, work, judge_prompt, brick, timeout, attempts)
 
 
+def recorded_model(sessions: list[Path]) -> str | None:
+    """The model the archived sessions say answered, or None when they do not say.
+
+    None rather than the declared pattern: an archive that cannot name the model must
+    say so, and filling the gap with the intention is how a fallback would hide.
+    """
+    if not sessions:
+        return None
+    text = "\n".join(p.read_text(errors="replace") for p in sessions)
+    seen = models(text)
+    return seen[-1] if seen else None
+
+
 def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking: str) -> None:
     """Keeps the sources a re-score needs, and nothing more.
 
@@ -653,6 +666,12 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
     published archive cannot say *what* it measured - and with a URL the address is the
     only thing that identifies it. The commit also closes a hole that predates remotes:
     a local repository whose tag was moved between two matrices left no trace at all.
+
+    `model_id` is that same distinction one level up. `model` is a **pattern** the agent
+    resolves against what the provider offers - `gemma-4` runs as `gemma-4-31b` - so the
+    declared value is an intention and only the session says what answered. Keeping the
+    pattern alone left the archive unable to name the model it measured, and made a
+    fallback to the machine's `defaultModel` indistinguishable from a resolution.
     """
     directory = plan.output.run_dir(run_id)
     (directory / "diff.patch").write_text(repo_mod.diff(clone))
@@ -665,6 +684,7 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
             "etalon_commit": repo_mod.commit_of(plan.repo_path, plan.scenario.task["etalon"]),
             "provider": plan.scenario.agent["provider"],
             "model": plan.scenario.agent["model"],
+            "model_id": recorded_model(plan.output.sessions(run_id)),
             "thinking": thinking,
             "injected": prepared.injected,
             # Two places may declare a subagent's model, so the trace settles

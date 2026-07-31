@@ -24,6 +24,27 @@ from .measure import consumed_tokens, events, strip
 PI = "pi"
 
 
+def resolves_to(declared: str, ran: str) -> bool:
+    """Whether the model that ran is the one the scenario's pattern asked for.
+
+    `--model` takes a **pattern**, not an id: a scenario declaring `gemma-4` ran as
+    `gemma-4-31b`, which is resolution and not substitution. So an equality check
+    would refuse every legitimate run, and no check at all would let a fallback to
+    the machine's `defaultModel` pass unseen. What is verified is the weaker,
+    checkable property: the declared pattern must still be *in* what answered.
+
+    Both sides may carry a `provider/` prefix, and a declared pattern may carry the
+    `:<thinking>` shorthand the agent also accepts; neither says anything about
+    which model ran, so both are stripped before comparing.
+    """
+    return _bare(declared) in _bare(ran)
+
+
+def _bare(model: str) -> str:
+    """A model name reduced to what identifies the model itself."""
+    return model.rsplit("/", 1)[-1].split(":", 1)[0].strip().lower()
+
+
 @dataclass
 class Outcome:
     """One invocation of the agent, whatever happened to it."""

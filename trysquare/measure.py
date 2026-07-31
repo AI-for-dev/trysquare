@@ -143,6 +143,26 @@ def thinking_levels(session: str) -> list[str]:
     return levels
 
 
+def models(session: str) -> list[str]:
+    """Every model the session recorded, in order.
+
+    A scenario declares `model` as a **pattern**, which the agent resolves against
+    the models the provider actually offers: `gemma-4` ran as `gemma-4-31b`. So the
+    declared value names an intention, and only the session names what answered.
+
+    The same reason `etalon_commit` is archived beside `etalon`: a name and what that
+    name resolved to are two different facts, and an archive keeping only the name
+    cannot say what it measured.
+    """
+    seen = []
+    for event in events(session):
+        if event.get("type") == "model_change":
+            model = event.get("model") or event.get("modelId")
+            if model:
+                seen.append(model)
+    return seen
+
+
 def final_text(stream: str) -> str:
     """The agent's last piece of prose, which is what a judge scores.
 

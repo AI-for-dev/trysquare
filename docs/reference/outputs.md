@@ -179,6 +179,9 @@ each came from:
 {
   "cell": "+subagents",
   "etalon": "etalon-v1",
+  "etalon_commit": "9126095c68cbe51d7548d2b179f7470b237810df",
+  "model": "gemma-4",
+  "model_id": "gemma-4-31b",
   "thinking": "high",
   "injected": ["AGENTS.md", ".pi/"],
   "agents": {
@@ -188,6 +191,22 @@ each came from:
 ```
 
 Two places may declare a subagent's model, so the trace settles which one applied.
+
+:::{important}
+**`model` is a pattern; `model_id` is what answered.** `--model` is resolved against the
+models the provider actually offers, so a scenario declaring `gemma-4` runs
+`gemma-4-31b`. The declared value is an intention and only the session names what ran -
+exactly as `etalon` is a tag and `etalon_commit` is what that tag resolved to.
+
+Measured on a real matrix: six runs declared `gemma-4`, all six sessions recorded
+`gemma-4-31b`, and the archive said only `gemma-4`. Keeping the pattern alone left the
+archive unable to name the model it measured, and made a fallback to the machine's
+`defaultModel` indistinguishable from an ordinary resolution. `parity --smoke` now
+checks that what answered is still named by the pattern.
+
+`model_id` is `null` when the sessions do not say. Absence stays absence: filling the
+gap with the intention is precisely how a substitution would hide.
+:::
 
 ### `session/*.jsonl`
 

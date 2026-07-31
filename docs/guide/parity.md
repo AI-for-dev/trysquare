@@ -161,18 +161,35 @@ that do not depend on the sample:
 - every run valid, meaning every run consumed tokens;
 - the outputs a complete matrix owes are present;
 - each run's directory holds its context, configuration, diff and validation;
-- **the thinking level each session recorded equals the level its cell declared.**
+- **the thinking level each session recorded equals the level its cell declared;**
+- **the model that answered is still the one the scenario's pattern names.**
 
-That last one is the reason layer 4 exists. It makes the defect that rendered a thinking
+The last two are why layer 4 exists. The first makes the defect that rendered a thinking
 cell identical to its baseline in every published matrix unable to recur silently.
+
+The second is that same defect one axis over. `model` is a **pattern** the agent resolves,
+so `gemma-4` legitimately runs `gemma-4-31b`; the check is therefore not equality but
+"the pattern must still name what answered", and a fallback to the machine's
+`defaultModel` is exactly what fails it. Measured on a real matrix: six runs declared
+`gemma-4`, all six sessions recorded `gemma-4-31b`, and nothing in the archive said so.
 
 ```text
 layer 4 - smoke pass over rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n2
+  12 runs ran the model their pattern names
   12 sessions checked for the declared thinking level
 
   every mechanical criterion holds. No statistical claim: a smoke
   pass at small n concludes nothing about any configuration.
 ```
+
+:::{note}
+An archive written before `model_id` existed is reported as **unchecked** rather than as
+passing - a check that silently holds over material it never read is worse than none:
+
+```text
+  6 runs record no model_id, so what answered could not be checked
+```
+:::
 
 :::{tip}
 Run the smoke pass with `--repetitions 2` into its own `..._n2` directory. It cannot

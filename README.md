@@ -267,10 +267,13 @@ validators. A judge is never run there, so a metric only a judge produced is nam
 out of scope rather than reported as a disagreement.
 
 Layer 4 checks only what does not depend on the sample: every run valid, the outputs
-complete, each run's directory whole, and - the one that matters most - **the thinking
-level each session recorded equals the level its cell declared.** That check is what
-makes the defect which rendered the thinking cell identical to the baseline unable to
-recur. It concludes nothing about any configuration, and says so.
+complete, each run's directory whole, and - the two that matter most - **the thinking
+level each session recorded equals the level its cell declared**, and **the model that
+answered is still the one the scenario's pattern names.** The first makes the defect
+which rendered the thinking cell identical to the baseline unable to recur; the second is
+that same defect one axis over, since `model` is a pattern the agent resolves - `gemma-4`
+runs `gemma-4-31b` - so a fallback to the machine's default would otherwise pass unseen.
+It concludes nothing about any configuration, and says so.
 
 **Neither tool is the reference.** Two computations are compared over the same
 archived material, and the material arbitrates. A gap on an exact layer has three
