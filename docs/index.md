@@ -64,6 +64,13 @@ Grids, variants, bricks, protocol. Every key explained.
 
 The eight rules that make a number publishable, and the defect behind each.
 :::
+
+:::{grid-item-card} {octicon}`checklist` Cheat sheet
+:link: reference/cheatsheet
+:link-type: doc
+
+Every command, every flag, and what it costs, on one page.
+:::
 ::::
 
 ## Reference
@@ -85,6 +92,7 @@ guide/troubleshooting
 :maxdepth: 2
 :caption: Reference
 
+reference/cheatsheet
 reference/cli
 reference/scenario-schema
 reference/config-schema

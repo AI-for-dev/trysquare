@@ -354,6 +354,7 @@ make -C docs html          # then open docs/_build/html/index.html
 
 - **Guide** - getting started, core concepts, writing a scenario, writing a
   validator, the invariants and their reasoning, parity, troubleshooting
-- **Reference** - CLI, scenario schema, config schema, outputs, Python API
+- **Reference** - the cheat sheet, CLI, scenario schema, config schema, outputs,
+  Python API
 
 Sphinx lives in the `docs` optional group and is never imported by the package.

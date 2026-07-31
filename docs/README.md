@@ -27,6 +27,7 @@ docs/
     parity.md           proving this tool matches the one it replaces
     troubleshooting.md  every refusal, and its reasoning
   reference/            lookup-oriented: what a key or a flag does
+    cheatsheet.md       every command and flag, and what it costs
     cli.md
     scenario-schema.md
     config-schema.md
