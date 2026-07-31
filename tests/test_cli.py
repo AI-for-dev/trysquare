@@ -178,6 +178,70 @@ class TestRunPlan(unittest.TestCase):
         self.assertTrue(any("INCOMPLETE" in n for n in plan.notes))
 
 
+class TestCompletionOrder(unittest.TestCase):
+    """Runs are reported as they finish, and written in the order they were planned.
+
+    Both halves matter, and they pull in opposite directions. Reporting has to follow
+    completion or one slow run holds back the ledger of everything that finished behind
+    it - an interruption would then lose work that was done. Writing must not, because
+    `verdict.gap_interval` resamples `measures.json` with `random.choices`, which draws
+    **by index**: two identical matrices whose rows landed in a different order would
+    publish different bounds under the same fixed seed. A race must not reach a verdict.
+    """
+
+    def plan_and_runs(self):
+        import time
+        import unittest.mock
+
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.measure import VALID, Run
+        from trysquare.scenario import load
+
+        plan = runner.resolve(
+            load(SCENARIO),
+            config_mod.load(ROOT / "trysquare.toml"),
+            out(),
+            overrides={"repetitions": 1, "concurrency": 6},
+        )
+        slot = {rid: i for i, (rid, _) in enumerate(plan.todo)}
+
+        def slowest_first(_plan, run_id, meta):
+            # The run submitted first finishes last, so completion order is the exact
+            # reverse of submission order and the two orders cannot be confused.
+            time.sleep(0.02 * (len(slot) - slot[run_id]))
+            return Run(
+                id=run_id,
+                cell=meta["cell"],
+                repetition=meta["repetition"],
+                usage={"input": 1, "output": 1, "turns": 1, "retries": 0},
+                duration=1,
+                metrics={},
+                state=VALID,
+            )
+
+        reported = []
+        with unittest.mock.patch.object(runner, "prepare_source"), unittest.mock.patch.object(
+            runner, "one_run", side_effect=slowest_first
+        ):
+            done = runner.execute(plan, on_run=reported.append)
+        return plan, done, reported
+
+    def test_measures_keep_plan_order_whatever_the_completion_order(self):
+        plan, done, _ = self.plan_and_runs()
+        self.assertEqual([r.id for r in done], [rid for rid, _ in plan.todo])
+        written = plan.output.read_measures()
+        self.assertEqual([r.id for r in written], [rid for rid, _ in plan.todo])
+
+    def test_a_run_is_reported_the_moment_it_finishes(self):
+        plan, _, reported = self.plan_and_runs()
+        self.assertEqual(
+            [r.id for r in reported],
+            [rid for rid, _ in reversed(plan.todo)],
+            "reporting followed submission order, so the slowest run gated the rest",
+        )
+
+
 class TestInstalledCommand(unittest.TestCase):
     """The `trysquare` name, as a shell gets it.
 
