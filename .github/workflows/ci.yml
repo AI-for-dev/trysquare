@@ -36,8 +36,8 @@ jobs:
       # build on a branch that changed nothing.
       # From the dev group, so a local run is the same run. Was `uvx ruff@0.15.20`,
       # which nothing outside this file pinned or could reproduce.
-      - run: uv run --group dev ruff check trysquare tests examples tools docs/conf.py
-      - run: uv run --group dev ruff format --check trysquare tests examples tools docs/conf.py
+      - run: uv run --group dev ruff check trysquare tests examples tools docs
+      - run: uv run --group dev ruff format --check trysquare tests examples tools docs
 
   docs:
     runs-on: ubuntu-latest
