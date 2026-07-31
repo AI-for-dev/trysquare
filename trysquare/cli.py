@@ -195,6 +195,16 @@ def build_parser() -> argparse.ArgumentParser:
 # --- run -------------------------------------------------------------------
 
 
+def counted(n: int, noun: str) -> str:
+    """`1 cell`, `2 cells`. Every plural this tool prints is a regular `s`."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def matrix_line(cells: int, repetitions: int) -> str:
+    """`2 cells x 3 repetitions`, and `1 cell x 1 repetition` when that is the truth."""
+    return f"{counted(cells, 'cell')} x {counted(repetitions, 'repetition')}"
+
+
 def _load(args):
     """The scenario and the config it will run under, from one command's arguments.
 
@@ -230,7 +240,7 @@ def cmd_run(args) -> int:
     )
 
     print(f"{scenario.title or scenario.name}")
-    print(f"  {len(scenario.cells)} cells x {plan.output.repetitions} repetitions")
+    print(f"  {matrix_line(len(scenario.cells), plan.output.repetitions)}")
     print(f"  etalon {scenario.task['etalon']} of {plan.repo_source}")
     if plan.repo_source != str(plan.repo_path):
         # A URL. Announcing only the pinned directory would show the operator a path
@@ -241,7 +251,7 @@ def cmd_run(args) -> int:
         print(f"  ! {note}")
     for line in _blindness_lines(plan):
         print(line)
-    print(f"  {plan.runs} runs to perform")
+    print(f"  {counted(plan.runs, 'run')} to perform")
     for line in _forecast(plan):
         print(line)
 
@@ -464,7 +474,7 @@ def cmd_validate(args) -> int:
     runner_mod.refuse_unmeasurable(scenario)
 
     print(f"{scenario.title or scenario.name}")
-    print(f"  {len(scenario.cells)} cells x {scenario.protocol['repetitions']} repetitions")
+    print(f"  {matrix_line(len(scenario.cells), scenario.protocol['repetitions'])}")
     print(f"  etalon {scenario.task['etalon']} of {repo_source}")
     if repo_source != str(repo_path):
         print(f"  to be pinned at {repo_path} (cloned on the first run)")
@@ -547,13 +557,33 @@ def _export_sessions(output: Output, runs: list[Run], no_progress: bool = False)
                 bar.line(f"  {path.relative_to(output.directory)}")
             bar.tick()
 
-    print(f"\n  {written} session page{'' if written == 1 else 's'} written")
+    print(f"\n  {counted(written, 'session page')} written")
     if bare:
         print(
             f"  {bare} of {len(runs)} runs without an archived session: measured before "
             f"sessions were archived, or the agent never started"
         )
     return 0
+
+
+def session_links(output: Output, runs: list[Run]) -> list[tuple[str, str, list[str]]]:
+    """Each run's archived session pages, labelled by cell and ordered like the tables.
+
+    The cell order is the order the cells first appear in the measures, which is the
+    order the plan launched them in and therefore the order every other table shows -
+    read from the material rather than restated here.
+    """
+    cells: dict[str, int] = {}
+    for run in runs:
+        cells.setdefault(run.cell, len(cells))
+
+    found = [
+        (run, names)
+        for run in runs
+        if (names := [p.name for p in sorted((output.runs_dir / run.id / SESSION).glob("*.html"))])
+    ]
+    found.sort(key=lambda pair: (cells[pair[0].cell], pair[0].repetition))
+    return [(f"{run.cell} #{run.repetition}", run.id, names) for run, names in found]
 
 
 def _write_synthesis(
@@ -627,13 +657,8 @@ def _write_synthesis(
 
     # The same synthesis as a page, wherever the markdown is written. Costs
     # nothing: strings in, one self-contained file out, no token and no network.
-    sessions = {
-        r.id: names
-        for r in runs
-        if (names := [p.name for p in sorted((output.runs_dir / r.id / SESSION).glob("*.html"))])
-    }
     html_path = path.with_suffix(".html")
-    html_path.write_text(pages_mod.synthesis_page(path.read_text(), sessions))
+    html_path.write_text(pages_mod.synthesis_page(path.read_text(), session_links(output, runs)))
     print(f"  written {html_path}")
     return 0
 

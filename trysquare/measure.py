@@ -70,6 +70,16 @@ def events(text: str):
             continue
 
 
+def one_line(text: str) -> str:
+    """Whitespace collapsed, so a `detail` stays on the line that reports it.
+
+    Every `detail` is printed as the tail of a one-line run report and stored in the
+    ledger. A provider's message arrives with the newline it was written with, which
+    left a blank line under each failing run and a trailing `\\n` inside `state.json`.
+    """
+    return " ".join(text.split())
+
+
 def _usage_sum(evts, event_type: str, usage_of) -> dict:
     """The accumulation a stream and a session share: one billed turn per usage.
 

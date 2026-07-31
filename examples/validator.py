@@ -29,8 +29,14 @@ def evaluate(run: Assay) -> dict:
     return {
         # A bare value: no reason to give, so none is given.
         "delivered": bool(work),
-        # A value carrying its reason, so nobody has to write an `if` to attach one.
-        "in_scope": Metric(not outside, f"also touched {', '.join(sorted(outside))}"),
+        # A value carrying its reason - and the reason belongs to the **failure**.
+        # Attached unconditionally it read `also touched ` on every run that stayed in
+        # scope, a sentence with nothing after it. An empty reason is dropped by the
+        # base, so naming what is outside only when something is outside is the whole fix.
+        "in_scope": Metric(
+            not outside,
+            f"also touched {', '.join(sorted(outside))}" if outside else "",
+        ),
         # An attribute costs nothing; a parenthesis costs something. This one runs the
         # suite the scenario declared, and carries the runner's own summary as its reason.
         "tests": or_unjudged(run.tests),
