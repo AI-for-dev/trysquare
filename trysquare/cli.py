@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
+import statistics
 import sys
 from pathlib import Path
 
@@ -213,6 +215,8 @@ def cmd_run(args) -> int:
     for line in _blindness_lines(plan):
         print(line)
     print(f"  {plan.runs} runs to perform")
+    for line in _forecast(plan):
+        print(line)
 
     if not plan.todo:
         print("  nothing to do: every run already produced a result")
@@ -223,6 +227,8 @@ def cmd_run(args) -> int:
             print(f"    {run_id}  {meta['cell']}  #{meta['repetition']}")
         if plan.runs > 12:
             print(f"    ... and {plan.runs - 12} more")
+        if not agent_mod.available():
+            print(f"  ! {agent_mod.PI!r} is not on PATH: a real run will refuse")
         print("\n  dry run: nothing was spent")
         return 0
 
@@ -250,6 +256,48 @@ def cmd_run(args) -> int:
         runner_mod.execute(plan, on_run=report)
 
     return _write_synthesis(plan.output, scenario)
+
+
+def _forecast(plan) -> list[str]:
+    """What the plan is about to cost, said before it is spent - and only what
+    the harness can actually know.
+
+    The duration is a *bound*, arithmetic on declared numbers: runs, concurrency,
+    timeout. The spend is an *estimate from the archive*: the median cost of the
+    valid runs this experiment already holds, times the runs to perform. Never a
+    price list - the harness is provider-agnostic, a maintained price table goes
+    stale silently, and a wrong estimate is worse than none. A scenario that has
+    never run says so instead of guessing.
+    """
+    if not plan.runs:
+        return []
+    lines = []
+    concurrency = plan.overrides.get("concurrency") or plan.scenario.protocol.get(
+        "concurrency", plan.config.fallback("concurrency")
+    )
+    timeout = plan.overrides.get("timeout") or plan.scenario.protocol.get(
+        "timeout", plan.config.fallback("timeout")
+    )
+    if concurrency and timeout:
+        bound = math.ceil(plan.runs / concurrency) * timeout
+        lines.append(
+            f"  at most ~{math.ceil(bound / 60)} min: {plan.runs} runs, "
+            f"{concurrency} at a time, {timeout}s timeout each"
+        )
+    costs = [
+        r.usage.get("cost", 0)
+        for r in plan.output.read_measures()
+        if r.is_valid and r.usage.get("cost")
+    ]
+    if costs:
+        median = statistics.median(costs)
+        lines.append(
+            f"  spend, from this experiment's archive: median ${median:.2f} over "
+            f"{len(costs)} valid runs -> ~${median * plan.runs:.2f} for {plan.runs} to perform"
+        )
+    else:
+        lines.append("  spend: no archived run to estimate from")
+    return lines
 
 
 def _blindness_lines(plan) -> list[str]:

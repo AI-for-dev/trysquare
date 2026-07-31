@@ -102,6 +102,13 @@ its ledger.
 2. **Thinking mismatch** when the scenario uses subagents.
 3. **An agent with no model**, from neither its file nor an override.
 
+The plan header states, before anything is spent: a duration **bound** (runs,
+concurrency and timeout are declared, so `runs / concurrency x timeout` is
+arithmetic, not a guess), a spend **estimate** when this experiment's archive
+already holds valid runs (their median cost times the runs to perform - never a
+price list), an `OVERWRITE` note when the output directory already holds a
+ledger, and - on `--dry-run` - whether a real run would refuse for want of `pi`.
+
 ## `validate`
 
 Checks a scenario end to end without an output directory, and without spending a
