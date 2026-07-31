@@ -163,7 +163,9 @@ def layer1(measures_path: str | Path, archive: str | Path) -> list[str]:
             )
             continue
 
-        for i, (mine, theirs) in enumerate((("input", "input"), ("output", "output"), ("turns", "tours"))):
+        for i, (mine, theirs) in enumerate(
+            (("input", "input"), ("output", "output"), ("turns", "tours"))
+        ):
             if got[i] != want[i]:
                 problems.append(f"{ident}/{mine}: bench {want[i]}, from the session {got[i]}")
 
@@ -171,7 +173,9 @@ def layer1(measures_path: str | Path, archive: str | Path) -> list[str]:
         problems.append(f"no archived session found under {archive}")
     else:
         agreeing = sum(1 for i, g in stripped.items() if g == published[i])
-        problems.insert(0, f"{agreeing}/{checked} sessions reproduce their recorded figures exactly")
+        problems.insert(
+            0, f"{agreeing}/{checked} sessions reproduce their recorded figures exactly"
+        )
     return problems
 
 
@@ -191,7 +195,11 @@ def layer2(
     paid for" true rather than aspirational.
     """
     archive = Path(archive)
-    rows = {r["identifiant"]: r for r in json.loads(Path(measures_path).read_text()) if r.get("identifiant")}
+    rows = {
+        r["identifiant"]: r
+        for r in json.loads(Path(measures_path).read_text())
+        if r.get("identifiant")
+    }
     problems = []
 
     for ident, row in rows.items():

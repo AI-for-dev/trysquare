@@ -6,7 +6,6 @@ produce an explanation rather than a traceback - the measures are safe on disk a
 nothing needs remeasuring.
 """
 
-
 import pytest
 
 from trysquare.measure import VALID, VALIDATOR_FAILED, Run
@@ -78,7 +77,7 @@ class TestValidityMismatch:
         assert "must match the task" in str(e.value)
 
     def test_it_reports_the_valid_count_so_the_confusion_is_addressed(self):
-        """"No valid run" after eight `ok` lines is baffling without this."""
+        """ "No valid run" after eight `ok` lines is baffling without this."""
         with pytest.raises(ValueError) as e:
             gap_rows(self.cells(), "nothing", self.measures(), validity=("delivered",))
         assert "2 of them valid" in str(e.value)

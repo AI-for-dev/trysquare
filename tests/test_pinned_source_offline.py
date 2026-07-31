@@ -24,10 +24,14 @@ from trysquare import repo, runner
 # signing key, default branch name or absent user.email would each break it somewhere
 # else than here.
 ISOLATION = (
-    "-c", "init.defaultBranch=main",
-    "-c", "user.email=t@t",
-    "-c", "user.name=t",
-    "-c", "commit.gpgsign=false",
+    "-c",
+    "init.defaultBranch=main",
+    "-c",
+    "user.email=t@t",
+    "-c",
+    "user.name=t",
+    "-c",
+    "commit.gpgsign=false",
 )
 
 
@@ -132,9 +136,7 @@ class TestPinningARemote:
             scenario.cells[0],
             "off",
         )
-        written = json.loads(
-            (plan.output.run_dir("r0") / "configuration.json").read_text()
-        )
+        written = json.loads((plan.output.run_dir("r0") / "configuration.json").read_text())
         assert written["repo"] == self.url
         assert written["etalon_commit"] == self.head
 

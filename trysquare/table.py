@@ -199,9 +199,7 @@ def retry_warning(by_cell: dict[str, list[Run]]) -> str:
     total = sum(r.retries for runs in by_cell.values() for r in runs)
     if not total:
         return ""
-    affected = sorted(
-        name for name, runs in by_cell.items() if any(r.retries for r in runs)
-    )
+    affected = sorted(name for name, runs in by_cell.items() if any(r.retries for r in runs))
     return (
         f"\n:warning: **The cost columns ({', '.join(COST_MEASURES)}) must not be read "
         f"here.** {total} retries across the matrix, in {', '.join(affected)}. A retry "
@@ -273,9 +271,7 @@ def spend_table(rows: list[dict], measures: tuple[Measure, ...], draws: int, see
     names = [m.name for m in measures]
     header = "| cell | n | " + " | ".join(names) + " |"
     sep = "| " + " | ".join(["---"] * (len(names) + 2)) + " |"
-    lines = [
-        f"| {row['cell']} | {row['n']} | " + " | ".join(row["spend"]) + " |" for row in rows
-    ]
+    lines = [f"| {row['cell']} | {row['n']} | " + " | ".join(row["spend"]) + " |" for row in rows]
 
     return "\n".join(
         [

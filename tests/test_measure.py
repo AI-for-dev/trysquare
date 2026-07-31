@@ -88,7 +88,9 @@ class TestStripSession:
         Reported as None so a caller cannot mistake absence for zero, which would
         silently widen the parity scope to a column that is not archived.
         """
-        u = strip_session(stream({"type": "message", "message": {"usage": {"input": 1, "output": 1}}}))
+        u = strip_session(
+            stream({"type": "message", "message": {"usage": {"input": 1, "output": 1}}})
+        )
         assert u["retries"] is None
 
     def test_thinking_levels_are_recoverable(self):
@@ -101,7 +103,7 @@ class TestStripSession:
 
 
 class TestConsumedTokens:
-    """"Did not do the work" must never read as "worked well"."""
+    """ "Did not do the work" must never read as "worked well"."""
 
     def test_a_real_run_counts(self):
         assert consumed_tokens({"turns": 4, "input": 15900, "output": 800})
@@ -138,7 +140,13 @@ class TestMerge:
     def test_metrics_and_reasons_combine(self):
         metrics, reasons, state, _ = merge(
             [
-                ("script", {"metrics": {"overflow": True, "delivered": True}, "reasons": {"overflow": "issue #1"}}),
+                (
+                    "script",
+                    {
+                        "metrics": {"overflow": True, "delivered": True},
+                        "reasons": {"overflow": "issue #1"},
+                    },
+                ),
             ],
             self.DECLARED,
         )

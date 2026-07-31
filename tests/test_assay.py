@@ -104,7 +104,7 @@ class TestSetsSerialiseSorted:
 
 
 class TestTheErrorContract:
-    """"Could not judge" is not "worked badly", and one validator in four got it right.
+    """ "Could not judge" is not "worked badly", and one validator in four got it right.
 
     Three of four validators called `evaluate(context)` with no net, so a traceback lands in
     `script.stderr` and reads six months later as a broken validator when the cause is
@@ -187,9 +187,7 @@ class TestTheErrorContract:
         """`merge` keeps extras on purpose, which is what lets one validator serve
         several scenarios."""
         context = self.context(declared=["delivered"])
-        code, out, _ = self.run_validator(
-            lambda run: {"delivered": True, "spare": 3}, context
-        )
+        code, out, _ = self.run_validator(lambda run: {"delivered": True, "spare": 3}, context)
         assert code == 0
         assert json.loads(out)["metrics"]["spare"] == 3
 
@@ -292,9 +290,7 @@ class TestSourcesAtEtalon:
         assert self.run.sources_at_etalon("src/*.ts") == ""
 
     def test_a_missing_checkout_refuses_rather_than_guessing(self):
-        run = Assay(
-            {"etalon": {"tag": "etalon-v1", "checkout": "/nowhere"}, "files": ["a.js"]}
-        )
+        run = Assay({"etalon": {"tag": "etalon-v1", "checkout": "/nowhere"}, "files": ["a.js"]})
         with pytest.raises(CannotJudge):
             run.sources_at_etalon("*.js")
 
@@ -424,10 +420,7 @@ def a_runner(directory: Path, code: int, out: str = "", err: str = "") -> str:
     """
     script = directory / "runner.py"
     script.write_text(
-        "import sys\n"
-        f"sys.stdout.write({out!r})\n"
-        f"sys.stderr.write({err!r})\n"
-        f"sys.exit({code})\n"
+        f"import sys\nsys.stdout.write({out!r})\nsys.stderr.write({err!r})\nsys.exit({code})\n"
     )
     return shlex.join([sys.executable, str(script)])
 

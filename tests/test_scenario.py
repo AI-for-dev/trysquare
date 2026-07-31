@@ -273,9 +273,7 @@ class TestDeclaredTestCommand:
         with pytest.raises(ScenarioError, match="string"):
             parse(scoring_tests(test_command=["node", "--test"]))
 
-    @pytest.mark.parametrize(
-        "line", ["npm ci && npm test", "npm test | tee out", "npm test > out"]
-    )
+    @pytest.mark.parametrize("line", ["npm ci && npm test", "npm test | tee out", "npm test > out"])
     def test_a_shell_word_is_named_and_refused(self, line):
         """What the old list form only made harmless, this refuses out loud. Left alone,
         `&&` would reach the runner as an argument and fail where nobody can read it."""

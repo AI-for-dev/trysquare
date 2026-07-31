@@ -165,8 +165,13 @@ class TestLayer4:
                 json.dumps({"type": "thinking_level_change", "level": thinking_recorded})
             )
         (d / "state.json").write_text(
-            json.dumps({"runs": runs, "complete": all(s == "valid" for _, s in states),
-                        "thinking": declared_thinking})
+            json.dumps(
+                {
+                    "runs": runs,
+                    "complete": all(s == "valid" for _, s in states),
+                    "thinking": declared_thinking,
+                }
+            )
         )
         (d / "measures.json").write_text("[]")
         (d / "synthesis.md").write_text("#")

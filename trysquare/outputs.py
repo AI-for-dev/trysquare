@@ -281,7 +281,9 @@ class Output:
         d = self.run_dir(run_id_) / "validation"
         d.mkdir(parents=True, exist_ok=True)
         if payload is not None:
-            (d / f"{mode}.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            (d / f"{mode}.json").write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+            )
         if stderr:
             (d / f"{mode}.stderr").write_text(stderr)
 

@@ -152,9 +152,7 @@ class TestTheExampleScoresARun:
         Pointing `test_command` at something that cannot run says the same thing on every
         version.
         """
-        payload = score(
-            a_measured_run({"counter.py": "x = 1\n"}, command="/nowhere/runner")
-        )
+        payload = score(a_measured_run({"counter.py": "x = 1\n"}, command="/nowhere/runner"))
         assert "tests" not in payload["metrics"]
         assert "tests" in payload["unjudged"]
         assert payload["metrics"]["delivered"] is True
@@ -214,9 +212,7 @@ class TestTheExampleDegradesHonestly:
 class TestTheExampleIsSmallEnoughToBeAnExample:
     def test_it_is_runnable_by_hand(self):
         """The contract is "any executable", so a reader must be able to try it."""
-        done = subprocess.run(
-            [sys.executable, str(EXAMPLE)], capture_output=True, text=True
-        )
+        done = subprocess.run([sys.executable, str(EXAMPLE)], capture_output=True, text=True)
         assert done.returncode == 2
         assert "context.json" in done.stderr
 
@@ -225,11 +221,11 @@ class TestTheExampleIsSmallEnoughToBeAnExample:
         is the ticket that was supposed to find out."""
         source = EXAMPLE.read_text().split("\n")
         start = next(i for i, line in enumerate(source) if line.startswith("def evaluate"))
-        end = next(i for i, line in enumerate(source[start + 1 :], start + 1) if line.startswith("def "))
+        end = next(
+            i for i, line in enumerate(source[start + 1 :], start + 1) if line.startswith("def ")
+        )
         code = [
-            line
-            for line in source[start:end]
-            if line.strip() and not line.strip().startswith("#")
+            line for line in source[start:end] if line.strip() and not line.strip().startswith("#")
         ]
         assert len(code) < 25, "\n".join(code)
 

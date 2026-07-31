@@ -35,9 +35,7 @@ class TestParser:
             build_parser().parse_args(["run", SCENARIO])
 
     def test_every_subcommand_exists(self):
-        actions = [
-            a for a in build_parser()._subparsers._group_actions if hasattr(a, "choices")
-        ]
+        actions = [a for a in build_parser()._subparsers._group_actions if hasattr(a, "choices")]
         available = set(actions[0].choices)
         assert available == {"run", "render", "replay", "compare", "parity", "form"}
 
@@ -184,9 +182,7 @@ class TestRunPlan:
         from trysquare import runner
         from trysquare.scenario import load
 
-        plan = runner.resolve(
-            load(SCENARIO), config_mod.load(MACHINE), out(), only=("rule / off",)
-        )
+        plan = runner.resolve(load(SCENARIO), config_mod.load(MACHINE), out(), only=("rule / off",))
         assert plan.runs == 10
         assert any("INCOMPLETE" in n for n in plan.notes)
 
@@ -234,8 +230,9 @@ class TestCompletionOrder:
             )
 
         reported = []
-        with unittest.mock.patch.object(runner, "prepare_source"), unittest.mock.patch.object(
-            runner, "one_run", side_effect=slowest_first
+        with (
+            unittest.mock.patch.object(runner, "prepare_source"),
+            unittest.mock.patch.object(runner, "one_run", side_effect=slowest_first),
         ):
             done = runner.execute(plan, on_run=reported.append)
         return plan, done, reported
@@ -248,7 +245,9 @@ class TestCompletionOrder:
 
     def test_a_run_is_reported_the_moment_it_finishes(self):
         plan, _, reported = self.plan_and_runs()
-        assert [r.id for r in reported] == [rid for rid, _ in reversed(plan.todo)], "reporting followed submission order, so the slowest run gated the rest"
+        assert [r.id for r in reported] == [rid for rid, _ in reversed(plan.todo)], (
+            "reporting followed submission order, so the slowest run gated the rest"
+        )
 
 
 class TestInstalledCommand:
@@ -300,7 +299,9 @@ class TestInstalledCommand:
         from trysquare.scripts import cli_trysquare
 
         err = io.StringIO()
-        with unittest.mock.patch.object(cli_trysquare, "run_command", side_effect=KeyboardInterrupt):
+        with unittest.mock.patch.object(
+            cli_trysquare, "run_command", side_effect=KeyboardInterrupt
+        ):
             with contextlib.redirect_stderr(err):
                 code = cli_trysquare.main(["run", SCENARIO, "-o", str(out())])
         assert code == 130
@@ -547,8 +548,7 @@ class TestReplayRescore:
         self.source = a_repo({"a.js": "one\n", "game/b.js": "two\n"})
 
         (self.home / "trysquare.toml").write_text(
-            f'[repos]\nmy-repo = "{self.source}"\n'
-            f'[defaults]\nworkdir = "{self.home / "work"}"\n'
+            f'[repos]\nmy-repo = "{self.source}"\n[defaults]\nworkdir = "{self.home / "work"}"\n'
         )
         self.scenario = self.home / "s.toml"
         self.scenario.write_text(SCENARIO_TOML)
@@ -574,10 +574,19 @@ class TestReplayRescore:
             json.dumps(
                 {
                     "runs": {
-                        "aaaaaaaa": {"cell": "none", "repetition": 0, "state": "validator_failed",
-                                     "attempts": 1, "detail": "validator 'script' failed"},
-                        "bbbbbbbb": {"cell": "none", "repetition": 1, "state": "valid",
-                                     "attempts": 1},
+                        "aaaaaaaa": {
+                            "cell": "none",
+                            "repetition": 0,
+                            "state": "validator_failed",
+                            "attempts": 1,
+                            "detail": "validator 'script' failed",
+                        },
+                        "bbbbbbbb": {
+                            "cell": "none",
+                            "repetition": 1,
+                            "state": "valid",
+                            "attempts": 1,
+                        },
                     }
                 }
             )
@@ -659,9 +668,17 @@ class TestReplayRescore:
         here = Path.cwd()
         try:
             os.chdir(self.home)
-            assert 0 == main(["replay", "results/t_etalon-v1_ilaas_gemma-4-31b_n2",
-                      "--scenario", str(self.scenario),
-                      "--config", str(self.home / "trysquare.toml"), "--rescore"])
+            assert 0 == main(
+                [
+                    "replay",
+                    "results/t_etalon-v1_ilaas_gemma-4-31b_n2",
+                    "--scenario",
+                    str(self.scenario),
+                    "--config",
+                    str(self.home / "trysquare.toml"),
+                    "--rescore",
+                ]
+            )
         finally:
             os.chdir(here)
         assert 1 == self.measures()["aaaaaaaa"]["metrics"]["session_files"]
@@ -706,8 +723,17 @@ class TestReplayRescore:
         (other / "runs").mkdir(parents=True)
         (other / "runs" / "aaaaaaaa").mkdir()
         (other / "runs" / "aaaaaaaa" / "diff.patch").write_text("")
-        assert 1 == main(["replay", str(other), "--scenario", str(self.scenario),
-                  "--config", str(self.home / "trysquare.toml"), "--rescore"])
+        assert 1 == main(
+            [
+                "replay",
+                str(other),
+                "--scenario",
+                str(self.scenario),
+                "--config",
+                str(self.home / "trysquare.toml"),
+                "--rescore",
+            ]
+        )
 
     def test_a_run_that_produced_nothing_is_left_alone(self):
         """No scoring turns "produced nothing" into a measurement, and overwriting its

@@ -75,9 +75,7 @@ def measured(tmp_path):
         o = outputs.Output(directory, load(SCENARIO), repetitions=1)
         o.prepare()
         o.write_state(o.initial_state())
-        o.write_measures(
-            [Run(id=i, cell="nothing / off", repetition=0, state=VALID) for i in ids]
-        )
+        o.write_measures([Run(id=i, cell="nothing / off", repetition=0, state=VALID) for i in ids])
         return directory
 
     return make

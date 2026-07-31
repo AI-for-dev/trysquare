@@ -733,11 +733,11 @@ class TestScriptValidatorPaths:
             'print(json.dumps({"metrics": {"ok": sys.version_info >= (3, 11)}}))\n'
         )
         script.chmod(0o644)
-        result = validation.run_script(
-            self.validator(script), self.context_under(root), timeout=30
-        )
+        result = validation.run_script(self.validator(script), self.context_under(root), timeout=30)
         assert (result.detail or None) is None, result.stderr
-        assert result.payload["metrics"]["ok"], "the validator ran on an interpreter older than the package requires"
+        assert result.payload["metrics"]["ok"], (
+            "the validator ran on an interpreter older than the package requires"
+        )
 
     def test_a_validator_in_another_language_is_left_alone(self, tmp_path):
         """The courtesy is for `.py` only. "Any executable, in any language" stays
@@ -746,9 +746,7 @@ class TestScriptValidatorPaths:
         script = root / "echo.sh"
         script.write_text('#!/bin/sh\ncat "$1" > /dev/null\necho \'{"metrics":{"ok":true}}\'\n')
         script.chmod(0o755)
-        result = validation.run_script(
-            self.validator(script), self.context_under(root), timeout=30
-        )
+        result = validation.run_script(self.validator(script), self.context_under(root), timeout=30)
         assert (result.detail or None) is None, result.stderr
         assert result.payload["metrics"] == {"ok": True}
         assert result.payload == {"metrics": {"ok": True}}

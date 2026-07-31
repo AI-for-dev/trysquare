@@ -28,10 +28,10 @@ extensions = [
 ]
 
 myst_enable_extensions = [
-    "colon_fence",      # ::: fences, so admonitions read as Markdown
-    "deflist",          # definition lists for the reference tables
+    "colon_fence",  # ::: fences, so admonitions read as Markdown
+    "deflist",  # definition lists for the reference tables
     "fieldlist",
-    "linkify",          # bare URLs become links
+    "linkify",  # bare URLs become links
     "substitution",
     "tasklist",
 ]
