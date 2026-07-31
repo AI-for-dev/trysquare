@@ -1,6 +1,6 @@
 """The command line.
 
-Six subcommands, and `--output` roots every one of them that writes.
+Seven subcommands, and `--output` roots every one of them that writes.
 
 Overrides are always **announced at launch**. That is not politeness: the previous
 tool had a protocol declared in a document and defaults in the code that
@@ -101,6 +101,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--dry-run", action="store_true", help="show the plan and spend nothing")
     run.set_defaults(func=cmd_run)
 
+    validate = sub.add_parser(
+        "validate", help="check a scenario end to end, without an output directory or a token"
+    )
+    validate.add_argument("scenario", help="path to a scenario TOML file")
+    validate.add_argument(
+        "--config", type=Path, help="config file (default: nearest trysquare.toml)"
+    )
+    validate.set_defaults(func=cmd_validate)
+
     render = with_progress(
         with_common(sub.add_parser("render", help="rebuild tables from stored measures"))
     )
@@ -157,6 +166,18 @@ def build_parser() -> argparse.ArgumentParser:
 # --- run -------------------------------------------------------------------
 
 
+def _load(args):
+    """The scenario and the config it will run under, from one command's arguments.
+
+    The config is searched from the scenario's own directory, not the operator's:
+    an experiment carried to another machine must keep resolving against the
+    `trysquare.toml` that sits beside it.
+    """
+    scenario = load_scenario(args.scenario)
+    config = config_mod.load(args.config, start=Path(args.scenario).resolve().parent)
+    return scenario, config
+
+
 def collect_overrides(args) -> dict:
     out = {}
     for key in (*STAMPED, *RECORDED):
@@ -167,8 +188,7 @@ def collect_overrides(args) -> dict:
 
 
 def cmd_run(args) -> int:
-    scenario = load_scenario(args.scenario)
-    config = config_mod.load(args.config, start=Path(args.scenario).resolve().parent)
+    scenario, config = _load(args)
     overrides = collect_overrides(args)
 
     plan = runner_mod.resolve(
@@ -236,6 +256,38 @@ def _blindness_lines(plan) -> list[str]:
     from .validation import describe_blindness
 
     return describe_blindness(plan.blindness, len(plan.scenario.cells))
+
+
+# --- validate ----------------------------------------------------------------
+
+
+def cmd_validate(args) -> int:
+    """Everything `run` would refuse, checked before an output directory exists.
+
+    The natural first command against a new scenario, and cheap enough for a CI
+    hook: the same refusals `resolve` applies - the config entry for the
+    repository, every referenced path, the thinking precondition - shared with it
+    rather than reimplemented, so `validate` cannot pass what `run` would refuse.
+    """
+    scenario, config = _load(args)
+    repo_path, repo_source = runner_mod.settle_repo(scenario, config)
+    runner_mod.refuse_unmeasurable(scenario)
+
+    print(f"{scenario.title or scenario.name}")
+    print(f"  {len(scenario.cells)} cells x {scenario.protocol['repetitions']} repetitions")
+    print(f"  etalon {scenario.task['etalon']} of {repo_source}")
+    if repo_source != str(repo_path):
+        print(f"  to be pinned at {repo_path} (cloned on the first run)")
+    for v in scenario.validators:
+        print(f"  {v.mode} validator, owning: {', '.join(v.metrics)}")
+    for line in validation_mod.describe_blindness(
+        validation_mod.blindness(scenario), len(scenario.cells)
+    ):
+        print(line)
+    if not agent_mod.available():
+        print(f"  ! {agent_mod.PI!r} is not on PATH: this validation holds, a run would refuse")
+    print("ok: nothing this scenario references is missing")
+    return 0
 
 
 # --- render ----------------------------------------------------------------
@@ -382,8 +434,7 @@ def _write_synthesis(
 
 def cmd_replay(args) -> int:
     """Re-scores archived runs by reconstituting their trees. Costs no tokens."""
-    scenario = load_scenario(args.scenario)
-    config = config_mod.load(args.config, start=Path(args.scenario).resolve().parent)
+    scenario, config = _load(args)
     base = Path(args.scenario).resolve().parent
     # Pinned like a run would: a replay costs no tokens, but it has always cost a clone,
     # and a scenario naming a URL has nothing to reconstitute from until it is pinned.

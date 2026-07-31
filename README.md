@@ -58,7 +58,7 @@ uv run trysquare run my-scenario.toml --output out
 `trysquare` is a console script, so `uv tool install .` - or `pip install -e .` in a
 virtual environment - puts the same command on PATH without `uv run` in front of it.
 `uv run trysquare --help` lists the subcommands, and `uv run trysquare <command>
---help` the flags of one. `python -m trysquare` runs the same six subcommands from
+--help` the flags of one. `python -m trysquare` runs the same seven subcommands from
 an installed environment, which is what the tests use.
 
 ## Commands
@@ -66,6 +66,7 @@ an installed environment, which is what the tests use.
 | command | what it does |
 | --- | --- |
 | `run` | measures a scenario |
+| `validate` | checks a scenario end to end - files, config entries, preconditions - without an output directory or a token |
 | `render` | rebuilds tables from stored measures, without remeasuring; `--html` rebuilds the session pages too |
 | `replay` | reconstitutes archived runs; `--rescore` re-runs the script validators and rewrites the measures, at no token cost |
 | `compare` | compares two experiments, refusing what is not comparable |
