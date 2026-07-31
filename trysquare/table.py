@@ -17,7 +17,7 @@ import statistics
 from dataclasses import dataclass
 from typing import Callable
 
-from .measure import Run, kind, rate, valid_runs
+from .measure import Run, counted, kind, rate, valid_runs
 from .verdict import DRAWS, ESTABLISHED, SEED, interval, judge, mean, plain, points, signed
 
 
@@ -104,7 +104,8 @@ def gap_rows(
         raise ValueError(
             f"reference cell {reference!r} has no run left to compare against: no gap "
             f"is judgeable.\n"
-            f"  {len(present)} runs, {sum(1 for r in present if r.is_valid)} of them valid"
+            f"  {counted(len(present), 'run')}, "
+            f"{sum(1 for r in present if r.is_valid)} of them valid"
             + (
                 f"\n  eliminated by [verdict].validity: {culprits}"
                 f"\n  A validity condition must match the task: `delivered` requires a"

@@ -80,6 +80,19 @@ def one_line(text: str) -> str:
     return " ".join(text.split())
 
 
+def counted(n: int, noun: str, plural: str | None = None) -> str:
+    """`1 run`, `2 runs`, `0 runs`, and `2 passes` when `s` is not enough.
+
+    Here rather than beside the parser because four modules print counts, and the one
+    that reached a real matrix - `no price on 1 archived valid runs` - was written where
+    a helper living in the command line could not be reached.
+
+    A count of the form `x of y` takes its plural from `y` and does not come through
+    here: `1 of 3 runs` is already right.
+    """
+    return f"{n} {noun}" if n == 1 else f"{n} {plural or noun + 's'}"
+
+
 def _usage_sum(evts, event_type: str, usage_of) -> dict:
     """The accumulation a stream and a session share: one billed turn per usage.
 
