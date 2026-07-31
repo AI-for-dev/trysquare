@@ -131,7 +131,9 @@ def run(cwd: Path, args: list[str], timeout: int) -> Outcome:
     )
 
 
-def run_until_productive(cwd: Path, args: list[str], timeout: int, attempts: int) -> tuple[Outcome, int]:
+def run_until_productive(
+    cwd: Path, args: list[str], timeout: int, attempts: int
+) -> tuple[Outcome, int]:
     """Retries only while nothing has been produced.
 
     A run that consumed no tokens produced no result, so there is nothing to

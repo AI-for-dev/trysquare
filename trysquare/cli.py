@@ -94,7 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--repetitions", type=int, help="override, stamped into the directory name")
     run.add_argument("--concurrency", type=int, help="override, recorded in the state")
     run.add_argument("--timeout", type=int, help="override, recorded in the state")
-    run.add_argument("--only", action="append", default=[], help="restrict to these cells (repeatable)")
+    run.add_argument(
+        "--only", action="append", default=[], help="restrict to these cells (repeatable)"
+    )
     run.add_argument("--resume", action="store_true", help="fill only what produced nothing")
     run.add_argument("--dry-run", action="store_true", help="show the plan and spend nothing")
     run.set_defaults(func=cmd_run)
@@ -114,7 +116,9 @@ def build_parser() -> argparse.ArgumentParser:
     replay = with_progress(
         sub.add_parser("replay", help="re-score archived runs without spending tokens")
     )
-    replay.add_argument("directory", type=Path, help="an experiment directory, or one run inside it")
+    replay.add_argument(
+        "directory", type=Path, help="an experiment directory, or one run inside it"
+    )
     replay.add_argument("--config", type=Path)
     replay.add_argument("--scenario", type=Path, required=True)
     replay.add_argument(
@@ -130,7 +134,9 @@ def build_parser() -> argparse.ArgumentParser:
     compare.set_defaults(func=cmd_compare)
 
     parity = sub.add_parser("parity", help="check this harness against the previous bench")
-    parity.add_argument("measures", nargs="?", type=Path, help="the bench's published measures JSON")
+    parity.add_argument(
+        "measures", nargs="?", type=Path, help="the bench's published measures JSON"
+    )
     parity.add_argument("--archive", type=Path, help="the bench's archived run directories")
     parity.add_argument("--reference", default="base")
     parity.add_argument("--criterion", default="overflow")
@@ -308,7 +314,9 @@ def _export_sessions(output: Output, runs: list[Run], no_progress: bool = False)
     return 0
 
 
-def _write_synthesis(output: Output, scenario, runs: list[Run] | None = None, suffix: str = "") -> int:
+def _write_synthesis(
+    output: Output, scenario, runs: list[Run] | None = None, suffix: str = ""
+) -> int:
     runs = runs if runs is not None else output.read_measures()
     state = output.read_state()
     counts = output.summarise(state) if state else {}
@@ -345,9 +353,7 @@ def _write_synthesis(output: Output, scenario, runs: list[Run] | None = None, su
     seed = scenario.verdict.get("seed", 20260729)
 
     tests, other = table_mod.scored_metrics(runs, scenario.declared_metrics)
-    scores = table_mod.score_table(
-        table_mod.score_rows(by_cell, tests, order), tests, other
-    )
+    scores = table_mod.score_table(table_mod.score_rows(by_cell, tests, order), tests, other)
     spend = table_mod.spend_measures()
     cost = table_mod.spend_table(
         table_mod.spend_rows(by_cell, spend, validity, order, draws, seed), spend, draws, seed
@@ -384,9 +390,13 @@ def cmd_replay(args) -> int:
     source = runner_mod.prepare_source(config, scenario.task["repo"], scenario.task["etalon"])
 
     directory = args.directory
-    runs = [directory] if (directory / "diff.patch").is_file() else sorted(
-        d for d in (directory / "runs").iterdir() if d.is_dir()
-    ) if (directory / "runs").is_dir() else []
+    runs = (
+        [directory]
+        if (directory / "diff.patch").is_file()
+        else sorted(d for d in (directory / "runs").iterdir() if d.is_dir())
+        if (directory / "runs").is_dir()
+        else []
+    )
     if not runs:
         print(f"error: no archived run found under {directory}", file=sys.stderr)
         return 1
@@ -404,9 +414,7 @@ def cmd_replay(args) -> int:
     with progress_mod.bar(len(runs), "replayed", enabled) as bar:
         for run_dir in runs:
             patch = (
-                (run_dir / "diff.patch").read_text()
-                if (run_dir / "diff.patch").is_file()
-                else ""
+                (run_dir / "diff.patch").read_text() if (run_dir / "diff.patch").is_file() else ""
             )
             work = config.workdir() / "replay" / run_dir.name
             # Into `work/repo`, which is the run's own layout rather than tidiness. The
@@ -660,14 +668,16 @@ def cmd_compare(args) -> int:
 
     print(f"comparing {args.left.name} against {args.right.name}")
     differing = [
-        k for k in ("provider", "model", "thinking", "repetitions", "concurrency", "timeout")
+        k
+        for k in ("provider", "model", "thinking", "repetitions", "concurrency", "timeout")
         if left.get(k) != right.get(k)
     ]
     same = [
-        k for k in ("etalon", "provider", "model", "repetitions")
-        if left.get(k) == right.get(k)
+        k for k in ("etalon", "provider", "model", "repetitions") if left.get(k) == right.get(k)
     ]
-    print(f"  declared differences: {', '.join(f'{k} ({left.get(k)} / {right.get(k)})' for k in differing) or 'none'}")
+    print(
+        f"  declared differences: {', '.join(f'{k} ({left.get(k)} / {right.get(k)})' for k in differing) or 'none'}"
+    )
     print(f"  identical: {', '.join(same)}")
 
     # Cost columns are contaminated by retries, which reflect our own load on the
@@ -695,7 +705,9 @@ def _retries(experiment: dict) -> int:
     measures = experiment["_dir"] / "measures.json"
     if not measures.is_file():
         return 0
-    return sum((row.get("usage") or {}).get("retries") or 0 for row in json.loads(measures.read_text()))
+    return sum(
+        (row.get("usage") or {}).get("retries") or 0 for row in json.loads(measures.read_text())
+    )
 
 
 # --- parity ----------------------------------------------------------------
@@ -812,7 +824,9 @@ def _ingest_form(output: Output, runs: list[Run], form: Path) -> int:
     output.write_measures(list(by_id.values()))
     print(f"{merged} manual metrics merged, {pending} still pending, {refused} refused")
     if refused:
-        print("  refused values would have overwritten a measured metric, which a form may never do")
+        print(
+            "  refused values would have overwritten a measured metric, which a form may never do"
+        )
     return 0
 
 

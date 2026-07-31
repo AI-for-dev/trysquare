@@ -13,9 +13,9 @@ at all.
 
 import shutil
 import subprocess
-import tempfile
-import unittest
 from pathlib import Path
+
+import pytest
 
 from trysquare import config as config_mod
 from trysquare import repo, runner
@@ -24,10 +24,14 @@ from trysquare import repo, runner
 # signing key, default branch name or absent user.email would each break it somewhere
 # else than here.
 ISOLATION = (
-    "-c", "init.defaultBranch=main",
-    "-c", "user.email=t@t",
-    "-c", "user.name=t",
-    "-c", "commit.gpgsign=false",
+    "-c",
+    "init.defaultBranch=main",
+    "-c",
+    "user.email=t@t",
+    "-c",
+    "user.name=t",
+    "-c",
+    "commit.gpgsign=false",
 )
 
 
@@ -40,10 +44,11 @@ def git(args: list[str], cwd: Path) -> str:
     return proc.stdout.strip()
 
 
-@unittest.skipUnless(shutil.which("git"), "git is not on PATH")
-class TestPinningARemote(unittest.TestCase):
-    def setUp(self):
-        self.home = Path(tempfile.mkdtemp())
+@pytest.mark.skipif(not shutil.which("git"), reason="git is not on PATH")
+class TestPinningARemote:
+    @pytest.fixture(autouse=True)
+    def an_origin_and_a_config(self, tmp_path):
+        self.home = tmp_path
         self.origin = self.home / "origin"
         (self.origin / "game").mkdir(parents=True)
         (self.origin / "game" / "paddle.js").write_text("export const paddle = 1\n")
@@ -71,12 +76,12 @@ class TestPinningARemote(unittest.TestCase):
         assertion that would notice if it stopped being true.
         """
         pinned = self.pin()
-        self.assertEqual(git(["rev-parse", "etalon-v1^{commit}"], cwd=pinned), self.head)
+        assert git(["rev-parse", "etalon-v1^{commit}"], cwd=pinned) == self.head
 
     def test_a_run_can_be_cloned_out_of_the_pinned_source(self):
         target = repo.clone(self.pin(), "etalon-v1", self.home / "run" / "repo")
-        self.assertTrue((target / "game" / "paddle.js").is_file())
-        self.assertEqual(git(["rev-parse", "HEAD"], cwd=target), self.head)
+        assert (target / "game" / "paddle.js").is_file()
+        assert git(["rev-parse", "HEAD"], cwd=target) == self.head
 
     def test_the_pinned_source_is_a_working_tree_a_validator_can_read(self):
         """The reason this is a clone and not a bare mirror.
@@ -87,25 +92,25 @@ class TestPinningARemote(unittest.TestCase):
         the etalon in the matrix would report a plausible number about nothing.
         """
         pinned = self.pin()
-        self.assertIn("game/paddle.js", repo.etalon_files(pinned, "etalon-v1"))
-        self.assertIn("paddle", repo.etalon_file(pinned, "etalon-v1", "game/paddle.js"))
+        assert "game/paddle.js" in repo.etalon_files(pinned, "etalon-v1")
+        assert "paddle" in repo.etalon_file(pinned, "etalon-v1", "game/paddle.js")
 
     def test_the_commit_behind_the_tag_is_recorded_for_the_archive(self):
-        self.assertEqual(repo.commit_of(self.pin(), "etalon-v1"), self.head)
-        self.assertIsNone(repo.commit_of(self.pin(), "no-such-tag"))
+        assert repo.commit_of(self.pin(), "etalon-v1") == self.head
+        assert repo.commit_of(self.pin(), "no-such-tag") is None
 
     def test_pinning_twice_clones_once(self):
         first = self.pin()
         stamp = (first / runner.READY).stat().st_mtime_ns
-        self.assertEqual(self.pin(), first)
-        self.assertEqual((first / runner.READY).stat().st_mtime_ns, stamp)
+        assert self.pin() == first
+        assert (first / runner.READY).stat().st_mtime_ns == stamp
 
     def test_a_second_etalon_is_pinned_beside_the_first(self):
         """Keyed by tag, so a cache hit is by construction already at the right tag and
         there is no staleness to reason about."""
         git(["tag", "etalon-v2"], cwd=self.origin)
-        self.assertNotEqual(self.pin("etalon-v2"), self.pin("etalon-v1"))
-        self.assertEqual(git(["rev-parse", "etalon-v2^{commit}"], cwd=self.pin("etalon-v2")), self.head)
+        assert self.pin("etalon-v2") != self.pin("etalon-v1")
+        assert git(["rev-parse", "etalon-v2^{commit}"], cwd=self.pin("etalon-v2")) == self.head
 
     def test_the_archive_records_the_url_and_the_commit_it_resolved_to(self):
         """Without these, a published archive cannot say what it measured.
@@ -131,20 +136,14 @@ class TestPinningARemote(unittest.TestCase):
             scenario.cells[0],
             "off",
         )
-        written = json.loads(
-            (plan.output.run_dir("r0") / "configuration.json").read_text()
-        )
-        self.assertEqual(written["repo"], self.url)
-        self.assertEqual(written["etalon_commit"], self.head)
+        written = json.loads((plan.output.run_dir("r0") / "configuration.json").read_text())
+        assert written["repo"] == self.url
+        assert written["etalon_commit"] == self.head
 
     def test_a_tag_that_does_not_exist_names_the_tag_and_the_url(self):
-        with self.assertRaises(repo.RepoError) as e:
+        with pytest.raises(repo.RepoError) as e:
             self.pin("etalon-v9")
-        message = str(e.exception)
-        self.assertIn("etalon-v9", message)
-        self.assertIn(self.url, message)
-        self.assertIn("ls-remote", message)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        message = str(e.value)
+        assert "etalon-v9" in message
+        assert self.url in message
+        assert "ls-remote" in message

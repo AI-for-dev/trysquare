@@ -475,7 +475,11 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
 
         if not outcome.produced_something:
             run.state = EMPTY
-            run.detail = agent_mod.first_error(outcome.stream) or outcome.stderr[:200] or "no tokens consumed"
+            run.detail = (
+                agent_mod.first_error(outcome.stream)
+                or outcome.stderr[:200]
+                or "no tokens consumed"
+            )
             return run
 
         # The trace is kept next to the run, not in the measured repository.

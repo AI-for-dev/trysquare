@@ -311,7 +311,7 @@ def _check_test_command(task: dict, validators: tuple[Validator, ...], where: st
                 f"{where}a validator declares the {TESTS_METRIC!r} metric, so "
                 f"[task].test_command is required: it names the suite that decides "
                 f"that metric, as you would type it.\n"
-                f'  test_command = "node --test \'game/**/*.test.js\'"\n'
+                f"  test_command = \"node --test 'game/**/*.test.js'\"\n"
                 f"It is declared and never detected, because the obvious detection "
                 f"reads `package.json`, which the measured agent may edit - broken "
                 f"code plus a test script of `echo ok` would score green."
@@ -325,16 +325,13 @@ def _check_one_command(command, field: str, where: str) -> None:
     """One declared command: a string, splittable, and not secretly a shell line."""
     if not isinstance(command, str):
         raise ScenarioError(
-            f"{where}{field} must be a string - the command as you would type it - "
-            f"got {command!r}"
+            f"{where}{field} must be a string - the command as you would type it - got {command!r}"
         )
 
     try:
         words = split_command(command)
     except ValueError as e:
-        raise ScenarioError(
-            f"{where}{field} does not split into words ({e}): {command!r}"
-        ) from e
+        raise ScenarioError(f"{where}{field} does not split into words ({e}): {command!r}") from e
 
     if not words:
         raise ScenarioError(f"{where}{field} is empty")
@@ -361,9 +358,7 @@ def _validators(declared: list) -> tuple[Validator, ...]:
         entry = dict(entry)
         mode = entry.pop("mode", None)
         if mode not in ("script", "judge", "form"):
-            raise ScenarioError(
-                f"[[validation]].mode must be script, judge or form, got {mode!r}"
-            )
+            raise ScenarioError(f"[[validation]].mode must be script, judge or form, got {mode!r}")
         metrics = tuple(entry.pop("metrics", ()))
         if not metrics:
             raise ScenarioError(f"validator {mode!r} declares no metrics")
@@ -406,9 +401,7 @@ def _check_verdict(
 
     for metric in verdict.get("validity", ()):
         if metric not in declared:
-            raise ScenarioError(
-                f"[verdict].validity names {metric!r}, which no validator declares"
-            )
+            raise ScenarioError(f"[verdict].validity names {metric!r}, which no validator declares")
 
 
 def _reference_name(reference, axes: dict) -> str:

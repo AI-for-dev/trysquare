@@ -11,7 +11,6 @@ one worth remembering: this harness is wrong, or the bench was wrong and a
 published number needs correcting, or the archive is missing something.
 """
 
-import unittest
 from pathlib import Path
 
 from trysquare.parity import compare, layer3, read_bench_measures
@@ -64,36 +63,36 @@ PUBLISHED = {
 }
 
 
-class TestArchive(unittest.TestCase):
+class TestArchive:
     """What the archive contains is a fact this suite pins down."""
 
     def test_sixty_runs_in_six_cells(self):
         by_cell = read_bench_measures(FIXTURE)
-        self.assertEqual(len(by_cell), 6)
-        self.assertEqual(sum(len(v) for v in by_cell.values()), 60)
+        assert len(by_cell) == 6
+        assert sum(len(v) for v in by_cell.values()) == 60
         for cell, runs in by_cell.items():
-            self.assertEqual(len(runs), 10, f"{cell} should have 10 runs")
+            assert len(runs) == 10, f"{cell} should have 10 runs"
 
     def test_per_run_rows_carry_their_scoring(self):
         """Exact parity is only possible because scoring is archived per run."""
         run = read_bench_measures(FIXTURE)["base"][0]
         for metric in ("overflow", "delivered", "tests", "api_stable", "in_scope"):
-            self.assertIn(metric, run.metrics)
-        self.assertGreater(run.usage["input"], 0)
-        self.assertGreater(run.usage["turns"], 0)
+            assert metric in run.metrics
+        assert run.usage["input"] > 0
+        assert run.usage["turns"] > 0
 
     def test_the_matrix_had_no_retries(self):
         """Which is what lets the cost columns be read at all."""
         by_cell = read_bench_measures(FIXTURE)
         total = sum(r.retries for runs in by_cell.values() for r in runs)
-        self.assertEqual(total, 0)
+        assert total == 0
 
 
-class TestLayer3(unittest.TestCase):
+class TestLayer3:
     def test_reproduces_the_published_gap_table(self):
         rows = layer3(FIXTURE, reference="base", criterion="overflow")
         problems = compare(rows, PUBLISHED)
-        self.assertEqual(problems, [], "\n".join(["parity broken:", *problems]))
+        assert problems == [], "\n".join(["parity broken:", *problems])
 
     def test_the_headline_result_survives(self):
         """The result module 2.1 rests on, asserted on its own.
@@ -103,8 +102,8 @@ class TestLayer3(unittest.TestCase):
         rows = layer3(FIXTURE, reference="base", criterion="overflow")
         row = next(r for r in rows if r["cell"] == "+ticket soigné")
         overflow = next(c for c in row["measures"] if c["measure"] == "overflow")
-        self.assertEqual(overflow["rendered"], "-100 pts")
-        self.assertEqual(overflow["state"], "established")
+        assert overflow["rendered"] == "-100 pts"
+        assert overflow["state"] == "established"
 
     def test_the_rule_alone_stays_inconclusive(self):
         """The other half of the lesson, and it is a negative result.
@@ -115,8 +114,4 @@ class TestLayer3(unittest.TestCase):
         rows = layer3(FIXTURE, reference="base", criterion="overflow")
         row = next(r for r in rows if r["cell"] == "+AGENTS.md")
         overflow = next(c for c in row["measures"] if c["measure"] == "overflow")
-        self.assertEqual(overflow["state"], "inconclusive")
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert overflow["state"] == "inconclusive"

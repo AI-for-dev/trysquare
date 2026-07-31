@@ -205,7 +205,9 @@ def scorable(value) -> bool:
     return kind(value) in ("rate", "median")
 
 
-def merge(results: list[tuple[str, dict]], declared: tuple[str, ...]) -> tuple[dict, dict, str, str]:
+def merge(
+    results: list[tuple[str, dict]], declared: tuple[str, ...]
+) -> tuple[dict, dict, str, str]:
     """Combines what the validators returned into one measurement line.
 
     `results` is [(validator mode, parsed JSON), ...]. A validator that failed

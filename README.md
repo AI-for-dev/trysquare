@@ -26,7 +26,7 @@ Python >= 3.11, because TOML parsing is `tomllib` from the standard library.
 `uv sync` - or `pip install -e .` - installs the rest.
 
 ```bash
-uv run python -m unittest discover -s tests -t .     # 397 tests, no network
+uv run --group dev pytest     # 397 tests, no network
 ```
 
 Measuring anything also needs the agent binary (`pi`) on PATH and a provider you

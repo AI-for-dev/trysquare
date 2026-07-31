@@ -17,6 +17,16 @@ docs = [
     "sphinx-copybutton>=0.5.2",
 ]
 
+[dependency-groups]
+# Tests and lint, on the same footing as the `docs` extra above: never imported by
+# `trysquare/`, so they have no bearing on what running a matrix needs. Pinned exactly,
+# for the reason the CI already gives about the linter - an unpinned tool turns someone
+# else's release into a red build on a branch that changed nothing.
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.15.20",
+]
+
 [project.scripts]
 # The installed command. It is a shell entry point rather than `cli:main` directly,
 # because a name typed in a shell has to answer for an interrupt and a closed pipe;
@@ -29,3 +39,25 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["trysquare"]
+
+[tool.ruff]
+# 100 rather than the default 88. This repository writes error messages and comments
+# that carry the reasoning, and 88 would break 191 lines of them across the package;
+# 100 asks 26 to be rewrapped. Declared here so a local run matches the CI, which
+# until now was the only place ruff had an opinion at all.
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `tests/fixtures/tiny` is a fixture repository that carries its own suite. It is data,
+# not tests to run. `unittest discover` stopped at `tests/fixtures` for want of an
+# `__init__.py`; pytest walks in regardless, and then derives the module name
+# `tests.test_counter`, which collides with the `tests` package already imported.
+#
+# `--ignore` rather than `norecursedirs`, which would replace pytest's defaults - and
+# those defaults are what keeps a bare `pytest .` out of `.venv`.
+#
+# `-ra` lists everything that did not pass, skips included:
+# `test_pinned_source_offline.py` carries five under `skipUnless`, and a silent skip is
+# a check that did not happen.
+addopts = "-ra --strict-markers --strict-config --ignore=tests/fixtures"

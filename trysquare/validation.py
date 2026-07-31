@@ -163,7 +163,9 @@ def write_context(
     return path
 
 
-def run_script(validator: Validator, context: Path, timeout: int, cwd: Path | None = None) -> Result:
+def run_script(
+    validator: Validator, context: Path, timeout: int, cwd: Path | None = None
+) -> Result:
     """Runs a script validator: one argument, JSON on stdout.
 
     The working directory is deliberately *not* the measured clone: a validator
@@ -367,7 +369,9 @@ def describe_blindness(report: dict, cells: int) -> list[str]:
     lines = []
     for mode, info in report.items():
         if info["blind"]:
-            lines.append(f"  {mode}: blind over {cells} cells (pieces: {', '.join(info['pieces'])})")
+            lines.append(
+                f"  {mode}: blind over {cells} cells (pieces: {', '.join(info['pieces'])})"
+            )
         else:
             lines.append(
                 f"  ! {mode} is only partially blind: "
@@ -377,7 +381,9 @@ def describe_blindness(report: dict, cells: int) -> list[str]:
     return lines
 
 
-def check_thinking_precondition(declared: str | None, ambient: str | None, uses_subagents: bool) -> str | None:
+def check_thinking_precondition(
+    declared: str | None, ambient: str | None, uses_subagents: bool
+) -> str | None:
     """Refuses a scenario whose subagents would think at another level.
 
     A subagent's thinking level cannot be declared anywhere: the frontmatter has no

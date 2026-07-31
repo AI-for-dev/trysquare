@@ -467,9 +467,7 @@ class Assay:
         return self._part("response")
 
     def _compute_response(self):
-        return Path(self._given("response", "the agent's final prose")).read_text(
-            errors="replace"
-        )
+        return Path(self._given("response", "the agent's final prose")).read_text(errors="replace")
 
     @property
     def prompt(self) -> str:
@@ -527,9 +525,7 @@ class Assay:
                     timeout=timeout,
                 )
             except subprocess.TimeoutExpired as e:
-                raise CannotJudge(
-                    f"`{' '.join(argv)}` timed out after {timeout}s"
-                ) from e
+                raise CannotJudge(f"`{' '.join(argv)}` timed out after {timeout}s") from e
             except OSError as e:
                 raise CannotJudge(f"`{' '.join(argv)}` could not run: {e}") from e
 
@@ -639,9 +635,7 @@ class Assay:
                         timeout=timeout,
                     )
                 except subprocess.TimeoutExpired as e:
-                    raise ProbeTimeout(
-                        f"the probe did not finish within {timeout}s"
-                    ) from e
+                    raise ProbeTimeout(f"the probe did not finish within {timeout}s") from e
                 except OSError as e:
                     raise CannotJudge(f"the probe could not run: {e}") from e
 
@@ -650,8 +644,7 @@ class Assay:
             except json.JSONDecodeError as e:
                 detail = (done.stderr or done.stdout).strip().split("\n")
                 raise CannotJudge(
-                    f"the probe answered nothing readable ({e}): "
-                    f"{'; '.join(detail[-3:])}"
+                    f"the probe answered nothing readable ({e}): {'; '.join(detail[-3:])}"
                 ) from e
 
         return run
