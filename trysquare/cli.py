@@ -101,6 +101,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--only", action="append", default=[], help="restrict to these cells (repeatable)"
     )
     run.add_argument("--resume", action="store_true", help="fill only what produced nothing")
+    run.add_argument(
+        "--until-complete",
+        type=int,
+        nargs="?",
+        const=3,
+        default=None,
+        metavar="N",
+        help="after a pass, relaunch runs that produced nothing, at most N passes "
+        "in total (default 3). A run that produced something is never relaunched",
+    )
     run.add_argument("--dry-run", action="store_true", help="show the plan and spend nothing")
     run.set_defaults(func=cmd_run)
 
@@ -251,20 +261,61 @@ def cmd_run(args) -> int:
     # missing-binary refusal all print and return before a single run exists to
     # count. It closes before the synthesis, which is not part of the count either.
     enabled = progress_mod.wanted(no_progress=args.no_progress)
-    with progress_mod.bar(plan.runs, "runs", enabled) as bar:
 
-        def report(run: Run) -> None:
-            mark = "ok " if run.state == VALID else "!! "
-            detail = "" if run.state == VALID else f"  {run.state}: {run.detail}"
-            bar.line(
-                f"  {mark}{run.cell:<24} {run.duration}s  "
-                f"{run.usage.get('input', 0)} in / {run.usage.get('output', 0)} out  "
-                f"{run.usage.get('turns', 0)} turns  "
-                f"{run.usage.get('retries', 0)} retries{detail}"
-            )
-            bar.tick()
+    def measure(current) -> None:
+        with progress_mod.bar(current.runs, "runs", enabled) as bar:
 
-        runner_mod.execute(plan, on_run=report)
+            def report(run: Run) -> None:
+                mark = "ok " if run.state == VALID else "!! "
+                detail = "" if run.state == VALID else f"  {run.state}: {run.detail}"
+                bar.line(
+                    f"  {mark}{run.cell:<24} {run.duration}s  "
+                    f"{run.usage.get('input', 0)} in / {run.usage.get('output', 0)} out  "
+                    f"{run.usage.get('turns', 0)} turns  "
+                    f"{run.usage.get('retries', 0)} retries{detail}"
+                )
+                bar.tick()
+
+            runner_mod.execute(current, on_run=report)
+
+    measure(plan)
+
+    if not args.until_complete:
+        return _write_synthesis(plan.output, scenario)
+
+    # Bounded, and never a re-measurement: a resumed plan relaunches only the runs
+    # that produced *nothing* (see `outputs.RESUMABLE`), which is the same promise
+    # `--resume` makes by hand. What "never rerun to see" forbids is re-measuring a
+    # run that produced a result - and no pass here can reach one. Attempts are
+    # counted per run in state.json, so the passes leave a trace.
+    def resumed():
+        return runner_mod.resolve(
+            scenario,
+            config,
+            args.output,
+            overrides=overrides,
+            only=tuple(args.only),
+            resume=True,
+        )
+
+    passes = 1
+    while passes < args.until_complete:
+        again = resumed()
+        if not again.todo:
+            break
+        passes += 1
+        print(
+            f"\n  pass {passes} of at most {args.until_complete}: {again.runs} runs "
+            f"produced nothing, relaunching them and only them"
+        )
+        measure(again)
+
+    remaining = resumed().todo
+    if remaining:
+        print(
+            f"\n  {len(remaining)} runs still produced nothing after {passes} passes. "
+            f"Attempts are counted in state.json; --resume can try again"
+        )
 
     return _write_synthesis(plan.output, scenario)
 

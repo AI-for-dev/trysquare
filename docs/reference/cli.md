@@ -47,6 +47,11 @@ trysquare run <scenario> --output <dir> [options]
   - Restrict to these cells. Repeatable. Leaves the matrix **incomplete**.
 * - `--resume`
   - Fill only what produced nothing.
+* - `--until-complete [N]`
+  - After a pass, relaunch the runs that produced nothing, at most N passes in
+    total (default 3). Never a re-measurement: a run that produced something is
+    out of reach of every pass, exactly as it is for `--resume`; attempts are
+    counted per run, so the passes leave a trace.
 * - `--dry-run`
   - Show the plan and write nothing at all.
 * - `--no-progress`

@@ -369,6 +369,105 @@ class TestPreRunHonesty:
         assert "is not on PATH: a real run will refuse" in capsys.readouterr().out
 
 
+class TestUntilComplete:
+    """Bounded auto-resume: only what produced nothing, and never past the bound."""
+
+    METRICS = {"delivered": True, "in_scope": True, "tests": True, "touched": 1, "documented": True}
+
+    def fake_execute(self, passes, empty_on_first):
+        """A stand-in that persists state and measures exactly as execute() does."""
+        from trysquare.measure import EMPTY, VALID, Run
+
+        def execute(plan, on_run=None):
+            plan.output.prepare()
+            state = plan.output.load_or_create_state(plan.overrides)
+            passes.append([rid for rid, _ in plan.todo])
+            done = []
+            for rid, meta in plan.todo:
+                empty = empty_on_first(meta, len(passes))
+                run = Run(
+                    id=rid,
+                    cell=meta["cell"],
+                    repetition=meta["repetition"],
+                    usage={} if empty else {"input": 5, "output": 5, "turns": 1, "cost": 0.1},
+                    metrics={} if empty else dict(self.METRICS),
+                    state=EMPTY if empty else VALID,
+                )
+                plan.output.record(state, rid, run)
+                done.append(run)
+            existing = {r.id: r for r in plan.output.read_measures()}
+            for run in done:
+                existing[run.id] = run
+            plan.output.write_measures(list(existing.values()))
+            plan.output.summarise(state)
+            plan.output.write_state(state)
+            return done
+
+        return execute
+
+    def launched(self, tmp_path, monkeypatch, empty_on_first, bound="3") -> tuple[int, str, list]:
+        import contextlib
+        import io
+
+        from trysquare import cli as cli_mod
+
+        passes: list = []
+        monkeypatch.setattr(
+            cli_mod.runner_mod, "execute", self.fake_execute(passes, empty_on_first)
+        )
+        monkeypatch.setattr(cli_mod.agent_mod, "available", lambda: True)
+        argv = [
+            "run",
+            SCENARIO,
+            "-o",
+            str(tmp_path),
+            "--config",
+            str(MACHINE),
+            "--repetitions",
+            "2",
+            "--until-complete",
+            bound,
+            "--no-progress",
+        ]
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = main(argv)
+        return code, stdout.getvalue(), passes
+
+    def test_a_second_pass_relaunches_only_what_produced_nothing(self, tmp_path, monkeypatch):
+        code, said, passes = self.launched(
+            tmp_path, monkeypatch, empty_on_first=lambda meta, n: n == 1 and meta["repetition"] == 0
+        )
+        assert code == 0
+        assert [len(p) for p in passes] == [12, 6]
+        assert set(passes[1]) < set(passes[0])
+        assert "pass 2 of at most 3: 6 runs produced nothing" in said
+
+    def test_nothing_missing_means_no_second_pass(self, tmp_path, monkeypatch):
+        code, said, passes = self.launched(
+            tmp_path, monkeypatch, empty_on_first=lambda meta, n: False
+        )
+        assert code == 0
+        assert [len(p) for p in passes] == [12]
+        assert "pass 2" not in said
+
+    def test_the_bound_holds_and_the_leftovers_are_said(self, tmp_path, monkeypatch):
+        code, said, passes = self.launched(
+            tmp_path, monkeypatch, empty_on_first=lambda meta, n: True, bound="2"
+        )
+        # Every run of every pass stays empty: two passes, then say what is left.
+        assert [len(p) for p in passes] == [12, 12]
+        assert "12 runs still produced nothing after 2 passes" in said
+
+    def test_attempts_accumulate_across_passes(self, tmp_path, monkeypatch):
+        self.launched(
+            tmp_path, monkeypatch, empty_on_first=lambda meta, n: n == 1 and meta["repetition"] == 0
+        )
+        state = json.loads(next((tmp_path).glob("*_n2/state.json")).read_text())
+        twice = [m for m in state["runs"].values() if m["attempts"] == 2]
+        assert len(twice) == 6
+
+
 class TestCompletionOrder:
     """Runs are reported as they finish, and written in the order they were planned.
 
