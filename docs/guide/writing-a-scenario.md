@@ -60,6 +60,30 @@ prompt = "tickets/vague.md"        # relative to this file
 The prompt may be inline or a path. Prefer a path for anything multi-line: it keeps the
 scenario readable, and it lets the prompt be diffed on its own.
 
+Three more keys describe what *running* the task involves, and the scenario declares them
+because the alternative is detecting them from inside the perimeter the agent may edit:
+
+```toml
+test_command = "python3 -m unittest discover -s tests -t ."   # once `tests` is scored
+prepare = ["npm ci"]                     # before the suite, in order; usually nothing
+artefacts = ["__pycache__", "*.pyc"]     # leavings, not the agent's work
+```
+
+An artefact pattern matches a whole path by globbing *or* any single component of it, so
+naming a directory is enough - `__pycache__` catches `tests/__pycache__/x.pyc` with no
+`*` at all.
+
+:::{warning}
+`artefacts` is the one to get right before measuring. An agent that runs the declared
+suite to check itself leaves bytecode in the clone; without the declaration, scope
+scoring counted it as the agent's work and `in_scope` was false in **every run of every
+cell**. Worse than noise: the runs that scored out of scope were exactly the ones where
+the agent verified itself.
+
+Declaring the patterns is half of it - a validator subtracts them, which
+{doc}`validators` shows in one line.
+:::
+
 :::{warning}
 Task material is **experimental input, not documentation.** Once a matrix has been
 published from a prompt, changing a word of that prompt changes the measurement. The

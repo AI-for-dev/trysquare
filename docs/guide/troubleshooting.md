@@ -129,6 +129,23 @@ Nothing is lost. **A validity condition must match the task**: `delivered` requi
 file to have changed, which is right for a task asking for a diff and wrong for one
 asking for prose. Fix `[verdict].validity` and rerun `render`.
 
+## "`pi` is not on PATH"
+
+```text
+error: 'pi' is not on PATH
+```
+
+The agent binary is what a run launches, so a run without it refuses before writing
+anything. A `--dry-run` does not refuse - it has nothing to launch - but it says the
+same thing as a warning, which is where you want to find out:
+
+```text
+  ! 'pi' is not on PATH: a real run will refuse
+```
+
+Everything else in this tool is offline: loading, scoring, aggregation, verdicts,
+`render`, `replay`, `compare` and `parity` all work without the binary.
+
 ## Runs marked `empty`
 
 ```text
@@ -165,6 +182,36 @@ already produced a result would let a resume change it.
 The same command fills a metric declared *after* a matrix ran: add the name to the
 scenario's `metrics`, return it from the validator, and every archived run is scored on it
 at once. That is what "a metric already paid for can be scored later" means in practice.
+
+## "this scenario names ..., and you asked to re-score ..."
+
+```text
+refused: this scenario names rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10, and you
+asked to re-score other-experiment_etalon-v1_ilaas_gemma-4-31b_n10. A directory name is
+the experiment's identity, so re-scoring across the two would rewrite measures that are
+not its own
+```
+
+A directory name is built from the scenario, the etalon, the provider, the model and the
+repetition count - so it *is* the experiment's identity, and comparing it with the name
+the given scenario asks for catches a mismatched `--scenario` before anything is written.
+Point `--scenario` at the file that measured this directory.
+
+## A validator refuses "the context carries no ..."
+
+```text
+the context carries no 'response', so the agent's final prose cannot be read. A
+harness older than this validator writes a context without it
+```
+
+Expected after `replay`, and it is the honest answer. The prompt and the agent's final
+prose lived in the work directory, which the system may purge, and the raw stream is
+deliberately never archived - so a replayed context cannot carry them, and a validator
+that reads one refuses **by name** instead of scoring on material it does not have.
+
+That named refusal is also why an archived context needs no version number: "the context
+carries no 'response'" tells a reader more than "this archive is version 1" ever could.
+A metric of process is replayable, though: the tool calls are in the archived session.
 
 ## The synthesis warns about cost columns
 
@@ -282,6 +329,27 @@ error: [repos] my-repo resolves to /path/my-repo, which does not exist. Fix it i
 Relative paths in the config resolve against the config file, not against the current
 directory. The check touches the disk, so like the URL failures above it happens when a
 run starts rather than during a `--dry-run`.
+
+## "refused: different etalons"
+
+```text
+refused: different etalons, etalon-v1 against etalon-v2
+```
+
+`compare` puts two experiments side by side, and a different etalon is a different
+baseline - the two matrices did not measure the same thing, so there is nothing to
+compare. Everything else that differs is *reported* rather than refused, because
+comparing two providers or two models is the point of the command.
+
+Cost columns are a separate matter, and not a refusal either:
+
+```text
+  ! cost columns set aside: retries 14 on the left, 0 on the right
+    -> tokens and durations would reflect our own load
+```
+
+One retry on either side is enough to set them aside. Durations only compare within one
+matrix, and a retry replays the turn with the whole accumulated context.
 
 ## No progress bar appears
 
