@@ -68,6 +68,31 @@ def gap_interval(
     )
 
 
+def interval(
+    values: list[float],
+    stat=statistics.median,
+    draws: int = DRAWS,
+    seed: int = SEED,
+) -> tuple[float, float]:
+    """95% interval of `stat(values)` itself, for a measurement that is not a gap.
+
+    The same mechanism, replaying the draw, so a dispersion is read exactly as an
+    interval around a gap is. What it never gets is a state: an isolated measurement
+    asserts no effect, so `established` would be a category error. A cost is
+    published with its dispersion and no verdict, and the comparison that *does*
+    carry one lives in the gap table.
+    """
+    if not values:
+        raise ValueError("an empty sample has no interval")
+
+    rng = random.Random(seed)
+    draw = []
+    for _ in range(draws):
+        draw.append(stat(rng.choices(values, k=len(values))))
+    draw.sort()
+    return draw[int(0.025 * len(draw))], draw[min(len(draw) - 1, int(0.975 * len(draw)))]
+
+
 def judge(
     reference: list[float],
     cell: list[float],
@@ -104,6 +129,17 @@ def signed(x: float) -> str:
     if x != 0 and abs(x) < 1:
         return f"{x:+.1f}"
     return f"{x:+,.0f}".replace(",", " ")
+
+
+def plain(x: float) -> str:
+    """An unsigned number, spaced like `signed` and as unwilling to round to zero.
+
+    A cost is a level rather than a difference, and a leading `+` on one would read
+    as an increase over something the reader would then go looking for.
+    """
+    if x != 0 and abs(x) < 1:
+        return f"{x:.1f}"
+    return f"{x:,.0f}".replace(",", " ")
 
 
 def points(x: float) -> str:

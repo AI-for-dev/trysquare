@@ -27,7 +27,7 @@ library. A measurement tool that needs an install step is a measurement tool peo
 work around.
 
 ```bash
-uv run python -m unittest discover -s tests -t .     # 232 tests, no network
+uv run python -m unittest discover -s tests -t .     # 416 tests, no network
 ```
 
 Measuring anything also needs the agent binary (`pi`) on PATH and a provider you
@@ -74,7 +74,7 @@ everything, through `python -m trysquare`.
 out/2x3_etalon-v1_ilaas_gemma-4-31b_n10/
   state.json      cells, runs, valid / empty / failed, attempt counters
   measures.json   one line per run
-  synthesis.md    table and verdicts, written only when the matrix is complete
+  synthesis.md    scores, costs, gaps and verdicts, written when the matrix is complete
   runs/<id>/      context, configuration, diff, validation output
     session/*.jsonl   the agent's own trace, one file per attempt
     session/*.html    the same trace as a page, on `render --html`
@@ -267,7 +267,7 @@ trysquare/
   scenario.py   loads and validates a scenario, expands it into cells   \
   measure.py    what counts as a measurement, how metrics combine        |  pure
   verdict.py    resampling, fixed seed, two states                       |
-  table.py      cell table and gap table                                /
+  table.py      score, cost and gap tables                                /
   parity.py     proving this harness reproduces its predecessor
   config.py     machine paths and load fallbacks, and nothing else      \
   repo.py       clone at a tag, inject bricks, exclude them              |  shell

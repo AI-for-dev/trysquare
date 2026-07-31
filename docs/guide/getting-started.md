@@ -132,7 +132,7 @@ Both are deliberate. See {doc}`troubleshooting`.
 out/2x3_etalon-v1_ilaas_gemma-4-31b_n10/
   state.json      per-run ledger: cell, state, attempt count
   measures.json   one line per run, the raw material every table is rebuilt from
-  synthesis.md    the gap table and the verdicts
+  synthesis.md    the score, cost and gap tables, and the verdicts
   runs/<id>/
     context.json         what the validator was handed
     configuration.json   what this run actually ran
@@ -140,7 +140,41 @@ out/2x3_etalon-v1_ilaas_gemma-4-31b_n10/
     validation/          each validator's output and stderr
 ```
 
-The synthesis is the part to read:
+The synthesis is the part to read. It opens with what each cell did, test by test:
+
+```text
+### Scores, cell by test
+
+| cell                     | overflow | delivered | in_scope | tests |
+| ------------------------ | -------- | --------- | -------- | ----- |
+| nothing / off            | 10/10    | 10/10     | 10/10    | 10/10 |
+| rule / off               | 9/10     | 10/10     | 9/10     | 10/10 |
+| careful ticket / off     | 0/10     | 10/10     | 10/10    | 9/10  |
+
+`x/n`: the test was true in `x` of the `n` runs that could judge it.
+```
+
+A denominator below the repetition count is a signal, not noise: a run left out as
+invalid, or a metric the validator could not judge on that run. "Could not say" is
+never recorded as "said false".
+
+Then what it cost, as a level rather than a difference:
+
+```text
+### Cost, median and 95% interval by resampling
+
+| cell                     | n  | in                      | out                  | duration (s)  |
+| ------------------------ | -- | ----------------------- | -------------------- | ------------- |
+| nothing / off            | 10 | 15 929 [14 208, 17 440] | 2 286 [1 902, 2 671] | 64 [58, 79]   |
+| rule / high              | 10 | 43 248 [38 100, 51 002] | 4 767 [3 998, 5 512] | 208 [166, 252]|
+```
+
+Read this to decide whether a configuration is affordable, and nothing more: two
+intervals that do not overlap are **not** a result. The comparison that carries a
+verdict is the next table, and it is computed over the same runs - valid, and passing
+`[verdict].validity`, which is why `n` is here.
+
+Then the gaps, which is where a conclusion may come from:
 
 ```text
 ### Gap to `nothing / off`, 95% interval by resampling

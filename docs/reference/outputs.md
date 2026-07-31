@@ -6,7 +6,7 @@ Everything is rooted at `--output`. One directory per experiment.
 <output>/<scenario>_<etalon>_<provider>_<model>_n<N>/
   state.json        the per-run ledger
   measures.json     one line per run
-  synthesis.md      the gap table and the verdicts
+  synthesis.md      the score table, the cost table, the gap table and the verdicts
   runs/<id>/
     context.json           what the validator was handed
     configuration.json     what this run actually ran
@@ -101,8 +101,48 @@ This matrix is incomplete: 3 never launched, 1 produced nothing. No synthesis is
 published; `--resume` completes it.
 ```
 
-The gap table is the part to read. `*` established, `o` inconclusive, and no sentence
-may rest on an `o`.
+Three tables, in this order.
+
+The **score table** says what each cell did: cells in rows, in the order the scenario
+declares them, and one column per declared boolean metric.
+
+```text
+| cell                 | overflow | delivered | in_scope | tests |
+| -------------------- | -------- | --------- | -------- | ----- |
+| nothing / off        | 10/10    | 10/10     | 9/10     | 9/10  |
+| rule / high          | 2/10     | 10/10     | 8/9      | 9/10  |
+| careful ticket / off | 0/10     | 10/10     | 9/10     | 9/10  |
+```
+
+`x/n` counts the runs where the test was true out of the runs that could judge it. `n`
+is the repetition count on a published matrix, and anything below it is the signal to
+read: a run left out as invalid, or a metric a validator returned as `unjudged` - which
+shrinks that one denominator and no other. A metric that is a number or a diagnostic
+has no `x/n`, so it is named under the table rather than dropped from it.
+
+The table is deliberately **not** filtered by `[verdict].validity`: those metrics are
+columns of this very matrix, and a `delivered` column reading 10/10 by construction
+would hide the thing it is there to show.
+
+The **cost table** says what a run cost: tokens in, tokens out and duration, each as a
+median with a 95% interval from the same resampling.
+
+```text
+| cell                 | n  | in                      | out                  | duration (s) |
+| -------------------- | -- | ----------------------- | -------------------- | ------------ |
+| nothing / off        | 10 | 15 929 [14 208, 17 440] | 2 286 [1 902, 2 671] | 64 [58, 79]  |
+```
+
+Levels, not gaps, so they carry **no state**: an isolated measurement asserts no
+effect, and two intervals that do not overlap are not a result. It is computed over the
+runs the verdict rests on - valid, and passing `[verdict].validity` - because a run that
+delivered nothing is cheap by construction, and averaging it into a price makes the
+configuration that fails most often look like the affordable one. `n` says how many runs
+that left. `turns` is not here: it is a shape of the conversation rather than a price,
+and it is read against the reference or not at all.
+
+The **gap table** is the part a conclusion rests on. `*` established, `o` inconclusive,
+and no sentence may rest on an `o`.
 
 When retries are present, a warning follows the table and covers even results marked
 established - see {doc}`../guide/invariants`.
