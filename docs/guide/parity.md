@@ -175,7 +175,7 @@ so `gemma-4` legitimately runs `gemma-4-31b`; the check is therefore not equalit
 
 ```text
 layer 4 - smoke pass over rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n2
-  12 runs ran the model their pattern names
+  12/12 runs ran the model their pattern names
   12 sessions checked for the declared thinking level
 
   every mechanical criterion holds. No statistical claim: a smoke

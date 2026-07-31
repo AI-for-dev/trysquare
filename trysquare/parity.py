@@ -399,7 +399,7 @@ def _models_answered(experiment: Path, runs: dict) -> tuple[list[str], list[str]
 
     observed: list[str] = []
     problems: list[str] = []
-    checked = unrecorded = 0
+    checked = matched = unrecorded = 0
 
     for rid, meta in runs.items():
         path = experiment / "runs" / rid / "configuration.json"
@@ -413,14 +413,19 @@ def _models_answered(experiment: Path, runs: dict) -> tuple[list[str], list[str]
             unrecorded += 1
             continue
         checked += 1
-        if not resolves_to(declared, ran):
+        if resolves_to(declared, ran):
+            matched += 1
+        else:
             problems.append(
                 f"{meta['cell']}: declared model {declared!r}, the session recorded {ran!r}, "
                 f"which that pattern does not name"
             )
 
+    # `matched` of `checked`, not `checked` alone: a bare count next to a named failure
+    # reads as a reassurance covering runs it does not cover. The same phrasing layer 1
+    # uses for the sessions it reproduces.
     if checked:
-        observed.append(f"{checked} runs ran the model their pattern names")
+        observed.append(f"{matched}/{checked} runs ran the model their pattern names")
     if unrecorded:
         observed.append(
             f"{unrecorded} runs record no model_id, so what answered could not be checked"
