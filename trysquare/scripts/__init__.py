@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """Console entry points.
 
 One module per installed command, named after the command it provides, so a

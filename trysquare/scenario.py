@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """Loading a scenario, and expanding it into the cells it describes.
 
 A scenario is one self-contained experiment in one TOML file: the task, the

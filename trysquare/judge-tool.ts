@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-3-Clause
 // judge-tool.ts - makes a judge's verdict a schema-checked tool call.
 //
 // There is no declarative way to get conforming JSON out of the agent: no schema

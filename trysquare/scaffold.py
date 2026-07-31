@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """What `trysquare init` writes: the skeleton of *your* experiment.
 
 No scenario ships with the tool - an experiment is about your repository and

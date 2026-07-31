@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """Preparing the repository a run measures, and injecting the harness bricks.
 
 Two decisions here are not interchangeable with the obvious alternatives, and

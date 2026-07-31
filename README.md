@@ -331,7 +331,17 @@ Stated rather than left to be discovered:
 
 ## Licence
 
-Not yet chosen.
+BSD 3-Clause, in [LICENSE](LICENSE). Every source file of the package carries
+`SPDX-License-Identifier: BSD-3-Clause`, and `pyproject.toml` declares the same
+expression, so a file that travels out of this repository still says what it is.
+
+The holders are named collectively - "The trysquare Authors" - and enumerated in
+[AUTHORS](AUTHORS), which is what keeps LICENSE unchanged as that list grows. Both files
+ship inside the wheel.
+
+One thing here is **not** ours: `tools/fonts/JetBrainsMono-Regular.ttf`, vendored under
+the SIL Open Font License 1.1 so the wordmark regenerates identically on any machine. Its
+`OFL.txt` and `AUTHORS.txt` travel with it, which is what that licence requires.
 
 ## Documentation
 

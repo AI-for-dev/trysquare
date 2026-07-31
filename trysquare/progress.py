@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """A bar for the loops that take hours, and an honest estimate of what is left.
 
 A matrix is dozens of agent runs of several minutes each. Until now the only thing

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """The command line.
 
 Eight subcommands, and `--output` roots every one of them that writes.

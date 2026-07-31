@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """Orchestrating a matrix: what runs, in what order, and what is written down.
 
 Runs are **interleaved** across cells rather than grouped by cell. That is not a

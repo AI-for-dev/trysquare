@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """Running the validators, and keeping them honest.
 
 Validators are **independent**: each receives the same context and cannot see

@@ -3,6 +3,15 @@ name = "trysquare"
 version = "0.1.0"
 description = "A scenario harness for measuring coding agents reproducibly."
 requires-python = ">=3.11"
+# An SPDX expression, not a `License ::` classifier: PEP 639 made the expression the
+# normative field and deprecated those classifiers, so carrying both would state one
+# fact twice, in two schemas, one of them on its way out.
+license = "BSD-3-Clause"
+# Shipped inside the wheel, which is the only copy a reader of an installed package
+# has. AUTHORS is here because LICENSE names its holders collectively - "The trysquare
+# Authors" - so the notice is complete only with the file that enumerates them.
+license-files = ["LICENSE", "AUTHORS"]
+authors = [{ name = "Loïc Gouarin", email = "loic.gouarin@polytechnique.edu" }]
 # `rich` draws the pinned progress bar a matrix needs when it runs for hours.
 # TOML parsing is `tomllib`, which is why the floor is 3.11.
 dependencies = ["rich>=13.7"]

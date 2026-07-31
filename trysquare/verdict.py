@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """The executable half of the publication standard.
 
 A gap reaches a page only if the harness certifies it. That is deliberate: the

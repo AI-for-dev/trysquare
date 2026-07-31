@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """Rendering measures as a table, and gaps as verdicts.
 
 Two tables, and they answer different questions. The score table says what each

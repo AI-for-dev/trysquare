@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """The `trysquare` command.
 
 This is the module named by `[project.scripts]`, and it is deliberately thin: the

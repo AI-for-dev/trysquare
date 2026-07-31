@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 """The output tree, and the state that makes a matrix resumable.
 
 One directory per experiment, and relaunching the same experiment overwrites it.
