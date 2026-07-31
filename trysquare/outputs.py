@@ -15,7 +15,7 @@ The layout, as a literal block so the underscores are not read as markup::
     <output>/<scenario>_<etalon>_<provider>_<model>_n<N>/
       state.json        cells, runs, valid / empty / failed, attempt counters
       measures.json     one line per run
-      synthesis.md      table and verdicts, written only when complete
+      synthesis.md      scores, costs, gaps and verdicts, written when complete
       runs/<id>/
         context.json  configuration.json  diff.patch
         session/*.jsonl          the agent's per-message record, one file per attempt

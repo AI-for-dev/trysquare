@@ -311,12 +311,20 @@ def _write_synthesis(output: Output, scenario, runs: list[Run] | None = None, su
         )
         return 1
 
-    text = table_mod.gap_table(
-        rows,
-        scenario.reference,
-        scenario.verdict.get("draws", 10_000),
-        scenario.verdict.get("seed", 20260729),
+    order = tuple(c.name for c in scenario.cells)
+    draws = scenario.verdict.get("draws", 10_000)
+    seed = scenario.verdict.get("seed", 20260729)
+
+    tests, other = table_mod.scored_metrics(runs, scenario.declared_metrics)
+    scores = table_mod.score_table(
+        table_mod.score_rows(by_cell, tests, order), tests, other
     )
+    spend = table_mod.spend_measures()
+    cost = table_mod.spend_table(
+        table_mod.spend_rows(by_cell, spend, validity, order, draws, seed), spend, draws, seed
+    )
+    gaps = table_mod.gap_table(rows, scenario.reference, draws, seed)
+    text = "\n\n".join([scores, cost, gaps])
     header = [
         f"# {scenario.title or scenario.name}",
         "",

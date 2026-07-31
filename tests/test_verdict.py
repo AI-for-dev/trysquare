@@ -11,8 +11,10 @@ from trysquare.verdict import (
     ESTABLISHED,
     INCONCLUSIVE,
     gap_interval,
+    interval,
     judge,
     mean,
+    plain,
     points,
     signed,
 )
@@ -85,6 +87,43 @@ class TestRendering(unittest.TestCase):
     def test_rates_render_in_points(self):
         self.assertEqual(points(-1.0), "-100 pts")
         self.assertEqual(points(-0.1), "-10 pts")
+
+    def test_a_level_carries_no_sign(self):
+        """A leading `+` on a cost reads as an increase over something."""
+        self.assertEqual(plain(15929), "15 929")
+        self.assertEqual(plain(0), "0")
+
+    def test_a_level_below_one_still_never_renders_as_zero(self):
+        self.assertEqual(plain(0.4), "0.4")
+
+
+class TestAbsoluteInterval(unittest.TestCase):
+    """A cost is published with its dispersion and no verdict."""
+
+    def test_the_interval_brackets_the_statistic(self):
+        values = [10, 12, 14, 16, 18, 20, 22, 24]
+        low, high = interval(values)
+        self.assertLessEqual(low, statistics.median(values))
+        self.assertLessEqual(statistics.median(values), high)
+
+    def test_a_sample_with_no_dispersion_has_a_point_interval(self):
+        self.assertEqual(interval([7] * 10), (7, 7))
+
+    def test_the_same_inputs_give_the_same_interval(self):
+        values = [i * 0.37 for i in range(20)]
+        self.assertEqual(interval(values), interval(values))
+
+    def test_the_seed_is_actually_used(self):
+        """Needs a sample with enough resolution to show it, like its counterpart
+        for a gap: resampling a median lands on the same order statistics whatever
+        the seed, and evenly spaced values put every mean on a lattice. Neither is
+        evidence that the seed was ignored."""
+        values = [1.0, 2.3, 5.7, 11.13, 0.4, 7.9, 3.14159, 42.0, 8.8, 0.07]
+        self.assertNotEqual(interval(values, mean), interval(values, mean, seed=1))
+
+    def test_an_empty_sample_has_no_interval(self):
+        with self.assertRaises(ValueError):
+            interval([])
 
 
 class TestStat(unittest.TestCase):

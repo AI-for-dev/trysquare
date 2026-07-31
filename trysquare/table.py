@@ -1,8 +1,8 @@
 """Rendering measures as a table, and gaps as verdicts.
 
-Two tables, and they answer different questions. The cell table says what each
-configuration did. The gap table says which differences survive resampling, and
-it is the only one a sentence may rest on.
+Two tables, and they answer different questions. The score table says what each
+cell did, test by test. The gap table says which differences survive resampling,
+and it is the only one a sentence may rest on.
 
 Both are computed from measures alone, which is what lets a rendering defect be
 fixed without paying for a matrix again.
@@ -16,8 +16,8 @@ import statistics
 from dataclasses import dataclass
 from typing import Callable
 
-from .measure import Run, kind, median, rate, valid_runs
-from .verdict import ESTABLISHED, judge, mean, points, signed
+from .measure import Run, kind, rate, valid_runs
+from .verdict import DRAWS, ESTABLISHED, SEED, interval, judge, mean, plain, points, signed
 
 
 @dataclass(frozen=True)
@@ -211,25 +211,165 @@ def retry_warning(by_cell: dict[str, list[Run]]) -> str:
     )
 
 
-def cell_rows(
-    by_cell: dict[str, list[Run]], criterion: str, validity: tuple[str, ...] = ()
+def spend_measures() -> tuple[Measure, ...]:
+    """The columns of the cost table: what a run cost, as a level rather than a gap.
+
+    Tokens in, tokens out and duration, which is what a reader asks for when
+    deciding whether a configuration is affordable at all. `turns` is left to the
+    gap table: it is a shape of the conversation rather than a price, and it is
+    read against the reference or not at all.
+
+    The same caveat as `cost_measures` applies, and `retry_warning` states it: a
+    retry replays the turn with the whole accumulated context, so all three inflate
+    without the measured configuration having anything to do with it.
+    """
+    return (
+        Measure("in", lambda r: r.usage.get("input", 0), statistics.median, plain),
+        Measure("out", lambda r: r.usage.get("output", 0), statistics.median, plain),
+        Measure("duration (s)", lambda r: r.duration, statistics.median, plain),
+    )
+
+
+def spend_rows(
+    by_cell: dict[str, list[Run]],
+    measures: tuple[Measure, ...],
+    validity: tuple[str, ...] = (),
+    order: tuple[str, ...] = (),
+    draws: int = DRAWS,
+    seed: int = SEED,
 ) -> list[dict]:
-    """One row per cell: what it did, and how many runs could say so."""
+    """One row per cell, one median and one 95% interval per measure.
+
+    Aggregated over the runs the *verdict* rests on - valid, and passing
+    `[verdict].validity` - and not over every run that consumed tokens. A run that
+    delivered nothing is cheap by construction, and averaging it into a price makes
+    the configuration that fails most often look like the affordable one.
+
+    Each interval is computed from that cell alone. There is no reference here and
+    therefore no state: a level asserts no effect, and the comparison that does
+    carry a verdict is the gap table.
+    """
+    names = [c for c in order if c in by_cell] + [c for c in by_cell if c not in order]
     rows = []
-    for name, runs in by_cell.items():
-        ok = valid_runs(runs, validity)
-        hits, total = rate(ok, criterion)
-        retries = [r for r in ok if r.retries]
+    for name in names:
+        runs = valid_runs(by_cell[name], validity)
+        cells = []
+        for m in measures:
+            values = [m.extract(r) for r in runs]
+            if not values:
+                cells.append("-")
+                continue
+            low, high = interval(values, m.stat, draws, seed)
+            cells.append(f"{m.render(m.stat(values))} [{m.render(low)}, {m.render(high)}]")
+        rows.append({"cell": name, "n": len(runs), "spend": cells})
+    return rows
+
+
+def spend_table(rows: list[dict], measures: tuple[Measure, ...], draws: int, seed: int) -> str:
+    """The cost table, in markdown: cells in rows, median and interval in columns."""
+    if not rows:
+        return "No cell to cost."
+
+    names = [m.name for m in measures]
+    header = "| cell | n | " + " | ".join(names) + " |"
+    sep = "| " + " | ".join(["---"] * (len(names) + 2)) + " |"
+    lines = [
+        f"| {row['cell']} | {row['n']} | " + " | ".join(row["spend"]) + " |" for row in rows
+    ]
+
+    return "\n".join(
+        [
+            "### Cost, median and 95% interval by resampling",
+            "",
+            f"{draws} draws, seed {seed}: the interval is reproducible.",
+            "",
+            header,
+            sep,
+            *lines,
+            "",
+            "Over the runs the verdict rests on: valid, and passing `[verdict].validity`.",
+            "A level carries no verdict - two intervals that do not overlap are not a",
+            "result, and the gap that would be one is in the table below.",
+        ]
+    )
+
+
+def scored_metrics(
+    runs: list[Run], declared: tuple[str, ...]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Splits the declared metrics into those that count as a test, and the rest.
+
+    A test is a boolean: it passed or it did not, so a cell of the score matrix is
+    `x/n`. A number has a median rather than a count, and a list has neither, so
+    neither belongs in that matrix - but both are *named* rather than dropped,
+    because a declared metric that vanishes from every table reads as a metric that
+    was never measured.
+
+    Declaration order is kept: the scenario's `metrics` contract fixes the column
+    order, the same way `[axes]` fixes the row order.
+    """
+    tests, other = [], []
+    for name in dict.fromkeys(declared):
+        sample = next((r.metrics[name] for r in runs if name in r.metrics), None)
+        (tests if kind(sample) == "rate" else other).append(name)
+    return tuple(tests), tuple(other)
+
+
+def score_rows(
+    by_cell: dict[str, list[Run]], tests: tuple[str, ...], order: tuple[str, ...] = ()
+) -> list[dict]:
+    """One row per cell, one `x/n` per test.
+
+    Aggregated over the runs that produced a measurement, and **not** filtered by
+    `[verdict].validity`: the validity metrics are columns of this very matrix, and
+    a `delivered` column reading 10/10 by construction would hide the thing it is
+    there to show.
+
+    `n` is per test rather than per cell, because a validator may return a metric as
+    `unjudged`: it drops out of that one denominator and leaves the others intact.
+    On a published matrix - complete, every run valid, nothing unjudged - `n` is the
+    repetition count in every cell, and a `n` below it is exactly the signal to read.
+    """
+    names = [c for c in order if c in by_cell] + [c for c in by_cell if c not in order]
+    rows = []
+    for name in names:
+        runs = valid_runs(by_cell[name])
+        scores = []
+        for metric in tests:
+            hits, total = rate(runs, metric)
+            scores.append(f"{hits}/{total}" if total else "-")
         rows.append(
             {
                 "cell": name,
-                "n": len(ok),
-                "invalid": sum(1 for r in runs if not r.is_valid),
-                "criterion": f"{hits}/{total}" if total else "-",
-                "input": median(ok, "input"),
-                "output": median(ok, "output"),
-                "turns": median(ok, "turns"),
-                "clean_retries": f"{len(ok) - len(retries)}/{len(ok)}",
+                "n": len(runs),
+                "invalid": sum(1 for r in by_cell[name] if not r.is_valid),
+                "scores": scores,
             }
         )
     return rows
+
+
+def score_table(rows: list[dict], tests: tuple[str, ...], other: tuple[str, ...] = ()) -> str:
+    """The score matrix, in markdown: cells in rows, tests in columns."""
+    if not rows or not tests:
+        return "No test to score: no declared metric is a boolean."
+
+    header = "| cell | " + " | ".join(tests) + " |"
+    sep = "| " + " | ".join(["---"] * (len(tests) + 1)) + " |"
+    lines = [f"| {row['cell']} | " + " | ".join(row["scores"]) + " |" for row in rows]
+
+    notes = [
+        "`x/n`: the test was true in `x` of the `n` runs that could judge it.",
+        "A run that produced no measurement is in no denominator here.",
+    ]
+    if other:
+        notes.append(
+            "Declared but not scored here, having no `x/n` to show: "
+            + ", ".join(f"`{m}`" for m in other)
+            + " - a number or a diagnostic, readable per run in `measures.json`."
+        )
+    dropped = [f"{row['cell']} ({row['invalid']})" for row in rows if row["invalid"]]
+    if dropped:
+        notes.append("Runs left out as invalid: " + ", ".join(dropped) + ".")
+
+    return "\n".join(["### Scores, cell by test", "", header, sep, *lines, "", *notes])
