@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: BSD-3-Clause
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-3-Clause
 """A validator, whole, written on `trysquare.assay`.
 
 This is the worked example, and it is also a test fixture: `tests/test_example.py` runs it
