@@ -121,10 +121,18 @@ its ledger.
 
 The plan header states, before anything is spent: a duration **bound** (runs,
 concurrency and timeout are declared, so `runs / concurrency x timeout` is
-arithmetic, not a guess), a spend **estimate** when this experiment's archive
-already holds valid runs (their median cost times the runs to perform - never a
-price list), an `OVERWRITE` note when the output directory already holds a
-ledger, and - on `--dry-run` - whether a real run would refuse for want of `pi`.
+arithmetic, not a guess), a spend **estimate** from this experiment's archive, an
+`OVERWRITE` note when the output directory already holds a ledger, and - on
+`--dry-run` - whether a real run would refuse for want of `pi`.
+
+The spend estimate is the median of what the archived valid runs actually cost,
+times the runs to perform. Never a price list: the harness is provider-agnostic, a
+maintained price table goes stale silently, and a wrong estimate is worse than none.
+
+Agents that report no price are common, and an archive nobody priced is not an empty
+archive - so it is used in the unit the provider does report, median tokens per run
+and what the plan comes to. Only a scenario that has never run says there is nothing
+to estimate from.
 
 ## `validate`
 

@@ -159,8 +159,20 @@ Four things worth noticing in that listing.
 is arithmetic on numbers the scenario declared, so it cannot be optimistic. The spend
 is the median cost of the valid runs *this experiment's archive already holds*, times
 the runs to perform - never a price list, because a maintained price table goes stale
-silently and a wrong estimate is worse than none. A scenario that has never run says
-`spend: no archived run to estimate from` rather than guessing.
+silently and a wrong estimate is worse than none.
+
+Three things can be true of that archive, and the line says which:
+
+```text
+  spend, from this experiment's archive: median $0.12 over 40 valid runs -> ...
+  spend: no price on 6 archived valid runs - this provider reports none. Median tokens ...
+  spend: no archived run to estimate from
+```
+
+Plenty of agents report no price at all. That is not the same as having measured
+nothing, so the archive is used anyway, in the unit the provider does report: median
+tokens per run, and what the plan comes to. A scenario that has genuinely never run
+gets the third line and no guess.
 
 **A ledger that already exists is announced.** Relaunching overwrites it, so the plan
 says so before the first token:
