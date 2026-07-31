@@ -179,29 +179,29 @@ class TestLayer4:
 
     def test_a_clean_pass_reports_only_the_count(self, tmp_path):
         d, work = self.experiment(tmp_path, [("nothing / off", "valid"), ("rule / off", "valid")])
-        problems = parity.layer4(d, work)
+        problems = parity.layer4(d, work).lines
         assert len(problems) == 1
         assert "2 sessions checked" in problems[0]
 
     def test_an_invalid_run_fails_the_pass(self, tmp_path):
         d, work = self.experiment(tmp_path, [("nothing / off", "valid"), ("rule / off", "empty")])
-        problems = parity.layer4(d, work)
+        problems = parity.layer4(d, work).lines
         assert any("not valid" in p for p in problems)
 
     def test_a_thinking_mismatch_fails_the_pass(self, tmp_path):
         """The check that makes the thinking-equals-baseline defect impossible."""
         d, work = self.experiment(tmp_path, [("rule / high", "valid")], thinking_recorded="off")
-        problems = parity.layer4(d, work)
+        problems = parity.layer4(d, work).lines
         assert any("declared thinking 'high'" in p for p in problems)
 
     def test_a_missing_output_is_named(self, tmp_path):
         d, work = self.experiment(tmp_path, [("nothing / off", "valid")])
         (d / "synthesis.md").unlink()
-        assert any("synthesis.md" in p for p in parity.layer4(d, work))
+        assert any("synthesis.md" in p for p in parity.layer4(d, work).lines)
 
     def test_without_a_workdir_the_thinking_check_is_declared_skipped(self, tmp_path):
         d, _ = self.experiment(tmp_path, [("nothing / off", "valid")])
-        problems = parity.layer4(d)
+        problems = parity.layer4(d).lines
         assert any("skipped" in p for p in problems)
 
     def test_the_declared_level_is_read_from_the_cell_name(self):

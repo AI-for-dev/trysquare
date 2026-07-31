@@ -28,10 +28,34 @@ and has exactly three admitted outcomes:
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .measure import Run
 from .table import cost_measures, criterion_measure, gap_rows
+
+
+@dataclass(frozen=True)
+class Report:
+    """What a layer found: what it observed, and what blocks.
+
+    The two are kept apart because "58/60 sessions reproduce exactly" is a layer
+    narrating, not a layer failing. Folding both into one list of strings made a
+    passing parity exit non-zero, and left the caller sniffing line endings to
+    tell a count from a defect.
+    """
+
+    observed: list[str] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)
+
+    @property
+    def holds(self) -> bool:
+        return not self.problems
+
+    @property
+    def lines(self) -> list[str]:
+        return self.observed + self.problems
+
 
 # The bench named things in French, and its published rows are the ground truth
 # for layer 3. Mapping rather than renaming: the archive is evidence and evidence
@@ -102,7 +126,7 @@ def layer3(
     return gap_rows(by_cell, reference, measures, validity=BENCH_VALIDITY)
 
 
-def layer1(measures_path: str | Path, archive: str | Path) -> list[str]:
+def layer1(measures_path: str | Path, archive: str | Path) -> Report:
     """Recomputes tokens and turns from the archived sessions.
 
     A genuine test rather than a tautology: the bench counted `message_end` events
@@ -114,7 +138,7 @@ def layer1(measures_path: str | Path, archive: str | Path) -> list[str]:
     stream event a session does not contain, so it is an archive artefact and is
     removed from the parity scope rather than silently treated as zero.
 
-    Returns the differences, empty when the layer holds.
+    Returns the differences, none when the layer holds.
     """
     from .measure import strip_session
 
@@ -171,12 +195,13 @@ def layer1(measures_path: str | Path, archive: str | Path) -> list[str]:
 
     if not checked:
         problems.append(f"no archived session found under {archive}")
-    else:
-        agreeing = sum(1 for i, g in stripped.items() if g == published[i])
-        problems.insert(
-            0, f"{agreeing}/{checked} sessions reproduce their recorded figures exactly"
-        )
-    return problems
+        return Report(problems=problems)
+
+    agreeing = sum(1 for i, g in stripped.items() if g == published[i])
+    return Report(
+        observed=[f"{agreeing}/{checked} sessions reproduce their recorded figures exactly"],
+        problems=problems,
+    )
 
 
 def layer2(
@@ -184,7 +209,7 @@ def layer2(
     archive: str | Path,
     reconstitute,
     validate,
-) -> list[str]:
+) -> Report:
     """Re-scores archived runs by reconstituting their trees, and compares.
 
     `reconstitute(run_dir) -> Path` rebuilds a tree from the tag and the archived
@@ -219,10 +244,10 @@ def layer2(
                 problems.append(f"{ident}/{metric}: not returned by the validator")
             elif got[metric] != expected:
                 problems.append(f"{ident}/{metric}: bench {expected!r}, here {got[metric]!r}")
-    return problems
+    return Report(problems=problems)
 
 
-def layer4(experiment: str | Path, workdir: str | Path | None = None) -> list[str]:
+def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:
     """The smoke pass: mechanical criteria that do not depend on the sample.
 
     Layer 4 launches the agent, so its rates are a different sample and can never
@@ -236,7 +261,7 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> list[st
         declared** - the check that makes the defect which rendered the thinking
         cell identical to the baseline unable to recur
 
-    Returns the failures, empty when the pass holds.
+    Returns the failures, none when the pass holds.
     """
     from .measure import VALID, thinking_levels
 
@@ -245,7 +270,7 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> list[st
 
     state_path = experiment / "state.json"
     if not state_path.is_file():
-        return [f"no state.json in {experiment}"]
+        return Report(problems=[f"no state.json in {experiment}"])
     state = json.loads(state_path.read_text())
     runs = state.get("runs", {})
 
@@ -275,7 +300,7 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> list[st
     # measured repository.
     if workdir is None:
         problems.append("no workdir given: the thinking level check was skipped")
-        return problems
+        return Report(problems=problems)
 
     work = Path(workdir) / experiment.name
     checked = 0
@@ -294,9 +319,8 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> list[st
             problems.append(
                 f"{meta['cell']}: declared thinking {declared!r}, session recorded {got!r}"
             )
-    if checked:
-        problems.insert(0, f"{checked} sessions checked for the declared thinking level")
-    return problems
+    observed = [f"{checked} sessions checked for the declared thinking level"] if checked else []
+    return Report(observed=observed, problems=problems)
 
 
 def _declared_thinking(cell: str, default: str | None) -> str | None:
