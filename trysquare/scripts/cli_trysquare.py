@@ -1,7 +1,7 @@
 """The `trysquare` command.
 
 This is the module named by `[project.scripts]`, and it is deliberately thin: the
-six subcommands and every guard they carry live in `trysquare.cli`, which is also
+seven subcommands and every guard they carry live in `trysquare.cli`, which is also
 what `python -m trysquare` runs, so an installed command and a clone cannot drift
 into measuring different things.
 

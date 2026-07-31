@@ -72,38 +72,8 @@ def resolve(
         declared = scenario.protocol.get(key, scenario.agent.get(key))
         notes.append(f"OVERRIDE: {key} {declared} -> {value}")
 
-    # A repository entry may be a directory or a URL. Either way this only computes
-    # where it will be read from; nothing is cloned or reached for until `execute`.
-    url = config.remote(scenario.task["repo"])
-    if url:
-        repo_path = source_dir(config, scenario.task["repo"], url, scenario.task["etalon"])
-        repo_source = url
-    else:
-        repo_path = config.repo(scenario.task["repo"])
-        repo_source = str(repo_path)
-
-    # Every brick must be where the scenario says, checked before anything is
-    # spent. A missing brick used to surface as a validator failure after a matrix
-    # had been paid for, or worse, as a prompt path silently sent to the agent as
-    # literal text.
-    base = scenario.path.parent if scenario.path else Path.cwd()
-    missing = preflight(scenario, base)
-    if missing:
-        raise RuntimeError(
-            "these files the scenario references do not exist:\n  "
-            + "\n  ".join(missing)
-            + "\nPaths are relative to the scenario file."
-        )
-
-    # A subagent's thinking level cannot be declared anywhere, so it is verified.
-    uses_subagents = "agents" in scenario.bricks
-    refusal = validation_mod.check_thinking_precondition(
-        scenario.agent.get("thinking"),
-        agent_mod.ambient_thinking(),
-        uses_subagents,
-    )
-    if refusal:
-        raise RuntimeError(refusal)
+    repo_path, repo_source = settle_repo(scenario, config)
+    refuse_unmeasurable(scenario)
 
     # Reading state is fine here; writing is not. `resolve` must leave the disk
     # untouched so `--dry-run` cannot create a directory - or worse, reset the
@@ -129,6 +99,47 @@ def resolve(
         blindness=validation_mod.blindness(scenario),
         notes=notes,
     )
+
+
+def settle_repo(scenario: Scenario, config: Config) -> tuple[Path, str]:
+    """Where the repository will be read from, and what the config declared.
+
+    A repository entry may be a directory or a URL. Either way this only computes
+    where it will be read from; nothing is cloned or reached for until `execute`.
+    """
+    url = config.remote(scenario.task["repo"])
+    if url:
+        return source_dir(config, scenario.task["repo"], url, scenario.task["etalon"]), url
+    path = config.repo(scenario.task["repo"])
+    return path, str(path)
+
+
+def refuse_unmeasurable(scenario: Scenario) -> None:
+    """The refusals that spend nothing, shared by `resolve` and `validate`.
+
+    Every brick must be where the scenario says, checked before anything is
+    spent. A missing brick used to surface as a validator failure after a matrix
+    had been paid for, or worse, as a prompt path silently sent to the agent as
+    literal text.
+    """
+    base = scenario.path.parent if scenario.path else Path.cwd()
+    missing = preflight(scenario, base)
+    if missing:
+        raise RuntimeError(
+            "these files the scenario references do not exist:\n  "
+            + "\n  ".join(missing)
+            + "\nPaths are relative to the scenario file."
+        )
+
+    # A subagent's thinking level cannot be declared anywhere, so it is verified.
+    uses_subagents = "agents" in scenario.bricks
+    refusal = validation_mod.check_thinking_precondition(
+        scenario.agent.get("thinking"),
+        agent_mod.ambient_thinking(),
+        uses_subagents,
+    )
+    if refusal:
+        raise RuntimeError(refusal)
 
 
 def interleave(todo: list[tuple[str, dict]]) -> list[tuple[str, dict]]:

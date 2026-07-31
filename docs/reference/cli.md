@@ -5,7 +5,7 @@ uv run python -m trysquare <command> [options]
 trysquare <command> [options]              # if installed
 ```
 
-`--output` roots everything that writes. Six commands.
+`--output` roots everything that writes. Seven commands.
 
 ## `run`
 
@@ -101,6 +101,18 @@ its ledger.
 1. **Missing bricks.** Every referenced path is checked first.
 2. **Thinking mismatch** when the scenario uses subagents.
 3. **An agent with no model**, from neither its file nor an override.
+
+## `validate`
+
+Checks a scenario end to end without an output directory, and without spending a
+token: the file loads, every referenced path exists, the config has an entry for
+the repository, the thinking precondition holds. The same refusals `run` applies,
+shared with it - `validate` cannot pass what `run` would refuse. A note (not a
+failure) says when `pi` is missing from PATH, since a run would then refuse.
+
+```bash
+trysquare validate <scenario> [--config <file>]
+```
 
 ## `render`
 

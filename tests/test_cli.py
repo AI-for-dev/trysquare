@@ -37,7 +37,7 @@ class TestParser:
     def test_every_subcommand_exists(self):
         actions = [a for a in build_parser()._subparsers._group_actions if hasattr(a, "choices")]
         available = set(actions[0].choices)
-        assert available == {"run", "render", "replay", "compare", "parity", "form"}
+        assert available == {"run", "validate", "render", "replay", "compare", "parity", "form"}
 
     def test_the_bar_can_be_refused_on_every_command_that_draws_one(self):
         parser = build_parser()
@@ -48,6 +48,40 @@ class TestParser:
             ["replay", "d", "--scenario", SCENARIO, "--no-progress"],
         ):
             assert parser.parse_args(argv).no_progress, argv[0]
+
+
+class TestValidate:
+    """The same refusals as `run`, before an output directory exists."""
+
+    def quietly(self, argv) -> tuple[int, str]:
+        import contextlib
+        import io
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = main(argv)
+        return code, stdout.getvalue() + stderr.getvalue()
+
+    def test_a_sound_scenario_validates_and_writes_nothing(self, tmp_path):
+        code, said = self.quietly(["validate", SCENARIO, "--config", str(MACHINE)])
+        assert code == 0
+        assert "ok: nothing this scenario references is missing" in said
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_missing_referenced_file_is_a_refusal(self, tmp_path):
+        """The same preflight as `run`: a missing brick refuses before anything else."""
+        scenario = tmp_path / "s.toml"
+        scenario.write_text(
+            Path(SCENARIO).read_text().replace("../../examples/validator.py", "absent.py")
+        )
+        code, said = self.quietly(["validate", str(scenario), "--config", str(MACHINE)])
+        assert code == 1
+        assert "do not exist" in said and "absent.py" in said
+
+    def test_a_config_file_is_told_apart_from_a_scenario(self):
+        code, said = self.quietly(["validate", str(MACHINE)])
+        assert code == 1
+        assert "config" in said
 
 
 class TestDryRun:
