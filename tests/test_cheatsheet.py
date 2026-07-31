@@ -17,7 +17,10 @@ from pathlib import Path
 from trysquare.cli import build_parser
 
 ROOT = Path(__file__).resolve().parent.parent
+# The page is a stub that includes the sheet; the flags live in the raw HTML body, so
+# both are read and neither can hold a flag the other contradicts.
 PAGE = ROOT / "docs" / "reference" / "cheatsheet.md"
+BODY = ROOT / "docs" / "reference" / "cheatsheet-body.html"
 
 
 def parser_flags() -> set[str]:
@@ -29,8 +32,14 @@ def parser_flags() -> set[str]:
     return found - {"--help"}
 
 
+def sheet() -> str:
+    return PAGE.read_text() + BODY.read_text()
+
+
 def page_flags() -> set[str]:
-    return set(re.findall(r"--[a-z][a-z-]+", PAGE.read_text()))
+    """`--help` aside on this side too: the sheet points a reader at it, and the parser
+    gives every subcommand one, so comparing them says nothing."""
+    return set(re.findall(r"--[a-z][a-z-]+", sheet())) - {"--help"}
 
 
 class TestEveryFlagIsRealAndPresent:
@@ -51,13 +60,18 @@ class TestEveryFlagIsRealAndPresent:
         assert len(parser_flags()) > 10
 
 
-class TestEverySubcommandIsNamed:
+class TestEverySubcommandHasACard:
     def test_all_eight(self):
-        """The page's own claim - eight commands - checked against the parser, since a
-        ninth would otherwise be documented everywhere but here."""
+        """The sheet's own claim - eight commands - checked against the parser, since a
+        ninth would otherwise be documented everywhere but here.
+
+        A card title is what is looked for, not the bare word: `run` and `render` appear
+        in one another's prose, so a substring match would pass for a command the sheet
+        only mentions.
+        """
         commands = {
             name for action in build_parser()._subparsers._group_actions for name in action.choices
         }
-        text = PAGE.read_text()
+        text = sheet()
         assert len(commands) == 8
-        assert [c for c in sorted(commands) if f"`{c}" not in text] == []
+        assert [c for c in sorted(commands) if f'"ts-name">{c} ' not in text] == []
