@@ -19,10 +19,23 @@ import html
 import re
 
 # Small on purpose, and honouring the reader's theme without a line of script.
+#
+# Two things are declared rather than left to the browser, because the browser's
+# answer was wrong for this document. A synthesis heads its sections with `###` and
+# its subsections with `####`, so the defaults put every section at 18.7px and every
+# subsection at exactly body size - indistinguishable from a table header, and the
+# structure of the page invisible. And an unstyled link is `#0000EE`, which on the
+# dark background is a contrast of 1.99:1 where 4.5 is legible: the session links
+# were the only things to click on the page and the only things nobody could read.
 STYLE = """\
 body { max-width: 60rem; margin: 2rem auto; padding: 0 1rem;
        font: 16px/1.55 system-ui, sans-serif; color: #1a1a1a; background: #ffffff; }
-h1, h2, h3 { line-height: 1.25; }
+h1, h2, h3, h4 { line-height: 1.25; margin: 2.2rem 0 0.7rem; }
+h1 { font-size: 2.1rem; margin-top: 0; }
+h2 { font-size: 1.7rem; }
+h3 { font-size: 1.45rem; }
+h4 { font-size: 1.15rem; }
+a { color: #0b57d0; }
 table { border-collapse: collapse; margin: 1rem 0; }
 th, td { border: 1px solid #b5b5b5; padding: 0.35rem 0.7rem; text-align: left; }
 th { background: #efefef; }
@@ -31,6 +44,7 @@ code { font-family: ui-monospace, monospace; background: #efefef;
 .warning { border-left: 4px solid #b45309; padding-left: 0.8rem; }
 @media (prefers-color-scheme: dark) {
   body { color: #e8e8e8; background: #121212; }
+  a { color: #9ec1ff; }
   th { background: #232323; }
   th, td { border-color: #4a4a4a; }
   code { background: #232323; }
@@ -122,7 +136,9 @@ def synthesis_page(markdown: str, sessions: dict[str, list[str]] | None = None) 
             + "</li>"
             for run_id, names in sorted(sessions.items())
         ]
-        body.append("<h2>Sessions</h2>")
+        # `h3`, the level the synthesis heads its own sections with. As an `h2` this
+        # appended section outranked every section the synthesis actually wrote.
+        body.append("<h3>Sessions</h3>")
         body.append(
             "<p>The agent's own trace, one page per attempt, rendered by "
             "<code>render --html</code>.</p>"

@@ -7,15 +7,20 @@ Everything is rooted at `--output`. One directory per experiment.
   state.json        the per-run ledger
   measures.json     one line per run
   synthesis.md      the score table, the cost table, the gap table and the verdicts
+  synthesis.html    the same synthesis as one self-contained page
   runs/<id>/
-    context.json           what the validator was handed
     configuration.json     what this run actually ran
     diff.patch             what the agent changed
     session/<id>.jsonl         the agent's own trace, one file per attempt
     session/<id>.html          the same trace as a page, on `render --html`
     validation/<mode>.json     each validator's output
     validation/<mode>.stderr   kept when a validator fails
+    validation/<mode>/context.json   what that validator was handed
 ```
+
+`context.json` lives under its validator, not at the run's root: every validator gets
+its own, and a judge's is blinded where a script's is not. One file at the root would
+have to be two files under one name.
 
 ## The directory name is the guard
 
@@ -150,6 +155,17 @@ established - see {doc}`../guide/invariants`.
 `render --reference` writes `synthesis_ref-<cell>.md` from the same measures, because a
 reference is a rendering choice rather than a measurement.
 
+## `synthesis.html`
+
+Written beside the markdown, every time the markdown is - by `run`, `render` and
+`replay --rescore` alike. Costs no token and no network: strings in, one file out.
+
+One self-contained page, with no script, no external stylesheet and no font fetched
+from anywhere, because an archive is opened years later on a machine that may be
+offline and a page that phones home is a page that rots. It links each run's session
+pages once `render --html` has written them, and `render --reference` gives it the
+same suffix as the markdown.
+
 ## `runs/<id>/`
 
 The id is a short opaque hash, **stable** for a given scenario, cell and repetition -
@@ -266,11 +282,6 @@ so that a prompt edit lands somewhere new on its own.
 
 Stated rather than left to be discovered.
 
-- **HTML for the synthesis.** `synthesis.html` and a `pages` command are designed but not
-  written; only `synthesis.md` is produced. The *session* pages are written, by
-  `render --html` - see {ref}`session-html`.
-- **`compare` reports, it does not tabulate.** It applies the refusals and prints what
-  differs, without a side-by-side table.
 - **A judge is not re-scored.** `replay --rescore` re-runs script validators and reuses the
   archived judge verdict, because re-running a judge costs tokens. Re-scoring a judged
   metric therefore means measuring again.

@@ -70,4 +70,30 @@ class TestSessionLinks:
         assert '<a href="runs/abcd1234/session/two.html">two.html</a>' in page
 
     def test_no_archived_page_means_no_section(self):
-        assert "<h2>Sessions</h2>" not in synthesis_page(SYNTHESIS, {})
+        assert "Sessions</h3>" not in synthesis_page(SYNTHESIS, {})
+
+    def test_the_appended_section_sits_at_the_level_the_synthesis_writes(self):
+        """The synthesis heads every section it writes with `###`. As an `h2` the one
+        section nobody measured led the page."""
+        page = synthesis_page(SYNTHESIS, {"abcd1234": ["one.html"]})
+        assert "<h3>Sessions</h3>" in page
+
+
+class TestTheArchiveIsReadable:
+    """This page outlives everything else in the tree, so how it reads is not a detail:
+    somebody opening it in five years has its own style block and nothing else."""
+
+    def test_every_heading_level_is_told_its_size(self):
+        """A synthesis heads sections with `###` and subsections with `####`. On browser
+        defaults that is 18.7px and 16px - the second being exactly body text, and both
+        being what a table header already looks like."""
+        page = synthesis_page(SYNTHESIS)
+        for level in ("h1", "h2", "h3", "h4"):
+            assert f"{level} {{ font-size:" in page, level
+
+    def test_links_are_told_their_colour_in_both_themes(self):
+        """Unstyled, a link is `#0000EE`: 1.99:1 against the dark background, where 4.5
+        is the floor for legibility. The session links are the only things to click."""
+        light, dark = synthesis_page(SYNTHESIS).split("prefers-color-scheme: dark")
+        assert "a { color:" in light
+        assert "a { color:" in dark
