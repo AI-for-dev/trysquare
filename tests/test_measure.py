@@ -15,6 +15,7 @@ from trysquare.measure import (
     fill_manual,
     kind,
     merge,
+    models,
     rate,
     scorable,
     series,
@@ -115,6 +116,19 @@ class TestStripSession:
             {"type": "message", "message": {}},
         )
         assert thinking_levels(s) == ["high"]
+
+    def test_the_model_that_answered_is_recoverable(self):
+        """The declared value is a pattern, so only the session names what ran."""
+        s = stream(
+            {"type": "model_change", "model": "gemma-4-31b"},
+            {"type": "message", "message": {}},
+        )
+        assert models(s) == ["gemma-4-31b"]
+
+    def test_a_session_naming_no_model_yields_nothing(self):
+        """Absence stays absence: an archive that cannot name the model must not have
+        one invented for it."""
+        assert models(stream({"type": "message", "message": {}})) == []
 
 
 class TestConsumedTokens:

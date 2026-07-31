@@ -146,7 +146,15 @@ class TestJudgeDossier:
 class TestLayer4:
     """Mechanical criteria only: layer 4 samples, so it proves no rate."""
 
-    def experiment(self, tmp_path, states, thinking_recorded="off", declared_thinking="off"):
+    def experiment(
+        self,
+        tmp_path,
+        states,
+        thinking_recorded="off",
+        declared_thinking="off",
+        model="gemma-4",
+        model_id="gemma-4-31b",
+    ):
         d = tmp_path / "exp_n2"
         (d / "runs").mkdir(parents=True)
         work = tmp_path / "work"
@@ -157,7 +165,10 @@ class TestLayer4:
             runs[rid] = {"cell": cell, "repetition": i, "state": state, "attempts": 1}
             rd = d / "runs" / rid
             (rd / "validation").mkdir(parents=True)
-            (rd / "configuration.json").write_text("{}")
+            configuration = {"model": model}
+            if model_id is not None:
+                configuration["model_id"] = model_id
+            (rd / "configuration.json").write_text(json.dumps(configuration))
             (rd / "diff.patch").write_text("")
             sd = work / d.name / rid / "session"
             sd.mkdir(parents=True)
@@ -177,11 +188,36 @@ class TestLayer4:
         (d / "synthesis.md").write_text("#")
         return d, work
 
-    def test_a_clean_pass_reports_only_the_count(self, tmp_path):
+    def test_a_pattern_that_resolved_is_not_a_failure(self, tmp_path):
+        """`gemma-4` answering as `gemma-4-31b` is resolution, not substitution, and
+        equality here would refuse every legitimate run."""
+        d, work = self.experiment(tmp_path, [("nothing / off", "valid")])
+        report = parity.layer4(d, work)
+        assert report.holds, report.problems
+        assert any("ran the model their pattern names" in line for line in report.observed)
+
+    def test_a_model_the_pattern_does_not_name_fails_the_pass(self, tmp_path):
+        """The case worth the check: a fallback to the machine's defaultModel means the
+        matrix measured a model nobody declared."""
+        d, work = self.experiment(
+            tmp_path, [("nothing / off", "valid")], model="gemma-4", model_id="claude-sonnet-5"
+        )
+        report = parity.layer4(d, work)
+        assert not report.holds
+        assert any("does not name" in p and "claude-sonnet-5" in p for p in report.problems)
+
+    def test_an_archive_without_model_id_is_unchecked_rather_than_passed(self, tmp_path):
+        """A check that silently holds over material it never read is worse than none."""
+        d, work = self.experiment(tmp_path, [("nothing / off", "valid")], model_id=None)
+        report = parity.layer4(d, work)
+        assert report.holds
+        assert any("could not be checked" in line for line in report.observed)
+
+    def test_a_clean_pass_reports_only_the_counts(self, tmp_path):
         d, work = self.experiment(tmp_path, [("nothing / off", "valid"), ("rule / off", "valid")])
         problems = parity.layer4(d, work).lines
-        assert len(problems) == 1
-        assert "2 sessions checked" in problems[0]
+        assert len(problems) == 2
+        assert any("2 sessions checked" in line for line in problems)
 
     def test_an_invalid_run_fails_the_pass(self, tmp_path):
         d, work = self.experiment(tmp_path, [("nothing / off", "valid"), ("rule / off", "empty")])

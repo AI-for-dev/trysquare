@@ -310,6 +310,9 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:
       - **the thinking level each session recorded equals the level its cell
         declared** - the check that makes the defect which rendered the thinking
         cell identical to the baseline unable to recur
+      - **the model that answered is the one the scenario's pattern asked for**,
+        which is the same check one axis over: `model` is a pattern, and a pattern
+        that quietly resolved elsewhere measures a model nobody declared
 
     Returns the failures, none when the pass holds.
     """
@@ -345,12 +348,18 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:
         if not (directory / "validation").is_dir():
             problems.append(f"{meta['cell']}: no validation output")
 
+    # Read from the archive rather than the work directory: `model_id` was written
+    # beside the declared pattern when the run was archived, so this check survives a
+    # purged workdir - which the thinking check below cannot.
+    observed, model_problems = _models_answered(experiment, runs)
+    problems.extend(model_problems)
+
     # The thinking check needs the sessions, which live in the work directory
     # because they are written while the agent runs and must stay out of the
     # measured repository.
     if workdir is None:
         problems.append("no workdir given: the thinking level check was skipped")
-        return Report(problems=problems)
+        return Report(observed=observed, problems=problems)
 
     work = Path(workdir) / experiment.name
     checked = 0
@@ -369,8 +378,54 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:
             problems.append(
                 f"{meta['cell']}: declared thinking {declared!r}, session recorded {got!r}"
             )
-    observed = [f"{checked} sessions checked for the declared thinking level"] if checked else []
+    if checked:
+        observed.append(f"{checked} sessions checked for the declared thinking level")
     return Report(observed=observed, problems=problems)
+
+
+def _models_answered(experiment: Path, runs: dict) -> tuple[list[str], list[str]]:
+    """Checks that each run's model resolved to what its scenario asked for.
+
+    `model` is a pattern, so equality would refuse every legitimate run: `gemma-4`
+    answers as `gemma-4-31b`. What must hold is that the pattern is still in what
+    answered - a fallback to the machine's `defaultModel` is exactly the case that
+    fails it, and it is the case a matrix cannot afford to publish unnoticed.
+
+    An archive written before `model_id` existed carries no such record. That is
+    reported as unchecked rather than passed: a check that silently holds over
+    material it never read is worse than no check.
+    """
+    from .agent import resolves_to
+
+    observed: list[str] = []
+    problems: list[str] = []
+    checked = unrecorded = 0
+
+    for rid, meta in runs.items():
+        path = experiment / "runs" / rid / "configuration.json"
+        if not path.is_file():
+            continue
+        configuration = json.loads(path.read_text())
+        declared, ran = configuration.get("model"), configuration.get("model_id")
+        if not declared:
+            continue
+        if not ran:
+            unrecorded += 1
+            continue
+        checked += 1
+        if not resolves_to(declared, ran):
+            problems.append(
+                f"{meta['cell']}: declared model {declared!r}, the session recorded {ran!r}, "
+                f"which that pattern does not name"
+            )
+
+    if checked:
+        observed.append(f"{checked} runs ran the model their pattern names")
+    if unrecorded:
+        observed.append(
+            f"{unrecorded} runs record no model_id, so what answered could not be checked"
+        )
+    return observed, problems
 
 
 def _declared_thinking(cell: str, default: str | None) -> str | None:

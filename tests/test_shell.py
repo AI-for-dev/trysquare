@@ -63,6 +63,58 @@ class TestArgv:
         assert self.args()[-1] == "do it"
 
 
+class TestTheModelThatAnswered:
+    """`--model` takes a pattern, so the declared value and what ran are two facts.
+
+    Measured on a real matrix: a scenario declaring `gemma-4` ran `gemma-4-31b` in all
+    six runs, and nothing in the archive said so.
+    """
+
+    def test_a_pattern_that_expands_still_names_its_model(self):
+        assert agent.resolves_to("gemma-4", "gemma-4-31b")
+
+    def test_an_exact_id_names_itself(self):
+        assert agent.resolves_to("gemma-4-31b", "gemma-4-31b")
+
+    def test_a_different_model_is_not_what_the_pattern_named(self):
+        """The fallback case: the machine's defaultModel answering for a declared one."""
+        assert not agent.resolves_to("gemma-4", "claude-sonnet-5")
+
+    def test_a_provider_prefix_says_nothing_about_the_model(self):
+        assert agent.resolves_to("gemma-4", "ilaas/gemma-4-31b")
+        assert agent.resolves_to("ilaas/gemma-4", "local/google/gemma-4-31b")
+
+    def test_the_thinking_shorthand_is_not_part_of_the_name(self):
+        """The agent accepts `--model sonnet:high`, and a reasoning level is not a model."""
+        assert agent.resolves_to("gemma-4:high", "gemma-4-31b")
+
+    def test_the_comparison_ignores_case_and_padding(self):
+        assert agent.resolves_to(" Gemma-4 ", "gemma-4-31b")
+
+    def test_the_archive_records_the_last_model_the_sessions_name(self, tmp_path):
+        """The last, because a session may switch models and what ran last is what
+        produced the diff being scored."""
+        session = tmp_path / "s.jsonl"
+        session.write_text(
+            "\n".join(
+                json.dumps(e)
+                for e in (
+                    {"type": "model_change", "model": "gemma-4-31b"},
+                    {"type": "message", "message": {}},
+                    {"type": "model_change", "model": "gemma-4-90b"},
+                )
+            )
+        )
+        assert runner.recorded_model([session]) == "gemma-4-90b"
+
+    def test_no_session_records_no_model_rather_than_the_pattern(self, tmp_path):
+        """Filling the gap with the intention is exactly how a fallback would hide."""
+        assert runner.recorded_model([]) is None
+        bare = tmp_path / "b.jsonl"
+        bare.write_text(json.dumps({"type": "message", "message": {}}))
+        assert runner.recorded_model([bare]) is None
+
+
 class TestCloneArgv:
     """The flags that make a clone the pinned state and nothing else."""
 
