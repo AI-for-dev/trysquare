@@ -85,3 +85,36 @@ class TestAShebangOnlyWorksFirst:
         """Named explicitly: the sweep above is only as good as what it sweeps, and this
         is the file the documentation tells a reader to run."""
         assert (ROOT / "examples" / "validator.py") in scripts()
+
+
+class TestTheVersionIsNamedOnce:
+    """It was written in three places, with nothing deriving it.
+
+    `pyproject.toml`, `trysquare/__init__.py` and `docs/conf.py` each carried the literal
+    `0.1.0`, so a release could ship a wheel and a documentation page disagreeing about
+    what it was - and a bump had to remember all three.
+    """
+
+    def declared(self) -> str:
+        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        return pyproject["project"]["version"]
+
+    def test_the_package_reports_what_the_project_declares(self):
+        from trysquare import __version__
+
+        assert __version__ == self.declared()
+
+    def test_nothing_else_writes_a_version_literal(self):
+        """The check that keeps this true: a second literal is how the drift started."""
+        written = [
+            path.relative_to(ROOT)
+            for path in (ROOT / "trysquare" / "__init__.py", ROOT / "docs" / "conf.py")
+            if f'"{self.declared()}"' in path.read_text()
+        ]
+        assert written == [], f"these repeat the version instead of deriving it: {written}"
+
+    def test_the_copyright_a_page_shows_is_the_one_the_licence_names(self):
+        """A documentation footer is a copyright notice, so it cannot name someone the
+        licence does not."""
+        conf = (ROOT / "docs" / "conf.py").read_text()
+        assert 'copyright = "2026, The trysquare Authors"' in conf
