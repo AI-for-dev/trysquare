@@ -109,6 +109,11 @@
             <dd>restrict to these cells, repeatable; <b>leaves the matrix incomplete</b>, so
               no synthesis is written and <code>--resume</code> finishes it later</dd>
 
+            <dt>--group-by-cell / --no-group-by-cell</dt>
+            <dd>file runs under <code>runs/&lt;cell&gt;/&lt;id&gt;/</code>, or keep
+              <code>runs/&lt;id&gt;/</code> flat and opaque. <b>Grouped by default</b>, blind when
+              a <code>form</code> validator says a human scores by hand</dd>
+
             <dt>--resume</dt>
             <dd>fill <b>only what produced nothing</b>; a validator failure is re-scored
               instead, at no token cost</dd>
@@ -373,7 +378,7 @@ reference = { context = <span class="ts-k">"nothing"</span> }</pre>
   measures.json   <span class="ts-c">one line per run</span>
   synthesis.md    <span class="ts-c">scores, costs, gaps, verdicts - when complete</span>
   synthesis.html  <span class="ts-c">the same, standalone</span>
-  runs/&lt;id&gt;/      <span class="ts-c">context, configuration, diff, validation</span>
+  runs/<span class="ts-b">&lt;cell&gt;</span>/&lt;id&gt;/ <span class="ts-c">context, configuration, diff, validation</span>
     session/*.jsonl   <span class="ts-c">the agent's own trace, one per attempt</span>
     session/*.html    <span class="ts-c">on render --html</span></pre>
         <p>
@@ -381,6 +386,11 @@ reference = { context = <span class="ts-k">"nothing"</span> }</pre>
           changes the measurement lands in it. Relaunching the same experiment overwrites
           it: a timestamped directory per launch would be optional stopping through the
           back door.
+        </p>
+        <p>
+          The cell level goes away with <code>--no-group-by-cell</code>, and is absent by
+          default when a <code>form</code> validator scores by hand: an id nobody can read
+          is what keeps a human from knowing which configuration they are grading.
         </p>
       </div>
 

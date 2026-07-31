@@ -117,12 +117,14 @@ def _blocks(markdown: str) -> list[str]:
     return out
 
 
-def synthesis_page(markdown: str, sessions: list[tuple[str, str, list[str]]] | None = None) -> str:
+def synthesis_page(
+    markdown: str, sessions: list[tuple[str, str, str, list[str]]] | None = None
+) -> str:
     """The whole page, from the synthesis text and the session pages that exist.
 
-    `sessions` is `(label, run id, page names)` per run, **in the order to print them**.
-    Ordering and labelling belong to the caller, which is the only side holding the runs;
-    this renders what it is given.
+    `sessions` is `(label, run id, directory, page names)` per run, **in the order to
+    print them**. Ordering, labelling and where a run's directory is belong to the
+    caller, which is the only side holding the runs; this renders what it is given.
 
     Every other section of a synthesis is organised by cell. This one used to be keyed by
     run id alone, so telling whether `1af14a46` was the baseline or the treatment meant
@@ -141,12 +143,12 @@ def synthesis_page(markdown: str, sessions: list[tuple[str, str, list[str]]] | N
         items = [
             f"<li>{html.escape(label)} <code>{html.escape(run_id)}</code>: "
             + " ".join(
-                f'<a href="runs/{html.escape(run_id)}/session/{html.escape(name)}"'
+                f'<a href="{html.escape(directory)}/session/{html.escape(name)}"'
                 f' title="{html.escape(name)}">attempt {i}</a>'
                 for i, name in enumerate(names, 1)
             )
             + "</li>"
-            for label, run_id, names in sessions
+            for label, run_id, directory, names in sessions
         ]
         # `h3`, the level the synthesis heads its own sections with. As an `h2` this
         # appended section outranked every section the synthesis actually wrote.

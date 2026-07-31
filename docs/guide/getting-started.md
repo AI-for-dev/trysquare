@@ -250,12 +250,16 @@ out/rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10/
   measures.json   one line per run, the raw material every table is rebuilt from
   synthesis.md    the score, cost and gap tables, and the verdicts
   synthesis.html  the same synthesis as one self-contained page
-  runs/<id>/
+  runs/<cell>/<id>/
     configuration.json   what this run actually ran
     diff.patch           what the agent changed
     validation/          each validator's output, stderr, and the context it was handed
     session/*.jsonl      the agent's own trace, one file per attempt
 ```
+
+Runs are filed under their cell, so a diff can be read without looking an id up first.
+A scenario with a `form` validator is the exception - see
+{ref}`the two layouts <runs-layout>`.
 
 `synthesis.html` is written wherever the markdown is, by `run`, `render` and
 `replay --rescore` alike. It costs nothing - strings in, one file out - and it carries

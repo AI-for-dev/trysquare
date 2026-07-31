@@ -8,7 +8,7 @@ Everything is rooted at `--output`. One directory per experiment.
   measures.json     one line per run
   synthesis.md      the score table, the cost table, the gap table and the verdicts
   synthesis.html    the same synthesis as one self-contained page
-  runs/<id>/
+  runs/<cell>/<id>/
     configuration.json     what this run actually ran
     diff.patch             what the agent changed
     session/<id>.jsonl         the agent's own trace, one file per attempt
@@ -21,6 +21,40 @@ Everything is rooted at `--output`. One directory per experiment.
 `context.json` lives under its validator, not at the run's root: every validator gets
 its own, and a judge's is blinded where a script's is not. One file at the root would
 have to be two files under one name.
+
+(runs-layout)=
+## Two layouts for `runs/`
+
+A run id is an opaque hash, so a cell directory is the difference between reading a diff
+and looking a hash up first.
+
+```text
+runs/                         runs/
+  rule_off/                     658df337/
+    658df337/                   962d7594/
+    962d7594/                   1af14a46/
+  nothing_off/
+    1af14a46/
+```
+
+Grouped on the left, blind on the right. **Grouped is the default**, and blind is the
+default for a scenario that declares a `form` validator - there, the id is what keeps a
+human from knowing which configuration they are grading, and somebody who knows they
+are scoring the best-equipped cell scores it better.
+
+`run --group-by-cell` / `--no-group-by-cell` settles it either way. Asking for a layout
+that contradicts a tree already on disk is **refused**: the two do not merge, so every
+run would end up archived twice, once under each, with nothing to say which half was
+this launch.
+
+The layout is recorded in `state.json` and deliberately **not** in the directory name:
+it changes where bytes land, not what is measured. Every later command - `render`,
+`replay`, `form`, `parity --smoke` - reads it from the tree, so none of them needs the
+flag repeated.
+
+The leaf is the run id in both layouts. That is what the ledger, the measures, the
+sessions and a scoring form all name a run by, and one identity for one run is what lets
+a re-scoring find the row it belongs to.
 
 ## The directory name is the guard
 
@@ -48,6 +82,7 @@ The ledger, and what makes a matrix resumable.
   "repetitions": 2,
   "concurrency": 5,
   "timeout": 900,
+  "layout": "by-cell",
   "overrides": { "repetitions": 2 },
   "complete": true,
   "runs": {
@@ -70,7 +105,8 @@ column depends on retries.
 
 :::{note}
 `state.json` also holds the **id-to-cell mapping**, which is deliberately *not* in the
-manual scoring form: the form is blind.
+manual scoring form: the form is blind, and so is the tree it points into whenever a
+`form` validator declares that a human scores. See [Two layouts](#runs-layout).
 :::
 
 ## `measures.json`
@@ -166,11 +202,12 @@ offline and a page that phones home is a page that rots. It links each run's ses
 pages once `render --html` has written them, and `render --reference` gives it the
 same suffix as the markdown.
 
-## `runs/<id>/`
+## One run's directory
 
 The id is a short opaque hash, **stable** for a given scenario, cell and repetition -
 stable so a resume can tell an absent run from a finished one, opaque so a form can be
-filled without revealing the cell.
+filled without revealing the cell. Which directory it sits in is
+[the tree's layout](#runs-layout).
 
 `configuration.json` records what actually ran, including per-agent models and where
 each came from:

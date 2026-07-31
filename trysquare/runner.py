@@ -62,11 +62,12 @@ def resolve(
     overrides: dict | None = None,
     only: tuple[str, ...] = (),
     resume: bool = False,
+    grouped: bool | None = None,
 ) -> Plan:
     """Turns a scenario into a concrete plan, refusing what cannot be measured."""
     overrides = overrides or {}
     repetitions = overrides.get("repetitions") or scenario.protocol["repetitions"]
-    output = Output(output_root, scenario, repetitions)
+    output = Output(output_root, scenario, repetitions, grouped=grouped)
 
     notes = []
     for key, value in sorted(overrides.items()):
