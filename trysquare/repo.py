@@ -261,15 +261,31 @@ def changed_files(d: Path) -> list[str]:
 
 
 def diff(d: Path) -> str:
+    """What the agent changed, in a form that can be applied again.
+
+    `--binary` is what makes it applicable. Without it git records a binary file as
+    `Binary files /dev/null and b/x.pyc differ`, which carries no content and an
+    abbreviated index, and `git apply` refuses it - and refuses the **whole** patch,
+    the source changes with it. An agent that runs the declared suite to check its own
+    fix leaves `__pycache__/*.pyc` behind, so this is the common case, not the exotic
+    one: the archive looks fine until a `replay --rescore` months later cannot use it.
+
+    The extra bytes are base85 of what the agent produced, and only for the files it
+    produced. A diff nobody can apply is not smaller, it is empty.
+    """
     git(["add", "-A", "--intent-to-add"], cwd=d, check=False)
-    return git(["diff"], cwd=d, check=False)
+    return git(["diff", "--binary"], cwd=d, check=False)
 
 
-def apply_diff(d: Path, patch: str) -> None:
+def apply_diff(d: Path, patch: str, what: str = "") -> None:
     """Replays an archived diff onto a fresh clone.
 
     This is what makes a validation replayable months later: the archive keeps the
     tag and the patch, not 150 copies of a working tree.
+
+    `what` names whose patch it is. A replay walks every run in a directory, so a
+    refusal that says only "the archived diff" leaves the reader to find which of
+    sixty it was.
     """
     if not patch.strip():
         return
@@ -282,4 +298,5 @@ def apply_diff(d: Path, patch: str) -> None:
         timeout=GIT_TIMEOUT,
     )
     if proc.returncode != 0:
-        raise RepoError(f"could not replay the archived diff: {proc.stderr.strip()}")
+        whose = f" of {what}" if what else ""
+        raise RepoError(f"could not replay the archived diff{whose}: {proc.stderr.strip()}")

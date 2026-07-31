@@ -670,6 +670,52 @@ class TestWhatTheHarnessComputesOnce:
         assert json.loads(path.read_text())["touched"] == []
 
 
+class TestTheArchivedDiffReplays:
+    """What `replay` promises rests on one thing: the archived patch has to apply.
+
+    Found on a real matrix. An agent asked to fix a defect ran the declared suite to
+    check itself, which left `__pycache__/*.pyc` in the clone, and `replay --rescore`
+    then died on the first run:
+
+        cannot apply binary patch to '__pycache__/counter.cpython-314.pyc'
+        without full index line
+
+    `git diff` records a binary file as a one-line placeholder that `git apply` refuses,
+    and it refuses the **whole** patch - the source change with it. Nothing about the
+    archive looks wrong until somebody tries to re-score it, months later.
+    """
+
+    def a_clone_of(self, source):
+        return repo.clone(source, "etalon-v1", Path(tempfile.mkdtemp()) / "tree")
+
+    def a_run_that_left_a_binary(self, source):
+        work = self.a_clone_of(source)
+        (work / "a.js").write_text("two\n")
+        (work / "build.bin").write_bytes(b"\x00\x01\x02not text\xff")
+        return repo.diff(work)
+
+    def test_a_patch_holding_a_binary_file_applies(self):
+        source = a_repo({"a.js": "one\n"})
+        repo.apply_diff(self.a_clone_of(source), self.a_run_that_left_a_binary(source))
+
+    def test_the_text_change_survives_the_binary_one(self):
+        """The failure was total, so this is the half that matters: a `.pyc` nobody
+        cares about must not take the source edit being re-scored down with it."""
+        source = a_repo({"a.js": "one\n"})
+        patch = self.a_run_that_left_a_binary(source)
+
+        replayed = self.a_clone_of(source)
+        repo.apply_diff(replayed, patch)
+        assert (replayed / "a.js").read_text() == "two\n"
+        assert (replayed / "build.bin").read_bytes() == b"\x00\x01\x02not text\xff"
+
+    def test_a_patch_that_does_not_apply_names_the_run(self):
+        """Sixty runs in a directory and one bad patch: the message has to say which."""
+        source = a_repo({"a.js": "one\n"})
+        with pytest.raises(repo.RepoError, match="a7f3"):
+            repo.apply_diff(self.a_clone_of(source), "not a patch at all\n", what="a7f3")
+
+
 class TestScriptValidatorPaths:
     """A validator is run from the context's directory, so the context path must be
     absolute.

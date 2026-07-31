@@ -648,7 +648,7 @@ def cmd_replay(args) -> int:
             # not be reproduced by hand. And it is a race waiting for the day this loop runs
             # concurrently, which is when it would start producing plausible wrong numbers.
             clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
-            repo_mod.apply_diff(clone, patch)
+            repo_mod.apply_diff(clone, patch, what=run_dir.name)
             context = replay_context(run_dir, clone, source, scenario, at_etalon)
             bar.line(f"  {run_dir.name}: reconstituted at {clone}")
             bar.line(f"    context: {context}")
