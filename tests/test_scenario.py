@@ -359,3 +359,33 @@ class TestPrepareSteps:
     def test_a_prepare_entry_that_is_not_a_string_is_refused(self):
         with pytest.raises(ScenarioError):
             parse(scoring_tests(test_command="npm test", prepare=[["npm", "ci"]]))
+
+
+class TestDeclaredArtefacts:
+    """What running the task leaves behind, named by the only person who can know.
+
+    Declared for the same reason `test_command` is: a built-in list would be a guess about
+    somebody else's language, and it would eventually hide a file an agent really wrote.
+    """
+
+    def test_the_patterns_are_carried_as_written(self):
+        s = parse(scoring_tests(test_command="npm test", artefacts=["__pycache__", "*.pyc"]))
+        assert s.task["artefacts"] == ["__pycache__", "*.pyc"]
+
+    def test_declaring_none_is_the_default(self):
+        assert parse(scoring_tests(test_command="npm test")).task.get("artefacts") is None
+
+    def test_a_bare_string_is_refused_and_shows_the_shape(self):
+        """A string iterates as characters, so `artefacts = "*.pyc"` would turn every path
+        holding a `.` into a by-product."""
+        with pytest.raises(ScenarioError, match=re.escape('["__pycache__", "*.pyc"]')):
+            parse(scoring_tests(test_command="npm test", artefacts="__pycache__"))
+
+    def test_an_entry_that_is_not_a_pattern_is_refused(self):
+        with pytest.raises(ScenarioError, match="path pattern"):
+            parse(scoring_tests(test_command="npm test", artefacts=["ok", 3]))
+
+    def test_an_empty_entry_is_refused(self):
+        """It matches nothing an author meant, and reads as a line half deleted."""
+        with pytest.raises(ScenarioError, match="path pattern"):
+            parse(scoring_tests(test_command="npm test", artefacts=["  "]))

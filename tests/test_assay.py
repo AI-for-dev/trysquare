@@ -103,6 +103,55 @@ class TestSetsSerialiseSorted:
         assert len(runs) == 1, f"order varied between processes: {runs}"
 
 
+class TestDeclaredArtefacts:
+    """The by-products of running the task, told apart from the agent's work.
+
+    `touched` keeps everything - filtering what a verdict rests on is not licence to hide a
+    measurement - so the subtraction belongs to the validator, and this is the set it needs.
+    """
+
+    def run(self, touched, artefacts=None):
+        context = {"touched": sorted(touched)}
+        if artefacts is not None:
+            context["artefacts"] = list(artefacts)
+        return Assay(context)
+
+    def test_a_named_directory_matches_at_any_depth(self):
+        """The common case, and it must not require knowing that `fnmatch` lets `*` cross a
+        `/`: that is a detail of Python, not of the experiment."""
+        run = self.run(
+            {"counter.py", "__pycache__/counter.pyc", "tests/__pycache__/t.pyc"},
+            ["__pycache__"],
+        )
+        assert run.artefacts == {"__pycache__/counter.pyc", "tests/__pycache__/t.pyc"}
+
+    def test_a_glob_matches_the_whole_path(self):
+        run = self.run({"counter.py", "__pycache__/counter.pyc"}, ["*.pyc"])
+        assert run.artefacts == {"__pycache__/counter.pyc"}
+
+    def test_a_trailing_slash_is_the_same_directory(self):
+        """`node_modules/` is how an author writes a directory, and refusing it would be
+        pedantry about a character git itself accepts."""
+        run = self.run({"a.js", "node_modules/x/y.js"}, ["node_modules/"])
+        assert run.artefacts == {"node_modules/x/y.js"}
+
+    def test_touched_is_never_reduced(self):
+        run = self.run({"counter.py", "__pycache__/counter.pyc"}, ["__pycache__"])
+        assert run.touched == {"counter.py", "__pycache__/counter.pyc"}
+
+    def test_a_scenario_that_declares_nothing_has_no_artefacts(self):
+        """A validator written against this keeps working where there is nothing to name,
+        and every scenario written before the key existed is such a scenario."""
+        run = self.run({"counter.py", "__pycache__/counter.pyc"})
+        assert run.artefacts == frozenset()
+        assert run.touched - run.artefacts == run.touched
+
+    def test_a_partial_name_does_not_match(self):
+        """A filter that over-matches would hide work the agent really did."""
+        run = self.run({"cache/data.json", "src/pycache_helper.py"}, ["__pycache__"])
+        assert run.artefacts == frozenset()
+
+
 class TestTheErrorContract:
     """ "Could not judge" is not "worked badly", and one validator in four got it right.
 

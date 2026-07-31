@@ -31,6 +31,11 @@ FIXTURE = ROOT / "tests" / "fixtures" / "tiny"
 # trivial suite runs under any Python.
 TEST_COMMAND = "python3 -m unittest discover -s tests -t ."
 
+# What running that suite leaves behind, as `examples/scenario.toml` declares it. Kept
+# here too, and pinned against the scenario below, so the example and the scenario it
+# is scored under cannot drift apart.
+ARTEFACTS = ("__pycache__",)
+
 
 def fixture_files() -> dict[str, str]:
     """The versioned fixture, as a mapping the git helper can commit.
@@ -86,6 +91,7 @@ def a_measured_run(tmp_path):
             cell="none",
             repetition=0,
             test_command=command or TEST_COMMAND,
+            artefacts=list(ARTEFACTS),
             touched=repo.changed_files(clone),
             files=repo.etalon_files(source, "etalon-v1"),
             declared=("delivered", "in_scope", "tests", "touched", "documented"),
@@ -207,6 +213,78 @@ class TestTheExampleDegradesHonestly:
         payload = score(a_measured_run({"counter.py": "x = 1\n"}, response="terse"))
         assert payload["metrics"]["documented"] is False
         assert "documented" not in payload["unjudged"]
+
+
+class TestByProductsAreNotTheAgentsWork:
+    """Found on a real matrix, and it saturated the criterion.
+
+    Every one of six runs scored `in_scope: false`, and the only thing outside scope was
+    `__pycache__/*.pyc` - dropped by the agent running the declared suite to check its own
+    fix. So the gap the matrix existed to measure was `+0 pts` in both cells, and six paid
+    runs concluded nothing.
+
+    Worse than noise, because it is not random: the runs that scored out of scope are the
+    ones where the agent bothered to verify itself. A second matrix, whose agents did not
+    run the suite, scored 3/3 on the same code.
+
+    The suite cannot see this on its own - `fixture_files` excludes `__pycache__` so the
+    versioned fixture stays clean - which is why it took a real provider to find.
+    """
+
+    def a_fix(self) -> str:
+        return "def total(items):\n    return sum(items)\n"
+
+    def test_a_pyc_left_by_running_the_suite_is_not_out_of_scope(self, a_measured_run):
+        payload = score(
+            a_measured_run(
+                {
+                    "counter.py": self.a_fix(),
+                    "__pycache__/counter.cpython-314.pyc": "bytecode",
+                    "tests/__pycache__/test_counter.cpython-314.pyc": "bytecode",
+                }
+            )
+        )
+        assert payload["metrics"]["in_scope"] is True
+        assert payload["metrics"]["delivered"] is True
+
+    def test_the_by_products_are_still_recorded(self, a_measured_run):
+        """Filtered out of the verdict, not out of the archive. Hiding a measurement is
+        the other dishonesty this harness keeps refusing."""
+        payload = score(
+            a_measured_run(
+                {"counter.py": self.a_fix(), "__pycache__/counter.cpython-314.pyc": "bytecode"}
+            )
+        )
+        assert "__pycache__/counter.cpython-314.pyc" in payload["metrics"]["touched"]
+
+    def test_an_agent_that_only_ran_the_suite_delivered_nothing(self, a_measured_run):
+        """The same hole in the other metric: bytecode is not a delivery."""
+        payload = score(a_measured_run({"__pycache__/counter.cpython-314.pyc": "bytecode"}))
+        assert payload["metrics"]["delivered"] is False
+
+    def test_a_real_file_outside_scope_is_still_out_of_scope(self, a_measured_run):
+        """The filter must not become a way of scoring nothing."""
+        payload = score(
+            a_measured_run(
+                {
+                    "counter.py": self.a_fix(),
+                    "__pycache__/counter.cpython-314.pyc": "bytecode",
+                    "README.md": "and a doc nobody asked for\n",
+                }
+            )
+        )
+        assert payload["metrics"]["in_scope"] is False
+        assert "README.md" in payload["reasons"]["in_scope"]
+        assert "__pycache__" not in payload["reasons"]["in_scope"]
+
+    def test_the_shipped_scenario_declares_what_the_example_assumes(self):
+        """The example is scored under `examples/scenario.toml`. If the scenario stopped
+        declaring the by-products of its own suite, every test above would still pass and
+        the shipped pair would be broken."""
+        from trysquare.scenario import load
+
+        scenario = load(str(ROOT / "examples" / "scenario.toml"))
+        assert tuple(scenario.task["artefacts"]) == ARTEFACTS
 
 
 class TestTheExampleIsSmallEnoughToBeAnExample:

@@ -870,6 +870,7 @@ def replay_context(run_dir: Path, clone: Path, source: Path, scenario, at_etalon
         repetition=0,
         test_command=scenario.task.get("test_command"),
         prepare=list(scenario.task.get("prepare", ())),
+        artefacts=list(scenario.task.get("artefacts", ())),
         touched=repo_mod.changed_files(clone),
         files=at_etalon,
         declared=scenario.declared_metrics,

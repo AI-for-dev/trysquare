@@ -560,6 +560,7 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
                 response_file=response_file,
                 test_command=scenario.task.get("test_command"),
                 prepare=list(scenario.task.get("prepare", ())),
+                artefacts=list(scenario.task.get("artefacts", ())),
                 touched=touched,
                 files=at_etalon,
                 declared=validator.metrics,

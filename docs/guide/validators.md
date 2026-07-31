@@ -62,6 +62,7 @@ score.py /path/to/run/validation/script/context.json
   "repetition": 3,
   "test_command": "node --test 'src/**/*.test.js'",
   "prepare": [],
+  "artefacts": ["node_modules"],
   "touched": ["src/basket.js"],
   "files": ["README.md", "src/basket.js", "src/theme.js"],
   "declared": ["in_scope", "delivered", "tests"]
@@ -80,6 +81,34 @@ that knowledge all along. A fact computed in one place cannot be got three sligh
 
 `declared` is what the scenario contracted for, so a validator can be told which metric it
 forgot before anything is recorded rather than after the tokens are spent.
+
+### Subtract the by-products before scoring scope
+
+`artefacts` is what the scenario declared as the leavings of running the task. Subtract
+them, and score the remainder:
+
+```python
+work = run.touched - run.artefacts
+```
+
+:::{warning}
+Skipping this cost a whole matrix. An agent asked to fix a defect ran the declared suite
+to check itself, which left `__pycache__/*.pyc` in the clone; scope scoring counted the
+bytecode as its work, and `in_scope` was false in **every run of every cell**. The
+criterion saturated at zero and nothing was concludable.
+
+And it is not random noise: the runs that scored out of scope were the ones where the
+agent verified itself. The metric ended up anti-correlated with the behaviour it was
+meant to reward.
+:::
+
+`run.artefacts` is the subset of `run.touched` matching those patterns, and `touched`
+itself is never reduced - the filter decides what a verdict rests on, not what is
+recorded. Both metrics of the shipped example need the subtraction: `delivered` too,
+since bytecode is not a delivery.
+
+A scenario that declares nothing gets an empty set, so this line is safe to write
+everywhere.
 
 :::{important}
 The context is handed as **one file, and it is archived with the run.** That is why

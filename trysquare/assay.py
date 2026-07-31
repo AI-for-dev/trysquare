@@ -54,6 +54,7 @@ import sys
 import tempfile
 import traceback
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 
 from . import repo
@@ -271,6 +272,24 @@ class Metric:
         return bool(self.value)
 
 
+def is_artefact(path: str, patterns) -> bool:
+    """Whether a touched path is one of the by-products the scenario declared.
+
+    Two clauses, because two shapes of pattern are what an author writes. A pattern
+    matches the **whole path** with shell globbing, so `*.pyc` catches
+    `__pycache__/counter.pyc`; or it matches **any component** of it, so `__pycache__`
+    catches that same file and `tests/__pycache__/x.pyc` without either needing a `*`.
+
+    Naming a directory is the common case and it must not require knowing that `fnmatch`
+    lets `*` cross a `/` - that is a detail of Python, not of the experiment.
+    """
+    parts = PurePosixPath(path).parts
+    return any(
+        fnmatch(path, pattern) or any(fnmatch(part, pattern) for part in parts)
+        for pattern in (p.rstrip("/") for p in patterns)
+    )
+
+
 def plain(value):
     """A metric value reduced to what JSON should carry.
 
@@ -437,6 +456,27 @@ class Assay:
 
     def _compute_touched(self):
         return self._given("touched", "the files the agent changed")
+
+    @property
+    def artefacts(self) -> frozenset[str]:
+        """The files it touched that the scenario declared as by-products of the task.
+
+        A subset of `touched`, never a replacement for it: what a verdict rests on is
+        filtered, what is recorded is not. Subtract it to get the work -
+        `run.touched - run.artefacts` - which is what a scope or a delivery metric wants.
+
+        Empty when the scenario declared nothing, so a validator written against this
+        keeps working on a scenario that has no by-products to name.
+
+        Why declared and not guessed: only the task's author knows which paths in their
+        repository are by-products, and a built-in list would eventually hide a file an
+        agent really wrote. Measured on a real matrix - an agent ran the declared suite to
+        check its own fix, `__pycache__/*.pyc` counted as its work, and `in_scope` was
+        false in every run of every cell. Not at random either: the runs that scored badly
+        were the ones where the agent verified itself.
+        """
+        patterns = self._context.get("artefacts") or ()
+        return frozenset(p for p in self.touched if is_artefact(p, patterns))
 
     @property
     def files_at_etalon(self) -> tuple[str, ...]:

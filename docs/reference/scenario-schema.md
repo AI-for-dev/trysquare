@@ -56,6 +56,9 @@ result publishable rather than quietly reframed.
 * - `prepare`
   - no
   - Commands to run before the suite, in order. A failure here means nobody judged.
+* - `artefacts`
+  - no
+  - Path patterns for what running the task leaves behind and is not the agent's work.
 ```
 
 `repo` being logical is what makes a scenario portable: it carries no author's
@@ -111,6 +114,49 @@ level up.
 Each entry is one command, under the same rules as `test_command`. A repository that
 needs none is worth preferring: nothing to install is what makes a validation replayable
 from a tag and a diff months later.
+
+### `artefacts`
+
+What running the task leaves behind that nobody wrote:
+
+```toml
+[task]
+test_command = "python3 -m unittest discover -s tests -t ."
+artefacts = ["__pycache__"]
+```
+
+:::{admonition} The defect
+:class: danger
+
+Without it, a matrix measured against a real provider scored `in_scope = false` in
+**every run of every cell**. The only thing outside scope was `__pycache__/*.pyc`,
+dropped by the agent running the declared suite to check its own fix. The criterion
+saturated at zero, the gap the matrix existed to measure came out `+0 pts`, and six
+paid runs concluded nothing.
+
+Worse than noise, because it is not random: the runs that scored out of scope were the
+ones where the agent bothered to verify itself. A second matrix, whose agents did not
+run the suite, scored 3/3 on the same code.
+:::
+
+**Declared and never detected**, the same lesson as `test_command`. A built-in list
+would be a guess about somebody else's language, and it would eventually hide a file an
+agent really did write.
+
+A pattern matches the **whole path** with shell globbing, so `*.pyc` catches
+`__pycache__/counter.pyc`; or it matches **any component** of it, so `__pycache__`
+catches that same file and `tests/__pycache__/t.pyc` without needing a `*`. A trailing
+slash is accepted, since `node_modules/` is how the directory is usually written.
+
+It filters what a **verdict** rests on and never what is **recorded**. `touched` stays
+complete in the context and in `measures.json`, because hiding a measurement is the
+other dishonesty this tool refuses. A validator subtracts:
+
+```python
+work = run.touched - run.artefacts
+```
+
+See {doc}`../guide/validators`.
 
 ## `[agent]`
 
