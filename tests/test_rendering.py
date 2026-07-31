@@ -11,6 +11,8 @@ import pytest
 from trysquare.measure import VALID, VALIDATOR_FAILED, Run
 from trysquare.table import (
     COST_MEASURES,
+    compare_rows,
+    compare_table,
     cost_measures,
     criterion_measure,
     gap_rows,
@@ -253,3 +255,37 @@ class TestCostTable:
     def test_the_draws_and_the_seed_are_stated(self):
         text = spend_table(spend_rows(self.cells(), spend_measures()), spend_measures(), 10, 1)
         assert "10 draws, seed 1" in text
+
+
+class TestCompareTable:
+    """Two experiments side by side: rates only, absences named, no verdict."""
+
+    def test_rates_read_left_then_right(self):
+        left = {"base": [run("base", ident="a"), run("base", ident="b", overflow=False)]}
+        right = {"base": [run("base", ident="c")]}
+        rows = compare_rows(left, right, ("overflow",))
+        assert rows == [{"cell": "base", "scores": ["1/2 -> 1/1"]}]
+
+    def test_a_cell_absent_on_one_side_is_named_not_dropped(self):
+        left = {"base": [run("base")], "only-left": [run("only-left")]}
+        rows = compare_rows(left, {"base": [run("base")]}, ("overflow",))
+        assert {"cell": "only-left", "scores": ["1/1 -> -"]} in rows
+
+    def test_an_invalid_run_is_in_no_denominator(self):
+        failed = Run(id="f", cell="base", repetition=1, state=VALIDATOR_FAILED)
+        left = {"base": [run("base"), failed]}
+        rows = compare_rows(left, {"base": [run("base")]}, ("overflow",))
+        assert rows[0]["scores"] == ["1/1 -> 1/1"]
+
+    def test_the_table_says_what_it_refuses_to_carry(self):
+        text = compare_table(
+            compare_rows({"base": [run("base")]}, {"base": [run("base")]}, ("overflow",)),
+            ("overflow",),
+            "left_n10",
+            "right_n10",
+        )
+        assert "| base | 1/1 -> 1/1 |" in text
+        assert "no verdict" in text and "never" in text
+
+    def test_nothing_boolean_is_said_not_blank(self):
+        assert "nothing to tabulate" in compare_table([], (), "l", "r")

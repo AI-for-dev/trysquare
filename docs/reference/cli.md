@@ -265,6 +265,11 @@ shown.
 Everything else is allowed and every difference is printed. A different model is a
 legitimate comparison axis; it just has to be declared rather than hidden.
 
+When both sides hold measures, a side-by-side score table follows: one row per
+cell, `x/n -> y/n` per boolean metric, a cell absent on one side named with `-`
+rather than dropped. Rates only, and no verdict: costs are never compared across
+matrices, and a certified gap needs both cells measured in one scenario.
+
 ## `parity`
 
 Checks this harness against the tool it replaces. See {doc}`../guide/parity`.

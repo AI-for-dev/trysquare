@@ -358,6 +358,59 @@ class TestInstalledCommand:
         assert "--resume" in err.getvalue()
 
 
+class TestCompare:
+    def experiment(self, root, name, etalon="v1", cells=("base", "rule"), hit=True) -> Path:
+        directory = root / name
+        directory.mkdir(parents=True)
+        (directory / "state.json").write_text(json.dumps({"etalon": etalon, "runs": {}}))
+        rows = [
+            {
+                "id": f"{c}{i}",
+                "cell": c,
+                "repetition": i,
+                "usage": {"input": 1, "output": 1, "turns": 1},
+                "metrics": {"overflow": hit},
+                "state": "valid",
+            }
+            for c in cells
+            for i in range(2)
+        ]
+        (directory / "measures.json").write_text(json.dumps(rows))
+        return directory
+
+    def compared(self, argv) -> tuple[int, str]:
+        import contextlib
+        import io
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = main(argv)
+        return code, stdout.getvalue() + stderr.getvalue()
+
+    def test_two_experiments_tabulate_side_by_side(self, tmp_path):
+        left = self.experiment(tmp_path, "left_n2")
+        right = self.experiment(tmp_path, "right_n2", hit=False)
+        code, said = self.compared(["compare", str(left), str(right)])
+        assert code == 0
+        assert "| base | 2/2 -> 0/2 |" in said
+
+    def test_different_etalons_still_refuse(self, tmp_path):
+        left = self.experiment(tmp_path, "left_n2")
+        right = self.experiment(tmp_path, "right_n2", etalon="v2")
+        code, said = self.compared(["compare", str(left), str(right)])
+        assert code == 1
+        assert "different etalons" in said
+
+    def test_a_side_without_measures_is_said(self, tmp_path):
+        left = self.experiment(tmp_path, "left_n2")
+        bare = tmp_path / "bare_n2"
+        bare.mkdir()
+        (bare / "state.json").write_text(json.dumps({"etalon": "v1", "runs": {}}))
+        code, said = self.compared(["compare", str(left), str(bare)])
+        assert code == 0
+        assert "nothing to tabulate" in said
+
+
 class TestParityLayer1:
     """The classification that keeps a label artefact from reading as a defect."""
 
