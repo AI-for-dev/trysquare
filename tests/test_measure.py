@@ -11,6 +11,7 @@ from trysquare.measure import (
     VALIDATOR_FAILED,
     Run,
     consumed_tokens,
+    events,
     fill_manual,
     kind,
     merge,
@@ -62,6 +63,20 @@ class TestStrip:
     def test_garbage_lines_are_skipped_not_fatal(self):
         s = "not json\n" + stream(message_end()) + "\n{broken"
         assert strip(s)["turns"] == 1
+
+
+class TestEvents:
+    """One tolerance, shared by every reader of a stream or a session."""
+
+    def test_surrounding_whitespace_does_not_hide_an_event(self):
+        """A CRLF ending or an indented line is still the same event."""
+        text = '  {"type": "message_end"}  \r\n{"type": "session"}\r'
+        assert [e["type"] for e in events(text)] == ["message_end", "session"]
+
+    def test_garbage_is_skipped_not_fatal(self):
+        """A cut stream ends mid-line; the lines before the cut are evidence."""
+        text = 'not json\n{"a": 1}\n{broken'
+        assert list(events(text)) == [{"a": 1}]
 
 
 class TestStripSession:

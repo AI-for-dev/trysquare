@@ -51,6 +51,17 @@ MISSING = "missing"
 RESUMABLE = (MISSING, EMPTY)
 
 
+def write_json(path: Path, payload) -> None:
+    """One serialization for everything this tree holds.
+
+    `indent=2` and real UTF-8, with a final newline, declared once: a rewrite of
+    the same data must be byte-identical to the original wherever it is written
+    from, or `replay --rescore` could not promise to leave untouched what it did
+    not change.
+    """
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+
+
 def slug(value) -> str:
     """A value reduced to one path component.
 
@@ -122,7 +133,7 @@ class Output:
 
     def write_state(self, state: dict) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
-        (self.directory / STATE).write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+        write_json(self.directory / STATE, state)
 
     def initial_state(self, overrides: dict | None = None) -> dict:
         """A fresh ledger, recording the load that produced it.
@@ -214,7 +225,7 @@ class Output:
             row = asdict(r)
             row["cell"] = r.cell
             rows.append(row)
-        path.write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n")
+        write_json(path, rows)
         return path
 
     def read_measures(self) -> list[Run]:
@@ -274,16 +285,14 @@ class Output:
 
     def write_configuration(self, run_id_: str, configuration: dict) -> Path:
         path = self.run_dir(run_id_) / "configuration.json"
-        path.write_text(json.dumps(configuration, indent=2, ensure_ascii=False) + "\n")
+        write_json(path, configuration)
         return path
 
     def write_validation(self, run_id_: str, mode: str, payload, stderr: str = "") -> None:
         d = self.run_dir(run_id_) / "validation"
         d.mkdir(parents=True, exist_ok=True)
         if payload is not None:
-            (d / f"{mode}.json").write_text(
-                json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
-            )
+            write_json(d / f"{mode}.json", payload)
         if stderr:
             (d / f"{mode}.stderr").write_text(stderr)
 

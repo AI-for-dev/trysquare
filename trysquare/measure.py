@@ -51,6 +51,24 @@ class Run:
         return self.usage.get("retries", 0)
 
 
+def events(text: str):
+    """Every JSON object in a stream or session, one per line.
+
+    The one tolerance shared by every reader of these files. A line is decoded if
+    it looks like JSON, whatever whitespace surrounds it, and anything else is
+    skipped rather than fatal: a cut stream ends mid-line, and the lines before
+    the cut are still evidence.
+    """
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            yield json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+
 def strip(stream: str) -> dict:
     """Reduces a `pi --mode json` stream to the numbers a measurement needs.
 
@@ -66,13 +84,7 @@ def strip(stream: str) -> dict:
     looking at retries means publishing our own load on the provider.
     """
     u = {"input": 0, "output": 0, "cacheRead": 0, "cost": 0.0, "turns": 0, "retries": 0}
-    for line in stream.split("\n"):
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for event in events(stream):
         if event.get("type") == "auto_retry_start":
             u["retries"] += 1
             continue
@@ -103,13 +115,7 @@ def strip_session(session: str) -> dict:
     cannot mistake it for zero.
     """
     u = {"input": 0, "output": 0, "cacheRead": 0, "cost": 0.0, "turns": 0, "retries": None}
-    for line in session.split("\n"):
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for event in events(session):
         if event.get("type") != "message":
             continue
         usage = (event.get("message") or event).get("usage")
@@ -131,13 +137,7 @@ def thinking_levels(session: str) -> list[str]:
     baseline in every published matrix cannot survive this check.
     """
     levels = []
-    for line in session.split("\n"):
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for event in events(session):
         if event.get("type") == "thinking_level_change":
             levels.append(event.get("level") or event.get("thinkingLevel"))
     return levels
@@ -152,13 +152,7 @@ def final_text(stream: str) -> str:
     score the note, not the work that produced it.
     """
     last = ""
-    for line in stream.split("\n"):
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for event in events(stream):
         if event.get("type") != "message_end":
             continue
         message = event.get("message") or {}
