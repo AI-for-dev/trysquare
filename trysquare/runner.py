@@ -20,7 +20,7 @@ from pathlib import Path
 from . import agent as agent_mod
 from . import repo as repo_mod
 from . import validation as validation_mod
-from .config import CONFIG_NAME, Config
+from .config import CONFIG_NAME, Config, closest
 from .measure import EMPTY, VALID, Run, merge
 from .outputs import Output, slug
 from .scenario import Cell, Scenario
@@ -79,6 +79,18 @@ def resolve(
     # untouched so `--dry-run` cannot create a directory - or worse, reset the
     # ledger of an experiment that already exists. Preparing and writing belong to
     # `execute`, which is the part that actually spends something.
+    # A cell name that matches nothing would otherwise be *filtered*, not refused:
+    # `--only` with a typo in it ran zero runs and looked like an experiment with
+    # nothing left to do.
+    names = [cell.name for cell in scenario.cells]
+    unknown = [c for c in only if c not in names]
+    if unknown:
+        raise RuntimeError(
+            "--only names no cell of this scenario: "
+            + ", ".join(repr(c) + closest(c, names) for c in unknown)
+            + f"\nCells: {', '.join(names)}"
+        )
+
     state = output.load_or_create_state(overrides) if resume else output.initial_state(overrides)
     todo = output.to_do(state, only)
 

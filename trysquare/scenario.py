@@ -19,7 +19,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .config import CONFIG_SECTIONS, SCENARIO_SECTIONS, which_file
+from .config import CONFIG_SECTIONS, SCENARIO_SECTIONS, closest, which_file
 
 # Keys that decide *what is measured*. They are mandatory in the scenario and
 # they can never come from the config file or from a built-in default.
@@ -144,7 +144,7 @@ class Scenario:
         for c in self.cells:
             if c.name == name:
                 return c
-        raise ScenarioError(f"unknown cell {name!r}")
+        raise ScenarioError(f"unknown cell {name!r}{closest(name, (c.name for c in self.cells))}")
 
     @property
     def reference(self) -> str:
@@ -388,20 +388,24 @@ def _check_verdict(
     declared = [m for v in validators for m in v.metrics]
     if criterion not in declared:
         raise ScenarioError(
-            f"[verdict].criterion is {criterion!r}, which no validator declares. "
-            f"Declared metrics: {', '.join(declared)}"
+            f"[verdict].criterion is {criterion!r}, which no validator declares"
+            f"{closest(criterion, declared)}. Declared metrics: {', '.join(declared)}"
         )
 
     reference = _reference_name(verdict.get("reference"), axes)
     if reference not in [c.name for c in cells]:
         raise ScenarioError(
-            f"[verdict].reference is {reference!r}, which is not a cell. "
+            f"[verdict].reference is {reference!r}, which is not a cell"
+            f"{closest(reference, (c.name for c in cells))}. "
             f"Cells: {', '.join(c.name for c in cells)}"
         )
 
     for metric in verdict.get("validity", ()):
         if metric not in declared:
-            raise ScenarioError(f"[verdict].validity names {metric!r}, which no validator declares")
+            raise ScenarioError(
+                f"[verdict].validity names {metric!r}, which no validator declares"
+                f"{closest(metric, declared)}"
+            )
 
 
 def _reference_name(reference, axes: dict) -> str:
