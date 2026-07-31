@@ -194,7 +194,21 @@ class TestLayer4:
         d, work = self.experiment(tmp_path, [("nothing / off", "valid")])
         report = parity.layer4(d, work)
         assert report.holds, report.problems
-        assert any("ran the model their pattern names" in line for line in report.observed)
+        assert any("1/1 runs ran the model their pattern names" in line for line in report.observed)
+
+    def test_the_count_covers_only_the_runs_it_speaks_for(self, tmp_path):
+        """A bare count printed next to a named failure claims runs it does not cover.
+
+        Seen on a real archive: one substituted model was named as a problem while the
+        line above it still read "6 runs ran the model their pattern names".
+        """
+        d, work = self.experiment(tmp_path, [("nothing / off", "valid"), ("rule / off", "valid")])
+        strayed = d / "runs" / "r1" / "configuration.json"
+        strayed.write_text(json.dumps({"model": "gemma-4", "model_id": "claude-sonnet-5"}))
+
+        report = parity.layer4(d, work)
+        assert not report.holds
+        assert any("1/2 runs ran the model their pattern names" in line for line in report.observed)
 
     def test_a_model_the_pattern_does_not_name_fails_the_pass(self, tmp_path):
         """The case worth the check: a fallback to the machine's defaultModel means the
