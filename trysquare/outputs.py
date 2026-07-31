@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from dataclasses import asdict
 from pathlib import Path
@@ -52,14 +53,23 @@ RESUMABLE = (MISSING, EMPTY)
 
 
 def write_json(path: Path, payload) -> None:
-    """One serialization for everything this tree holds.
+    """One serialization for everything this tree holds, and one write.
 
     `indent=2` and real UTF-8, with a final newline, declared once: a rewrite of
     the same data must be byte-identical to the original wherever it is written
     from, or `replay --rescore` could not promise to leave untouched what it did
     not change.
+
+    Written to a neighbour and renamed over the target, because `state.json` and
+    `measures.json` are now rewritten after every run of a matrix that runs for
+    hours. `os.replace` is atomic within a filesystem, so a kill during a write
+    leaves the previous complete file rather than a truncated one - a ledger cut
+    in half is worse than a ledger one run out of date, since nothing downstream
+    can tell it is not the whole story.
     """
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+    temporary = path.with_name(path.name + ".writing")
+    temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+    os.replace(temporary, path)
 
 
 def slug(value) -> str:
@@ -316,4 +326,33 @@ def incomplete_note(counts: dict) -> str:
         + ", ".join(bits)
         + ". No synthesis is published; `--resume` completes it, and a failed "
         "validator is re-scored by `replay` at no token cost."
+    )
+
+
+def unmeasured_note(state: dict, runs: list[Run]) -> str:
+    """The line for runs the ledger counts and `measures.json` has no row for.
+
+    A matrix written before measures were saved run by run can hold this: the runs are
+    on disk, the ledger calls them measured, and no table can see them. Publishing then
+    reports a smaller `n` than was paid for, under a header naming the full repetition
+    count, which is the whole family of defect this tool exists to refuse.
+
+    Nothing here can repair it - a row is derived from a measurement, and re-scoring
+    needs a row to start from - so the honest move is to name the runs and say what
+    getting them back costs.
+    """
+    measured = {r.id for r in runs}
+    lost = sorted(
+        run_id
+        for run_id, meta in state.get("runs", {}).items()
+        if meta["state"] not in RESUMABLE and run_id not in measured
+    )
+    if not lost:
+        return ""
+    return (
+        f"This matrix cannot be published: {len(lost)} run(s) the ledger counts as "
+        f"measured have no row in {MEASURES} - {', '.join(lost)}.\n"
+        f"An interrupted launch used to lose them, and no table can be trusted while "
+        f"the two files disagree. Relaunching without `--resume` measures the matrix "
+        f"again; the runs themselves are still in runs/ to read."
     )
