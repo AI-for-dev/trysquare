@@ -258,6 +258,23 @@ not a compromise - that verdict is a measurement somebody paid for, and correcti
 metric must not silently discard it. A run whose archived judge verdict is missing is left
 alone rather than scored short.
 
+The same principle applied to a **script** metric that a replay cannot answer: one that
+had a value and no longer has one is **named**, one line per metric.
+
+```text
+  6 of 6 runs re-scored, no tokens spent
+  ! documented no longer has a value on 6 of 6 runs: the context carries no 'response',
+    so the agent's final prose cannot be read
+    a measurement that was paid for is gone from the tables, and the
+    previous measures.json is in git - this archive's own history
+```
+
+Named rather than refused: re-scoring a metric of process out of an archive is a
+legitimate thing to do knowingly, and refusing would make the flag useless for the case it
+exists for. What is not acceptable is doing it in silence - a metric that becomes unjudged
+simply drops out of the score table, so the only sign used to be a column that stopped
+appearing.
+
 Two refusals, both before anything is written:
 
 - a run whose state is `empty` is **left alone**. No scoring turns "produced nothing" into

@@ -1164,6 +1164,52 @@ class TestReplayRescore:
         assert 0 == self.replay()
         assert before == (self.experiment / "measures.json").read_text()
 
+    # --- what a re-scoring must not lose in silence ----------------------
+
+    def test_a_metric_that_stops_having_a_value_is_named(self):
+        """Value before, none after - here because this validator does not return the
+        metric at all, which is the same code path as the case that prompted the check: on
+        a real matrix, re-scoring to add one metric turned `documented` unjudged on all six
+        runs, since the agent's prose lived in the work directory. Either way the metric
+        drops out of the score table and the command used to say only "re-scored"."""
+        rows = self.measures()
+        for run_id, row in rows.items():
+            row["metrics"]["documented"] = True
+        (self.experiment / "measures.json").write_text(json.dumps(list(rows.values())))
+
+        code, said = compared(
+            [
+                "replay",
+                str(self.experiment),
+                "--scenario",
+                str(self.scenario),
+                "--config",
+                str(self.home / "trysquare.toml"),
+                "--rescore",
+            ]
+        )
+        assert code == 0, said
+        assert "documented no longer has a value on 2 of 2 runs" in said
+        assert "paid for is gone" in said
+
+    def test_a_metric_that_keeps_its_value_is_not_named(self):
+        """The report must stay quiet when nothing was lost, or it teaches a reader to
+        skip it."""
+        code, said = compared(
+            [
+                "replay",
+                str(self.experiment),
+                "--scenario",
+                str(self.scenario),
+                "--config",
+                str(self.home / "trysquare.toml"),
+                "--rescore",
+            ]
+        )
+        assert code == 0
+        assert "no longer has a value" not in said
+        assert "paid for is gone" not in said
+
     # --- the refusals ---------------------------------------------------
 
     def test_a_directory_that_is_not_this_scenario_s_is_refused(self):

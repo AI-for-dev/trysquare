@@ -735,6 +735,21 @@ class Rescore:
         self.by_id = {r.id: r for r in runs}
         self.rescored: list[str] = []
         self.skipped: list[str] = []
+        # Metrics that had a value before this re-scoring and have none after, with the
+        # reason the first such run gave. Tracked because the loss is otherwise silent: a
+        # metric that becomes unjudged simply drops out of the score table.
+        self.lost: dict[str, list[str]] = {}
+        self.why: dict[str, str] = {}
+
+    def note_losses(self, run: Run, metrics: dict, reasons: dict) -> None:
+        """Records which of a run's metrics stop having a value.
+
+        Called before the run is overwritten, because afterwards there is nothing left
+        to compare against.
+        """
+        for metric in sorted(set(run.metrics) - set(metrics)):
+            self.lost.setdefault(metric, []).append(run.id)
+            self.why.setdefault(metric, reasons.get(metric, ""))
 
 
 def rescored_measures(directory: Path, scenario) -> Rescore | None:
@@ -808,6 +823,7 @@ def rescore_run(scored: Rescore, scenario, run_dir: Path, context: Path, base: P
 
     metrics, reasons, state, detail = measure_mod.merge(results, scenario.declared_metrics)
     was = run.state
+    scored.note_losses(run, metrics, reasons)
     run.metrics, run.reasons = metrics, reasons
     # Set unconditionally, in both directions. A run whose validator used to fail becomes
     # valid when the fix works - which is the whole point - and a run that used to score
@@ -834,12 +850,33 @@ def publish_rescore(scored: Rescore, scenario) -> int:
     synthesis is publishable at all, so a validator repaired here would still be counted
     among the failures and the matrix would keep refusing to publish - the exact case this
     flag exists for.
+
+    A metric that **stops** having a value is named here, one line per metric. The reason
+    a judge's archived verdict is reused rather than re-run - a measurement somebody paid
+    for must not be discarded silently - applies just as well to a script metric that
+    reads material a replay cannot reconstitute. Measured on a real matrix: re-scoring to
+    add one metric turned `documented` unjudged on all six runs, because the agent's prose
+    lived in the work directory, and the only thing the command said was "6 of 6 runs
+    re-scored". The metric simply vanished from the score table.
+
+    Named rather than refused: re-scoring a metric of process out of an archive is a
+    legitimate thing to do knowingly, and blocking it would make the flag useless for the
+    case it exists for.
     """
     path = scored.output.write_measures(scored.runs)
     print(f"\n  {len(scored.rescored)} of {len(scored.runs)} runs re-scored, no tokens spent")
     print(f"  written {path}")
     if scored.skipped:
         print(f"  left alone: {', '.join(sorted(scored.skipped))}")
+    for metric, runs in sorted(scored.lost.items()):
+        why = scored.why.get(metric)
+        print(
+            f"  ! {metric} no longer has a value on {len(runs)} of {len(scored.runs)} runs"
+            + (f": {why}" if why else "")
+        )
+    if scored.lost:
+        print("    a measurement that was paid for is gone from the tables, and the")
+        print("    previous measures.json is in git - this archive's own history")
 
     state = scored.output.read_state()
     if state.get("runs"):
