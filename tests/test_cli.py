@@ -237,6 +237,81 @@ class TestRunPlan:
             config_mod.Config().repo("my-repo")
 
 
+class TestPreRunHonesty:
+    """What a launch says before anything is spent."""
+
+    def resolved(self, root, **kwargs):
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        return runner.resolve(load(SCENARIO), config_mod.load(MACHINE), root, **kwargs)
+
+    def test_relaunching_an_existing_experiment_is_announced(self, tmp_path):
+        """Without --resume the ledger is reset, and that must never be a surprise."""
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        o = Output(tmp_path, load(SCENARIO))
+        o.prepare()
+        o.write_state(o.initial_state())
+
+        plan = self.resolved(tmp_path)
+        assert any("OVERWRITE" in n and "--resume" in n for n in plan.notes)
+        resumed = self.resolved(tmp_path, resume=True)
+        assert not any("OVERWRITE" in n for n in resumed.notes)
+
+    def test_a_finished_experiment_warns_differently(self, tmp_path):
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        o = Output(tmp_path, load(SCENARIO))
+        o.prepare()
+        state = o.initial_state()
+        for meta in state["runs"].values():
+            meta["state"] = "valid"
+        o.write_state(state)
+
+        plan = self.resolved(tmp_path)
+        assert any("OVERWRITE" in n and "finished" in n for n in plan.notes)
+
+    def test_the_duration_bound_is_declared_arithmetic(self, tmp_path):
+        from trysquare.cli import _forecast
+
+        plan = self.resolved(tmp_path)
+        said = "\n".join(_forecast(plan))
+        # 60 runs, 5 at a time, 900s each: 12 batches x 15 min.
+        assert "at most ~180 min: 60 runs, 5 at a time, 900s timeout each" in said
+        assert "spend: no archived run to estimate from" in said
+
+    def test_the_spend_estimate_comes_from_the_archive_alone(self, tmp_path):
+        from trysquare.cli import _forecast
+        from trysquare.measure import Run
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        o = Output(tmp_path, load(SCENARIO))
+        o.prepare()
+        o.write_measures(
+            [
+                Run(id="aa", cell="c", repetition=0, usage={"cost": 0.40, "input": 1}),
+                Run(id="bb", cell="c", repetition=1, usage={"cost": 0.60, "input": 1}),
+                Run(id="cc", cell="c", repetition=2, state="empty"),
+            ]
+        )
+        plan = self.resolved(tmp_path)
+        said = "\n".join(_forecast(plan))
+        assert "median $0.50 over 2 valid runs" in said
+
+    def test_a_dry_run_names_the_missing_binary(self, monkeypatch, capsys):
+        from trysquare import cli as cli_mod
+
+        monkeypatch.setattr(cli_mod.agent_mod, "available", lambda: False)
+        code = main(["run", SCENARIO, "-o", str(out()), "--config", str(MACHINE), "--dry-run"])
+        assert code == 0
+        assert "is not on PATH: a real run will refuse" in capsys.readouterr().out
+
+
 class TestCompletionOrder:
     """Runs are reported as they finish, and written in the order they were planned.
 

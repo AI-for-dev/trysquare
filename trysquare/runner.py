@@ -22,7 +22,7 @@ from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
 from .measure import EMPTY, VALID, Run, merge
-from .outputs import Output, slug
+from .outputs import RESUMABLE, Output, slug
 from .scenario import Cell, Scenario
 
 
@@ -91,6 +91,22 @@ def resolve(
             + f"\nCells: {', '.join(names)}"
         )
 
+    if not resume:
+        previous = output.read_state()
+        if previous.get("runs"):
+            leftovers = sum(1 for m in previous["runs"].values() if m["state"] in RESUMABLE)
+            if leftovers:
+                notes.append(
+                    f"OVERWRITE: {output.directory.name} exists, {leftovers} of its runs "
+                    f"produced nothing. Relaunching resets the whole ledger; --resume "
+                    f"relaunches only those {leftovers}"
+                )
+            else:
+                notes.append(
+                    f"OVERWRITE: {output.directory.name} already holds a finished "
+                    f"experiment. Relaunching overwrites it - the archive of previous "
+                    f"versions is git"
+                )
     state = output.load_or_create_state(overrides) if resume else output.initial_state(overrides)
     todo = output.to_do(state, only)
 
