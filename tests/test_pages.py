@@ -64,18 +64,37 @@ class TestThePage:
 
 
 class TestSessionLinks:
-    def test_links_are_relative_and_named(self):
-        page = synthesis_page(SYNTHESIS, {"abcd1234": ["one.html", "two.html"]})
-        assert '<a href="runs/abcd1234/session/one.html">one.html</a>' in page
-        assert '<a href="runs/abcd1234/session/two.html">two.html</a>' in page
+    def test_links_are_relative_and_numbered_by_attempt(self):
+        """One file is archived per attempt, so the ordinal is what a reader wants. The
+        name is a timestamp and a UUID: it identifies the session and says nothing, so it
+        stays in `title` for whoever has to find the file."""
+        page = synthesis_page(SYNTHESIS, [("rule #0", "abcd1234", ["one.html", "two.html"])])
+        assert '<a href="runs/abcd1234/session/one.html" title="one.html">attempt 1</a>' in page
+        assert '<a href="runs/abcd1234/session/two.html" title="two.html">attempt 2</a>' in page
+
+    def test_each_run_is_named_by_its_cell(self):
+        """Every other section of a synthesis is organised by cell. Keyed by run id alone,
+        this was the one place where telling the baseline from the treatment meant opening
+        measures.json."""
+        page = synthesis_page(SYNTHESIS, [("rule #0", "abcd1234", ["one.html"])])
+        assert "rule #0 <code>abcd1234</code>" in page
+
+    def test_the_caller_s_order_is_kept(self):
+        """Ordering belongs to the side holding the runs, so this must not re-sort: by run
+        id, `rule` would come before `nothing` and contradict the tables above it."""
+        page = synthesis_page(
+            SYNTHESIS,
+            [("nothing #0", "ffff0000", ["a.html"]), ("rule #0", "0000ffff", ["b.html"])],
+        )
+        assert page.index("nothing #0") < page.index("rule #0")
 
     def test_no_archived_page_means_no_section(self):
-        assert "Sessions</h3>" not in synthesis_page(SYNTHESIS, {})
+        assert "Sessions</h3>" not in synthesis_page(SYNTHESIS, [])
 
     def test_the_appended_section_sits_at_the_level_the_synthesis_writes(self):
         """The synthesis heads every section it writes with `###`. As an `h2` the one
         section nobody measured led the page."""
-        page = synthesis_page(SYNTHESIS, {"abcd1234": ["one.html"]})
+        page = synthesis_page(SYNTHESIS, [("rule #0", "abcd1234", ["one.html"])])
         assert "<h3>Sessions</h3>" in page
 
 

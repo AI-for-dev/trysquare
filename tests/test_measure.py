@@ -16,6 +16,7 @@ from trysquare.measure import (
     kind,
     merge,
     models,
+    one_line,
     rate,
     scorable,
     series,
@@ -78,6 +79,26 @@ class TestEvents:
         """A cut stream ends mid-line; the lines before the cut are evidence."""
         text = 'not json\n{"a": 1}\n{broken'
         assert list(events(text)) == [{"a": 1}]
+
+
+class TestADetailStaysOnOneLine:
+    """A `detail` is printed as the tail of a run's report and stored in the ledger.
+
+    A provider's message arrives with the newline it was written with. Measured on a real
+    matrix: every failing run was followed by a blank line, and `state.json` carried
+    `"...providers/models.\\n"`.
+    """
+
+    def test_a_trailing_newline_is_dropped(self):
+        assert one_line('Error: Unknown provider "no-such". Use --list-models.\n') == (
+            'Error: Unknown provider "no-such". Use --list-models.'
+        )
+
+    def test_an_embedded_newline_cannot_break_the_report(self):
+        assert one_line("first line\nsecond line") == "first line second line"
+
+    def test_a_message_already_on_one_line_is_untouched(self):
+        assert one_line("validator 'script' exited 1") == "validator 'script' exited 1"
 
 
 class TestStripSession:

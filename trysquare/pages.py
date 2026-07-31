@@ -117,25 +117,36 @@ def _blocks(markdown: str) -> list[str]:
     return out
 
 
-def synthesis_page(markdown: str, sessions: dict[str, list[str]] | None = None) -> str:
+def synthesis_page(markdown: str, sessions: list[tuple[str, str, list[str]]] | None = None) -> str:
     """The whole page, from the synthesis text and the session pages that exist.
 
-    `sessions` maps a run id to the HTML pages archived under `runs/<id>/session/`.
+    `sessions` is `(label, run id, page names)` per run, **in the order to print them**.
+    Ordering and labelling belong to the caller, which is the only side holding the runs;
+    this renders what it is given.
+
+    Every other section of a synthesis is organised by cell. This one used to be keyed by
+    run id alone, so telling whether `1af14a46` was the baseline or the treatment meant
+    opening `measures.json` - on the one page that exists to be read on its own.
+
     Links are relative, so the page works wherever the experiment directory is
     copied - which is the only place it is ever meant to be read from.
+
+    A page is linked as `attempt 1`, `attempt 2`, since one file is archived per attempt.
+    The file name is a timestamp and a UUID, which identifies a session and tells a reader
+    nothing; it stays in `title` for whoever needs to find the file.
     """
     body = _blocks(markdown)
 
     if sessions:
         items = [
-            f"<li><code>{html.escape(run_id)}</code>: "
+            f"<li>{html.escape(label)} <code>{html.escape(run_id)}</code>: "
             + " ".join(
-                f'<a href="runs/{html.escape(run_id)}/session/{html.escape(name)}">'
-                f"{html.escape(name)}</a>"
-                for name in names
+                f'<a href="runs/{html.escape(run_id)}/session/{html.escape(name)}"'
+                f' title="{html.escape(name)}">attempt {i}</a>'
+                for i, name in enumerate(names, 1)
             )
             + "</li>"
-            for run_id, names in sorted(sessions.items())
+            for label, run_id, names in sessions
         ]
         # `h3`, the level the synthesis heads its own sections with. As an `h2` this
         # appended section outranked every section the synthesis actually wrote.

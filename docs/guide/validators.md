@@ -175,7 +175,12 @@ def evaluate(run: Assay) -> dict:
     outside = run.touched - SCOPE
     return {
         "delivered": bool(run.touched),
-        "in_scope": Metric(not outside, f"also touched {', '.join(sorted(outside))}"),
+        # The reason belongs to the failure. Attached unconditionally it reads
+        # `also touched ` on every run that stayed in scope; an empty reason is dropped.
+        "in_scope": Metric(
+            not outside,
+            f"also touched {', '.join(sorted(outside))}" if outside else "",
+        ),
         "tests": run.tests(),
         "touched": run.touched,
     }

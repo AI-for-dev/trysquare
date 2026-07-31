@@ -40,6 +40,22 @@ def compared(argv) -> tuple[int, str]:
     return code, stdout.getvalue() + stderr.getvalue()
 
 
+class TestWhatThePlanSays:
+    """A header printed before every run, so its grammar is part of the output."""
+
+    def test_one_of_something_is_singular(self):
+        assert cli.matrix_line(1, 1) == "1 cell x 1 repetition"
+        assert cli.counted(1, "run") == "1 run"
+
+    def test_more_than_one_takes_the_s(self):
+        assert cli.matrix_line(2, 3) == "2 cells x 3 repetitions"
+        assert cli.counted(6, "run") == "6 runs"
+
+    def test_none_takes_the_s_too(self):
+        """`0 runs to perform`, which is what English does and a reader expects."""
+        assert cli.counted(0, "run") == "0 runs"
+
+
 class TestParser:
     def test_output_is_required_for_a_run(self):
         with pytest.raises(SystemExit):

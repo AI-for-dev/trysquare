@@ -22,7 +22,7 @@ from . import agent as agent_mod
 from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
-from .measure import EMPTY, VALID, Run, merge, models
+from .measure import EMPTY, VALID, Run, merge, models, one_line
 from .outputs import RESUMABLE, Output, slug
 from .scenario import Cell, Scenario
 
@@ -517,7 +517,7 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
             run.state = EMPTY
             run.detail = (
                 agent_mod.first_error(outcome.stream)
-                or outcome.stderr[:200]
+                or one_line(outcome.stderr)[:200]
                 or "no tokens consumed"
             )
             return run
@@ -589,7 +589,7 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         archive(plan, run_id, clone, prepared, cell, thinking)
     except Exception as e:  # noqa: BLE001 - one run must not cost the matrix
         run.state = EMPTY if run.state == VALID and not run.usage else run.state
-        run.detail = f"{type(e).__name__}: {e}"
+        run.detail = one_line(f"{type(e).__name__}: {e}")
     return run
 
 

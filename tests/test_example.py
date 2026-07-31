@@ -145,6 +145,19 @@ class TestTheExampleScoresARun:
         assert payload["metrics"]["in_scope"] is False
         assert "notes.md" in payload["reasons"]["in_scope"]
 
+    def test_a_fix_that_stayed_inside_gives_no_reason_at_all(self, a_measured_run):
+        """The reason belongs to the failure. Attached unconditionally it read
+        `also touched ` on every run that behaved, a sentence with nothing after it, and
+        this file is copied into other repositories exactly as it stands."""
+        payload = score(
+            a_measured_run(
+                {"counter.py": "def total(items):\n    return sum(items)  # tidied\n"},
+                response="It adds up the basket. " * 10,
+            )
+        )
+        assert payload["metrics"]["in_scope"] is True
+        assert "in_scope" not in payload["reasons"], payload["reasons"]
+
     def test_a_suite_that_cannot_run_is_unjudged_and_the_rest_still_scores(self, a_measured_run):
         """The payoff of the whole design, on a cause that is version-independent.
 

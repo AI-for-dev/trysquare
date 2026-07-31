@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .measure import consumed_tokens, events, strip
+from .measure import consumed_tokens, events, one_line, strip
 
 PI = "pi"
 
@@ -171,14 +171,18 @@ def run_until_productive(
 
 
 def first_error(stream: str) -> str:
-    """The first error the stream reported, for a readable failure line."""
+    """The first error the stream reported, as one readable failure line.
+
+    Collapsed here rather than at the call sites: a provider writes its message with
+    whatever newline it likes, and this exists to be printed beside a run.
+    """
     for event in events(stream):
         for key in ("errorMessage", "error", "finalError"):
             if event.get(key):
-                return str(event[key])
+                return one_line(str(event[key]))
         message = event.get("message") or {}
         if isinstance(message, dict) and message.get("errorMessage"):
-            return str(message["errorMessage"])
+            return one_line(str(message["errorMessage"]))
     return ""
 
 
