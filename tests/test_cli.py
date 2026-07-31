@@ -186,6 +186,22 @@ class TestRunPlan:
         assert plan.runs == 10
         assert any("INCOMPLETE" in n for n in plan.notes)
 
+    def test_only_with_a_typo_is_refused_not_filtered(self):
+        """Silently matching nothing ran zero runs and read as nothing left to do."""
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        with pytest.raises(RuntimeError, match="did you mean 'rule / off'"):
+            runner.resolve(load(SCENARIO), config_mod.load(MACHINE), out(), only=("rule/off",))
+
+    def test_a_missing_config_file_says_to_create_one(self, tmp_path):
+        """Not "add the entry": there is no file to add it to, and the message says so."""
+        from trysquare import config as config_mod
+
+        with pytest.raises(config_mod.ConfigError, match=f"no {config_mod.CONFIG_NAME} was found"):
+            config_mod.Config().repo("my-repo")
+
 
 class TestCompletionOrder:
     """Runs are reported as they finish, and written in the order they were planned.

@@ -20,6 +20,7 @@ Precedence: scenario (the experiment) > CLI (explicit and announced) > config
 
 from __future__ import annotations
 
+import difflib
 import os
 import re
 import tomllib
@@ -57,6 +58,17 @@ BUILTIN_DEFAULTS = {
 
 class ConfigError(Exception):
     pass
+
+
+def closest(name: str, known) -> str:
+    """A parenthetical to append to a refusal, when the name looks like a typo.
+
+    difflib's default cutoff keeps a far miss silent: suggesting `rule` for
+    `banana` would decorate every honest refusal with noise, and a suggestion
+    that is usually wrong teaches the reader to skip all of them.
+    """
+    matches = difflib.get_close_matches(str(name), [str(k) for k in known], n=1)
+    return f" (did you mean {matches[0]!r}?)" if matches else ""
 
 
 def which_file(raw: dict) -> str | None:
@@ -114,14 +126,28 @@ class Config:
         return self._remote("harness", self.harness, name)
 
     def _declared(self, section: str, table: dict, name: str) -> str:
-        """The raw entry, with the refusal that names what is known."""
-        if name not in table:
-            known = ", ".join(sorted(table)) or "none"
+        """The raw entry, with the refusal that names what is known.
+
+        Two distinct failures, and the message tells them apart: an entry missing
+        from a config file that exists, and no config file at all. The second used
+        to borrow the first's wording, and "add it to trysquare.toml" reads as
+        "edit the file" when the actual fix is to create one.
+        """
+        if name in table:
+            return str(table[name])
+        if self.path is None:
             raise ConfigError(
-                f"[{section}] has no entry {name!r} (known: {known}). "
-                f"Add it to {self.path or CONFIG_NAME}"
+                f"the scenario names the repository {name!r}, and no {CONFIG_NAME} was "
+                f"found walking up from the scenario's directory, so [{section}] declares "
+                f"nothing. Create one beside the scenario; two lines are enough:\n"
+                f"  [{section}]\n"
+                f'  {name} = "/path/to/the/checkout"  # or a git URL'
             )
-        return str(table[name])
+        known = ", ".join(sorted(table)) or "none"
+        raise ConfigError(
+            f"[{section}] has no entry {name!r} (known: {known}){closest(name, table)}. "
+            f"Add it to {self.path}"
+        )
 
     def _remote(self, section: str, table: dict, name: str) -> str | None:
         declared = self._declared(section, table, name)

@@ -195,6 +195,14 @@ class TestVerdict:
         with pytest.raises(ScenarioError, match="ghost"):
             parse(MINIMAL | {"verdict": {"criterion": "overflow", "reference": "ghost"}})
 
+    def test_a_near_miss_is_suggested_and_a_far_one_is_not(self):
+        """A refusal that can name the fix should; one that cannot must stay quiet."""
+        with pytest.raises(ScenarioError, match="did you mean 'none'"):
+            parse(MINIMAL | {"verdict": {"criterion": "overflow", "reference": "non"}})
+        with pytest.raises(ScenarioError) as caught:
+            parse(MINIMAL | {"verdict": {"criterion": "overflow", "reference": "zzzzzz"}})
+        assert "did you mean" not in str(caught.value)
+
     def test_a_grid_reference_is_a_table_of_axis_values(self):
         assert parse(GRID).reference == "none / off"
 

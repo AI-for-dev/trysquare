@@ -36,11 +36,15 @@ A scenario writes `repo = "my-repo"`. Relative paths resolve against the config 
 because the config describes a machine and where the operator happens to be standing
 is not part of it.
 
-An unknown name names what is known:
+An unknown name names what is known, and suggests the likely fix when the miss
+is a near one:
 
 ```text
-[repos] has no entry 'ghost' (known: my-repo, other, remote). Add it to /path/to/trysquare.toml
+[repos] has no entry 'my-rpeo' (known: my-repo, other, remote) (did you mean 'my-repo'?). Add it to /path/to/trysquare.toml
 ```
+
+When no `trysquare.toml` exists at all, the refusal says to create one - with the
+two lines it needs - rather than to edit a file that is not there.
 
 ### A URL instead of a directory
 
