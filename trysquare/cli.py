@@ -172,6 +172,9 @@ def build_parser() -> argparse.ArgumentParser:
         "measures", nargs="?", type=Path, help="the bench's published measures JSON"
     )
     parity.add_argument("--archive", type=Path, help="the bench's archived run directories")
+    parity.add_argument(
+        "--scenario", type=Path, help="whose validators re-score the archive, for layer 2"
+    )
     parity.add_argument("--reference", default="base")
     parity.add_argument("--criterion", default="overflow")
     parity.add_argument(
@@ -865,6 +868,17 @@ def publish_rescore(scored: Rescore, scenario) -> int:
 UNREPLAYABLE = ("prompt", "response", "trace")
 
 
+def archived_session_dir(run_dir: Path) -> Path:
+    """Where a run's archived sessions are.
+
+    This tool writes them to `session/`. The bench wrote them at the top of the run
+    directory, and layer 2 reconstitutes the bench's archive with the very same
+    machinery, so the layout is read rather than assumed.
+    """
+    nested = run_dir / SESSION
+    return nested if nested.is_dir() else run_dir
+
+
 def replay_context(run_dir: Path, clone: Path, source: Path, scenario, at_etalon: list) -> Path:
     """Writes the context a re-scoring needs, beside the tree just reconstituted.
 
@@ -893,7 +907,7 @@ def replay_context(run_dir: Path, clone: Path, source: Path, scenario, at_etalon
         etalon=scenario.task["etalon"],
         etalon_checkout=source,
         prompt_file=None,
-        session_dir=run_dir / SESSION,
+        session_dir=archived_session_dir(run_dir),
         trace=None,
         cell=cell,
         repetition=0,
@@ -1004,8 +1018,62 @@ def _retries(experiment: dict) -> int:
 # --- parity ----------------------------------------------------------------
 
 
+def script_metrics(scenario, base: Path):
+    """A `validate(context) -> dict` built from the scenario's script validators.
+
+    **A judge is not run.** Layer 2 is exact and costs no tokens, and the bench's
+    archive holds no verdict of its own to reuse the way `replay --rescore` reuses
+    ours. So the metrics a judge scored are out of layer 2's scope by construction,
+    and the layer names them instead of reporting them as gaps.
+
+    `merge` is called with no declared metrics: whether a published metric came back
+    is layer 2's own comparison, and a metric out of scope must not turn the run into
+    a validator failure.
+    """
+
+    def validate(context: Path) -> dict:
+        results = []
+        for validator in scenario.validators:
+            if validator.mode != "script":
+                continue
+            result = validation_mod.run_script(
+                validator, context, scenario.protocol["timeout"], cwd=base
+            )
+            if result.payload is None:
+                raise RuntimeError(f"validator {validator.mode!r}: {result.detail}")
+            results.append((validator.mode, result.payload))
+        if not results:
+            raise RuntimeError("the scenario declares no script validator to re-score with")
+        metrics, _, _, _ = measure_mod.merge(results, ())
+        return metrics
+
+    return validate
+
+
+def layer2_report(args) -> parity_mod.Report:
+    """Layer 2, wired to the same reconstitution `replay` uses.
+
+    The etalon is pinned once and cloned per run, which is the cost layer 2 has always
+    had: a diff is only applicable to the tree it was taken from.
+    """
+    scenario, config = _load(args)
+    base = Path(args.scenario).resolve().parent
+    source = runner_mod.prepare_source(config, scenario.task["repo"], scenario.task["etalon"])
+    at_etalon = repo_mod.etalon_files(source, scenario.task["etalon"])
+
+    def reconstitute(run_dir: Path) -> Path:
+        work = config.workdir() / "parity" / run_dir.name
+        clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
+        repo_mod.apply_diff(clone, (run_dir / "diff.patch").read_text(), what=run_dir.name)
+        return replay_context(run_dir, clone, source, scenario, at_etalon)
+
+    return parity_mod.layer2(
+        args.measures, args.archive, reconstitute, script_metrics(scenario, base)
+    )
+
+
 def cmd_parity(args) -> int:
-    """Layer 3 always; layer 1 with an archive; layer 4 with --smoke."""
+    """Layers 3 then 1 then 2, cheapest first; layer 4 with --smoke."""
     if args.smoke:
         workdir = args.workdir
         if workdir is None:
@@ -1037,10 +1105,20 @@ def cmd_parity(args) -> int:
         return 0
 
     print("\nlayer 1 - stripping, from the archived sessions")
-    report = parity_mod.layer1(args.measures, args.archive)
-    for line in report.lines:
+    stripping = parity_mod.layer1(args.measures, args.archive)
+    for line in stripping.lines:
         print(f"  {line}")
-    return 0 if report.holds else 1
+
+    if not args.scenario:
+        print("\n  layer 2 needs --scenario: re-scoring runs the validators that scenario names")
+        return 0 if stripping.holds else 1
+
+    runs = parity_mod.archived_runs(parity_mod.published_by_id(args.measures), args.archive)
+    print(f"\nlayer 2 - scoring, from tag + diff.patch ({len(runs)} runs, one clone each)")
+    scoring = layer2_report(args)
+    for line in scoring.lines:
+        print(f"  {line}")
+    return 0 if stripping.holds and scoring.holds else 1
 
 
 # --- form ------------------------------------------------------------------

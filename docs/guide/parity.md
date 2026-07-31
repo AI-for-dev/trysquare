@@ -61,8 +61,14 @@ defects, and freezing them into its successor is exactly what a parity check mus
 ```bash
 trysquare parity <measures.json>                          # layer 3
 trysquare parity <measures.json> --archive <traces dir>   # layers 3 and 1
+trysquare parity <measures.json> --archive <dir> --scenario <s.toml>  # and layer 2
 trysquare parity --smoke <experiment dir>                 # layer 4
 ```
+
+The layers run **cheapest first**: 3 needs one JSON file, 1 reads the archived sessions,
+2 clones the etalon once per run. A disagreement therefore surfaces before you pay for
+the clones. Every layer that can run does run, and the command exits non-zero if any of
+them disagreed.
 
 ## Layer 3, in the test suite
 
@@ -111,6 +117,40 @@ have very different consequences:
 58/60 sessions reproduce their recorded figures exactly
 LABEL: base-9 holds the figures published for base-0 - same cell, so no aggregate is affected
 ```
+
+## Layer 2 re-scores the archive, and needs a scenario
+
+Layer 2 reconstitutes each archived run - `git clone` at the tag, `git apply` of its
+`diff.patch` - and scores the tree again, then compares metric by metric with what the
+bench published. Same reconstitution as {doc}`replay <../reference/cli>`, deliberately:
+one machinery, so a tree rebuilt for a re-scoring and a tree rebuilt for parity cannot
+drift apart.
+
+Scoring means running validators, and which ones is a question the harness cannot
+answer for you - hence `--scenario`. Its **script** validators are what re-score the
+archive.
+
+:::{warning}
+**A judge is not run.** Its verdict costs tokens, layer 2 costs none, and the bench's
+archive holds no verdict of its own to reuse the way `replay --rescore` reuses ours. So
+a metric only a judge can produce is **out of layer 2's scope**, named once, exactly as
+layer 1 treats `retries`.
+
+A metric returned for some runs and missing for others is the opposite case - an
+unreliable validator - and it blocks.
+:::
+
+```text
+layer 2 - scoring, from tag + diff.patch (4 runs, one clone each)
+  3/4 runs re-score to their published metrics exactly
+  api_stable: no validator here returns it, so it is out of scope
+  tests: no validator here returns it, so it is out of scope
+  base-1/delivered: bench True, here False
+  base-1/overflow: bench True, here False
+```
+
+A gap names the run, the metric and **both** computations, because that is what it takes
+to decide which of the three outcomes above applies. Counting them would not.
 
 ## Layer 4 is a smoke pass, not a comparison
 

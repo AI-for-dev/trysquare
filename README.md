@@ -257,8 +257,14 @@ Parity is demonstrated in layers, and three of them are exact, at zero tokens:
 
 ```bash
 uv run trysquare parity <bench measures.json> --archive <bench traces dir>
+uv run trysquare parity <bench measures.json> --archive <dir> --scenario <scenario>
 uv run trysquare parity --smoke <experiment dir>          # layer 4
 ```
+
+Layers run cheapest first, and `--scenario` is what adds layer 2: every archived run is
+reconstituted from its tag and `diff.patch`, then re-scored by that scenario's script
+validators. A judge is never run there, so a metric only a judge produced is named as
+out of scope rather than reported as a disagreement.
 
 Layer 4 checks only what does not depend on the sample: every run valid, the outputs
 complete, each run's directory whole, and - the one that matters most - **the thinking
@@ -317,10 +323,8 @@ Stated rather than left to be discovered:
 - **A judge is not re-scored.** `replay --rescore` re-runs script validators and
   reuses the archived judge verdict, because re-running a judge costs tokens and
   `replay` exists on the promise that it costs none. Correcting a judged metric
-  therefore means measuring again.
-- **Parity layer 2 has been demonstrated but is not a command.** Two archived runs
-  were reconstituted and re-scored by hand, and matched exactly; `parity --archive`
-  currently runs layers 3 and 1 only.
+  therefore means measuring again. Layer 2 of parity inherits the same limit: it
+  re-scores what a script can score, and names the judged metrics as out of scope.
 
 ## Licence
 
