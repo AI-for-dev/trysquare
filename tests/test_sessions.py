@@ -29,7 +29,7 @@ from tests.test_scenario import GRID
 
 FIXTURE = Path(__file__).parent / "fixtures" / "session-minimal.jsonl"
 ROOT = Path(__file__).resolve().parent.parent
-SCENARIO = str(ROOT / "scenarios" / "2x3.toml")
+SCENARIO = str(ROOT / "tests" / "fixtures" / "matrix.toml")
 
 
 def output() -> outputs.Output:

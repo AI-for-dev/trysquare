@@ -1,0 +1,77 @@
+# A whole scenario, as a fixture: two axes, six cells, ten repetitions.
+#
+# The tests that need a scenario need a *complete* one - the CLI, the plan, the
+# interleaving and the output naming all read parts of it that a hand-built dict
+# does not carry. It lives here rather than beside the tool because it measures
+# nothing anybody wants measured: it exists to be loaded, planned and dry-run.
+#
+# Its shape is fixed and several tests depend on it: three context values by two
+# thinking values, in that declaration order, with `nothing / off` as the
+# reference cell.
+
+[scenario]
+name = "matrix"
+title = "A project rule against a well written ticket, at two reasoning budgets"
+
+[task]
+# A logical name, resolved by [repos] in `machine.toml` beside this file. A
+# scenario carries no machine path, which is exactly what lets a fixture be one.
+repo = "tiny"
+etalon = "etalon-v1"
+prompt = """
+The basket total is wrong when the list is empty. Fix it.
+"""
+# The suite that decides the `tests` metric, written out rather than left to a
+# script name the agent may edit.
+test_command = "python3 -m unittest discover -s tests -t ."
+
+[agent]
+provider = "test-provider"
+model = "test-model"
+thinking = "off"
+
+[protocol]
+repetitions = 10
+concurrency = 5
+timeout = 900
+attempts = 3
+
+# --- Cells: two axes, cartesian product -----------------------------------
+
+[axes]
+context = ["nothing", "rule", "careful ticket"]
+thinking = ["off", "high"]
+
+# The first value of an axis is the baseline and declares no delta. Every other
+# value must, so a misspelling raises instead of silently duplicating the
+# baseline.
+[values.context.rule]
+context = """
+Do not rename or remove an exported name: the tests depend on it.
+"""
+
+[values.context."careful ticket"]
+prompt = """
+`total` returns None for an empty basket instead of 0. Change only counter.py,
+and leave the tests alone. You are done when the suite passes.
+"""
+
+[values.thinking.high]
+thinking = "high"
+
+# --- Validation -----------------------------------------------------------
+
+# The worked example, which is a real executable and is run for real by
+# `test_example.py`. A fixture pointing at a validator that does not exist would
+# fail preflight rather than the thing under test.
+[[validation]]
+mode = "script"
+command = "../../examples/validator.py"
+metrics = ["delivered", "in_scope", "tests", "touched", "documented"]
+
+# --- Verdict --------------------------------------------------------------
+
+[verdict]
+criterion = "in_scope"
+reference = { context = "nothing", thinking = "off" }
+validity = ["delivered", "tests"]

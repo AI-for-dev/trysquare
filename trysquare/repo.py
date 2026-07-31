@@ -12,9 +12,9 @@ nobody notices.
 
 **A remote is pinned as a working tree, never as a bare mirror.** A bare mirror is
 smaller and answers `git show` and `git ls-tree` perfectly well, so it looks right.
-But `etalon.checkout` is walked as files by a shipped validator, a bare repository
-passes its `is_dir()` check and yields an empty reference, and the whole matrix then
-reports plausible numbers about nothing. See `pin`.
+But `etalon.checkout` is walked as files by a validator reading the reference state,
+a bare repository passes an `is_dir()` check and yields an empty reference, and the
+whole matrix then reports plausible numbers about nothing. See `pin`.
 
 **Exclude what we injected.** The files the harness drops are not the agent's
 work. Without `.git/info/exclude`, scope scoring counts them as changes the agent
@@ -118,10 +118,11 @@ def pin(url: str, etalon: str, target: Path) -> Path:
     """Clones a remote at `etalon` once, as a working tree runs can clone from.
 
     A working tree and not a bare mirror. `etalon.checkout` is walked as *files* by a
-    shipped validator (`validators/neon.py` -> `game_sources`), and a bare repository
-    passes its `is_dir()` check, yields an empty reference, and turns every signature
-    comparison into a plausible number about nothing. A bare mirror would have been
-    smaller and would have measured nothing, silently.
+    validator reading the reference state - which is what `Assay.sources_at_etalon`
+    does - and a bare repository passes an `is_dir()` check, yields an empty reference,
+    and turns every comparison against the etalon into a plausible number about
+    nothing. A bare mirror would have been smaller and would have measured nothing,
+    silently.
     """
     return clone(url, etalon, target, keep_tags=True)
 

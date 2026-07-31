@@ -12,7 +12,7 @@ Four names, and an author needs no others::
 
     @validator
     def evaluate(run: Assay) -> dict:
-        outside = run.touched - {"game/neon.js"}
+        outside = run.touched - {"counter.py"}
         return {
             "delivered": bool(run.touched),
             "in_scope": Metric(not outside, f"also touched {', '.join(outside)}"),
@@ -659,12 +659,12 @@ class Assay:
     def sources_at_etalon(self, pattern: str, exclude: str | None = None) -> str:
         """The text of the pinned files a pattern selects, joined.
 
-        Always from the **tag**, never from a working tree. `neon.py:88-91` falls back
-        to the checkout's working tree when the harness provides one, and
-        `issue1.py:183-195` documents why that is wrong: trysquare puts the *source
-        repository* there, whose working tree is on `main`, so the reference drifts the
-        moment `main` moves or a classroom fixes the issue in place - which is exactly
-        what pinning by tag exists to prevent. Only the correct one is offered here.
+        Always from the **tag**, never from a working tree. A validator that fell back
+        to the checkout's working tree when the harness provided one was read as
+        equivalent and is not: trysquare puts the *source repository* there, whose
+        working tree is on `main`, so the reference drifts the moment `main` moves or
+        someone fixes the issue in place - which is exactly what pinning by tag exists
+        to prevent. Only the correct one is offered here.
 
         The clone cannot serve either: it is made with `--no-tags`, so the tag does not
         exist in it. The source repository is the only thing that carries it.
@@ -674,7 +674,8 @@ class Assay:
         so this costs one `git show` per selected file and nothing else.
 
         The reading itself is `repo.etalon_file`, which the harness has had all along.
-        Three shipped validators reimplemented it with a raw `subprocess`.
+        Three validators written before this base existed reimplemented it with a raw
+        `subprocess`.
         """
         return self._call("sources_at_etalon", pattern, exclude)
 
@@ -798,9 +799,9 @@ def main(fn, argv=None, write=None, warn=None) -> int:
     """The contract, applied once here instead of in every validator.
 
     Four validators each wrote this, and one in four got the error contract right.
-    `neon.py:174` calls `evaluate(context)` with no net at all, so a traceback goes to
-    `script.stderr` and reads six months later as a broken validator when the cause is
-    usually the context.
+    The other three called `evaluate(context)` with no net at all, so a traceback goes
+    to `script.stderr` and reads six months later as a broken validator when the cause
+    is usually the context.
 
     Everything is caught, because the default has to be the right one. The sentence
     comes **first** and the traceback after it: the trace costs a real debugging

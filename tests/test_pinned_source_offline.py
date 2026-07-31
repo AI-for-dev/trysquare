@@ -13,17 +13,12 @@ at all.
 
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from trysquare import config as config_mod
 from trysquare import repo, runner
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "validators"))
-
-from signatures import game_sources  # noqa: E402
 
 # The machine's own gitconfig must not decide whether this passes: a globally configured
 # signing key, default branch name or absent user.email would each break it somewhere
@@ -51,7 +46,7 @@ class TestPinningARemote(unittest.TestCase):
         self.home = Path(tempfile.mkdtemp())
         self.origin = self.home / "origin"
         (self.origin / "game").mkdir(parents=True)
-        (self.origin / "game" / "neon.js").write_text("export const paddle = 1\n")
+        (self.origin / "game" / "paddle.js").write_text("export const paddle = 1\n")
         git(["init", "-q"], cwd=self.origin)
         git(["add", "-A"], cwd=self.origin)
         git(["commit", "-qm", "the etalon"], cwd=self.origin)
@@ -61,12 +56,12 @@ class TestPinningARemote(unittest.TestCase):
         self.url = f"file://{self.origin}"
         path = self.home / config_mod.CONFIG_NAME
         path.write_text(
-            f'[repos]\nneon = "{self.url}"\n[defaults]\nworkdir = "{self.home / "work"}"\n'
+            f'[repos]\ntiny = "{self.url}"\n[defaults]\nworkdir = "{self.home / "work"}"\n'
         )
         self.config = config_mod.load(path)
 
     def pin(self, etalon: str = "etalon-v1") -> Path:
-        return runner.prepare_source(self.config, "neon", etalon)
+        return runner.prepare_source(self.config, "tiny", etalon)
 
     def test_a_pinned_source_carries_the_tag_its_runs_clone_by(self):
         """The load-bearing property: runs clone from here with `--branch <tag>`.
@@ -80,17 +75,20 @@ class TestPinningARemote(unittest.TestCase):
 
     def test_a_run_can_be_cloned_out_of_the_pinned_source(self):
         target = repo.clone(self.pin(), "etalon-v1", self.home / "run" / "repo")
-        self.assertTrue((target / "game" / "neon.js").is_file())
+        self.assertTrue((target / "game" / "paddle.js").is_file())
         self.assertEqual(git(["rev-parse", "HEAD"], cwd=target), self.head)
 
     def test_the_pinned_source_is_a_working_tree_a_validator_can_read(self):
         """The reason this is a clone and not a bare mirror.
 
-        `etalon.checkout` is walked as files by `validators/neon.py`. A bare repository
-        passes its `is_dir()` check and yields an empty reference, so every signature
-        comparison in the matrix would report a plausible number about nothing.
+        `etalon.checkout` is where a validator reads the reference state from, which
+        is what `Assay.sources_at_etalon` does for it. A bare repository passes an
+        `is_dir()` check and yields an empty reference, so every comparison against
+        the etalon in the matrix would report a plausible number about nothing.
         """
-        self.assertIn("paddle", game_sources(self.pin()))
+        pinned = self.pin()
+        self.assertIn("game/paddle.js", repo.etalon_files(pinned, "etalon-v1"))
+        self.assertIn("paddle", repo.etalon_file(pinned, "etalon-v1", "game/paddle.js"))
 
     def test_the_commit_behind_the_tag_is_recorded_for_the_archive(self):
         self.assertEqual(repo.commit_of(self.pin(), "etalon-v1"), self.head)
@@ -120,7 +118,7 @@ class TestPinningARemote(unittest.TestCase):
         from trysquare.scenario import load
 
         root = Path(__file__).resolve().parent.parent
-        scenario = load(root / "scenarios" / "2x3.toml")
+        scenario = load(root / "tests" / "fixtures" / "matrix.toml")
         plan = runner.resolve(scenario, self.config, self.home / "out")
         pinned = self.pin()
         clone = repo.clone(pinned, "etalon-v1", self.home / "run" / "repo")

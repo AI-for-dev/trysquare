@@ -108,9 +108,9 @@ Conflated into one list, a broken network would score an agent **red** on a colu
 carry the scenario's `validity` condition - "could not judge" filed as "worked badly", one
 level up.
 
-Each entry is one command, under the same rules as `test_command`. NEON declares none: it
-has no dependency to install, which is what makes a validation replayable from a tag and a
-diff months later.
+Each entry is one command, under the same rules as `test_command`. A repository that
+needs none is worth preferring: nothing to install is what makes a validation replayable
+from a tag and a diff months later.
 
 ## `[agent]`
 
@@ -193,10 +193,10 @@ context = ["nothing", "rule", "careful ticket"]
 thinking = ["off", "high"]
 
 [values.context.rule]
-context = "../bricks/AGENTS.md"
+context = "AGENTS.md"
 
 [values.context."careful ticket"]
-prompt = "../bricks/careful-ticket.md"
+prompt = "tickets/careful.md"
 
 [values.thinking.high]
 thinking = "high"
@@ -229,7 +229,7 @@ twice under two names, with nothing to reveal it.
 # the baseline: no delta
 
 [variants."+subagents"]
-harness = ["extension", "agent-gate", "agents"]
+harness = ["extension", "agents"]
 ```
 
 Irregular cells, named explicitly. Grid and variants **add** rather than exclude, so a
@@ -268,15 +268,15 @@ repo = "subagent"                # logical name, resolved by [harness] in the co
 tag = "formation-ai4dev-2026-v1"
 load = "extension"               # subdirectory passed to the agent
 
-[harness.agent-gate]             # a single file
-load = "../bricks/agent-gate.ts"
+[harness.local]                  # a single file, relative to the scenario
+load = "extensions/my-hook.ts"
 
 [harness.agents]                 # files copied into the clone
-paths = ["../agents/explorer.md", "../agents/tester.md"]
+paths = ["agents/explorer.md", "agents/tester.md"]
 model = "ilaas/gemma-4-31b"      # optional override, see below
 
 [harness.skills]
-paths = ["../skills/profile"]
+paths = ["skills/profile"]
 ```
 
 A brick with `repo` is cloned at its `tag` **once per matrix**, its dependencies are
@@ -292,6 +292,22 @@ Either way the harness **refuses to inject an agent that would end up with no mo
 nine shipped agents once ran on the wrong provider and returned 402s because they
 declared none. Two places may declare, so the trace settles which one applied -
 `configuration.json` records the model used and where it came from.
+:::
+
+:::{important}
+**A cell that injects agents also loads the subagent gate, without declaring it.**
+
+Dropping agent definitions into the clone does not make them the only reachable ones.
+The subagent tool takes its scope as a parameter the *model* chooses, and the default
+reaches the agent library's own built-in agents - none of which declares a model, so
+each would inherit whatever the operator's machine defaults to. A cell injecting
+`explorer` would have measured someone else's agent on someone else's settings, and
+nothing in the output would have said so.
+
+`trysquare/agent-gate.ts` ships inside the package and is appended to the extensions
+of any cell with `paths` under a non-`skills` brick. It forces the scope and refuses
+any agent name the scenario did not inject. It is not a `[harness]` entry, because
+forgetting it was one line away from measuring the wrong thing.
 :::
 
 ## `[[validation]]`

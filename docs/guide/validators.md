@@ -36,10 +36,10 @@ Metrics it returns **in addition** are stored but cannot be scored, and cannot b
 means a metric already paid for can be scored later:
 
 ```toml
-metrics = ["overflow", "delivered"]     # the scenario declares two
-# the validator also returns tests, api_stable, issues
+metrics = ["in_scope", "delivered"]     # the scenario declares two
+# the validator also returns tests, touched, documented
 # -> all five are written to measures.json
-# -> only overflow and delivered are scorable
+# -> only in_scope and delivered are scorable
 # -> declaring `tests` later and rerunning `render` scores it without remeasuring
 ```
 
@@ -48,34 +48,35 @@ metrics = ["overflow", "delivered"]     # the scenario declares two
 Any executable, in any language. One argument: a path to a context file.
 
 ```bash
-validators/neon.py /path/to/run/validation/script/context.json
+score.py /path/to/run/validation/script/context.json
 ```
 
 ```json
 {
-  "repo": "/tmp/trysquare/2x3_.../a7f3/repo",
-  "etalon": { "tag": "etalon-v1", "checkout": "/path/to/neon" },
+  "repo": "/tmp/trysquare/rule-vs-ticket_.../a7f3/repo",
+  "etalon": { "tag": "etalon-v1", "checkout": "/path/to/my-repo" },
   "prompt": "/tmp/.../prompt.txt",
   "session": "/tmp/.../session",
   "trace": "/tmp/.../trace.jsonl",
   "cell": "rule / high",
   "repetition": 3,
-  "test_command": "node --test 'game/**/*.test.js'",
+  "test_command": "node --test 'src/**/*.test.js'",
   "prepare": [],
-  "touched": ["game/neon.js"],
-  "files": ["README.md", "game/neon.js", "game/theme.js"],
-  "declared": ["overflow", "delivered", "tests"]
+  "touched": ["src/basket.js"],
+  "files": ["README.md", "src/basket.js", "src/theme.js"],
+  "declared": ["in_scope", "delivered", "tests"]
 }
 ```
 
 Read it with {mod}`trysquare.assay` rather than by hand - `run.touched`, `run.etalon`,
-`run.sources_at_etalon("game/*.js")`. Four names cover a whole validator, and the module
-carries the error contract with them.
+`run.sources_at_etalon("src/*.js")`. Four names cover a whole validator, and the module
+carries the error contract with them. `examples/validator.py` is a complete one written
+that way, and the suite runs it against `tests/fixtures/tiny` so it cannot go stale.
 
-`touched` and `files` are computed by the harness. Three shipped validators each
-reimplemented the first with a raw `subprocess`, one of them landing on a **different
-answer** for the reference side, while `repo.changed_files` had held that knowledge all
-along. A fact computed in one place cannot be got three slightly different ways.
+`touched` and `files` are computed by the harness. Three validators written before the
+base existed each reimplemented the first with a raw `subprocess`, one of them landing
+on a **different answer** for the reference side, while `repo.changed_files` had held
+that knowledge all along. A fact computed in one place cannot be got three slightly different ways.
 
 `declared` is what the scenario contracted for, so a validator can be told which metric it
 forgot before anything is recorded rather than after the tokens are spent.
@@ -186,7 +187,7 @@ mode = "judge"
 provider = "ilaas"                     # pinned, and distinct from the model under test
 model = "gemma-4-31b"
 thinking = "off"
-rubric = "../rubrics/impact-note.md"
+rubric = "rubric.md"
 pieces = ["prompt", "response", "diff"]
 metrics = ["note_usable", "cites_paths", "says_what_is_missing"]
 ```
@@ -200,9 +201,9 @@ parsing would be the fallback - and it is the wrong one. A judge answering in pr
 with a stray code fence produces an unreadable verdict, and an unreadable verdict is
 indistinguishable from a negative one unless something catches it.
 
-So `bricks/judge-tool.ts` registers a `verdict` tool whose parameters are built from
-the metrics the scenario declared. The runtime validates the call before it reaches the
-harness.
+So `trysquare/judge-tool.ts`, shipped inside the package, registers a `verdict` tool
+whose parameters are built from the metrics the scenario declared. The runtime validates
+the call before it reaches the harness.
 
 **The format is guaranteed. The call happening is not.** A judge that never calls the
 tool leaves the run **invalid** rather than scoring zero - a broken judge must not read

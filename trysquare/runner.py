@@ -141,6 +141,12 @@ def interleave(todo: list[tuple[str, dict]]) -> list[tuple[str, dict]]:
     return sorted(todo, key=lambda item: (item[1]["repetition"], item[1]["cell"]))
 
 
+# Shipped inside the package, beside the code that loads it, for the reason
+# `validation.JUDGE_BRICK` gives: an installed wheel has no repository around it, and
+# neither brick is a per-experiment choice.
+AGENT_GATE = Path(__file__).resolve().parent / "agent-gate.ts"
+
+
 def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> dict:
     """The bricks one cell loads, resolved to real paths."""
     wanted = cell.delta.get("harness", [])
@@ -171,6 +177,22 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
                 agents.append(resolved)
         if brick.get("model"):
             agent_model = brick["model"]
+
+    # A cell that injects subagents loads the gate, always, without declaring it.
+    #
+    # Dropping agent definitions into the clone does not make them the only ones
+    # reachable: the subagent tool takes its scope as a parameter the model chooses,
+    # and the default reaches the library's own built-in agents - none of which
+    # declares a model, so each would inherit whatever this machine defaults to. A
+    # cell injecting `explorer` would therefore have measured someone else's agent
+    # on someone else's settings, and nothing in the output would have said so.
+    #
+    # `check_agent_models` already refuses an injected agent with no model. The gate
+    # closes the sibling hole, and it is not optional for the same reason: a
+    # scenario that forgot to declare it would measure something other than what it
+    # says. Left to a `[harness]` entry, forgetting it was one line away.
+    if agents:
+        extensions.append(AGENT_GATE)
 
     return {
         "extensions": extensions,
@@ -319,8 +341,8 @@ def read_brick(base: Path, value: str | None) -> str | None:
     A value that looks like a path and does not exist **raises**. It used to fall
     back to being treated as inline text, and that silent fallback is exactly the
     defect this project keeps paying for: a mistyped prompt path became the literal
-    string "bricks/vague-ticket.md" sent to the agent as its task, and the runs
-    looked entirely normal while measuring nothing.
+    string "tickets/vague.md" sent to the agent as its task, and the runs looked
+    entirely normal while measuring nothing.
     """
     if not value:
         return None
@@ -344,7 +366,7 @@ def referenced_paths(scenario: Scenario, base: Path) -> list[tuple[str, Path]]:
         """`always` for keys that are paths by definition.
 
         A validator command and a rubric are never inline text, so they must be
-        checked whatever they look like - otherwise a command written `neon.py`,
+        checked whatever they look like - otherwise a command written `score.py`,
         with no separator to give it away, slips past preflight and only fails once
         a run has been paid for.
         """
@@ -526,9 +548,6 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
     return run
 
 
-JUDGE_BRICK = "bricks/judge-tool.ts"
-
-
 def judge(
     plan: Plan,
     validator,
@@ -565,7 +584,7 @@ def judge(
 
     # The brick ships with the tool, so it is resolved against the package rather
     # than the scenario: it is not a per-experiment choice.
-    brick = Path(__file__).resolve().parent.parent / JUDGE_BRICK
+    brick = validation_mod.JUDGE_BRICK
     if not brick.is_file():
         return validation_mod.Result(validator.mode, None, detail=f"judge brick missing: {brick}")
 

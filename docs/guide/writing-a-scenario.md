@@ -10,9 +10,9 @@ title, because it is what the synthesis will be headed with:
 
 ```toml
 [scenario]
-name = "2x3"
+name = "rule-vs-ticket"
 title = "A project rule against a well written ticket, at two reasoning budgets"
-hypothesis = "../hypotheses/2x3.md"
+hypothesis = "hypothesis.md"
 ```
 
 ### Write the hypothesis first
@@ -41,9 +41,9 @@ prediction, the scenario is not an experiment.
 
 ```toml
 [task]
-repo = "neon"                      # logical name, resolved by the config
+repo = "my-repo"                   # logical name, resolved by the config
 etalon = "etalon-v1"               # a tag, cloned fresh per run
-prompt = "../bricks/vague-ticket.md"
+prompt = "tickets/vague.md"        # relative to this file
 ```
 
 The prompt may be inline or a path. Prefer a path for anything multi-line: it keeps the
@@ -90,10 +90,10 @@ context = ["nothing", "rule", "careful ticket"]
 thinking = ["off", "high"]
 
 [values.context.rule]
-context = "../bricks/AGENTS.md"
+context = "AGENTS.md"
 
 [values.context."careful ticket"]
-prompt = "../bricks/careful-ticket.md"
+prompt = "tickets/careful.md"
 
 [values.thinking.high]
 thinking = "high"
@@ -111,11 +111,16 @@ Six cells. **The axis declaration order fixes the table**: `context` in rows,
 harness = ["extension"]
 
 [variants."+subagents"]
-harness = ["extension", "agent-gate", "agents"]
+harness = ["extension", "agents"]
 
 [variants."full stack"]
-harness = ["extension", "agent-gate", "agents", "skills"]
+harness = ["extension", "agents", "skills"]
 ```
+
+A cell listing a brick with `paths` also loads the shipped subagent gate, without
+declaring it. Injecting agent definitions does not by itself make them the only
+reachable ones, and the default reaches the agent library's own - see
+[`[harness.<name>]`](../reference/scenario-schema.md#harnessname).
 
 They combine: a regular grid plus a couple of named witnesses in one scenario.
 
@@ -145,7 +150,7 @@ tag = "formation-ai4dev-2026-v1"
 load = "extension"
 
 [harness.agents]
-paths = ["../agents/explorer.md", "../agents/tester.md"]
+paths = ["agents/explorer.md", "agents/tester.md"]
 model = "ilaas/gemma-4-31b"
 ```
 
@@ -160,8 +165,8 @@ lets the harness float is measuring the operator.
 ```toml
 [[validation]]
 mode = "script"
-command = "../validators/neon.py"
-metrics = ["overflow", "issues", "delivered", "in_scope", "tests", "api_stable", "touched"]
+command = "score.py"
+metrics = ["delivered", "in_scope", "tests", "touched", "documented"]
 ```
 
 Declare every metric you might want to score later, even if the criterion is one of
@@ -194,7 +199,7 @@ validator failed is invalid. Both are global.
 ## Check it before spending
 
 ```bash
-trysquare run scenarios/mine.toml -o out --dry-run
+trysquare run mine.toml -o out --dry-run
 ```
 
 This loads and validates everything, checks every referenced path, verifies the thinking
@@ -203,7 +208,7 @@ precondition, reports how blind any judge is, and writes nothing.
 Then smoke it small:
 
 ```bash
-trysquare run scenarios/mine.toml -o out --repetitions 2
+trysquare run mine.toml -o out --repetitions 2
 trysquare parity --smoke out/mine_..._n2
 ```
 

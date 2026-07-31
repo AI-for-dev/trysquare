@@ -7,21 +7,21 @@ page adds the reasoning.
 
 ```text
 error: these files the scenario references do not exist:
-  cell 'rule / off' -> context: /path/scenarios/bricks/AGENTS.md
+  cell 'rule / off' -> context: /path/experiments/context/AGENTS.md
 Paths are relative to the scenario file.
 ```
 
 **Paths are relative to the scenario file**, not to the project root or the working
-directory. A scenario in `scenarios/` referring to `bricks/x.md` means
-`scenarios/bricks/x.md`; write `../bricks/x.md`.
+directory. A scenario in `experiments/` referring to `context/x.md` means
+`experiments/context/x.md`; from one directory further down, write `../context/x.md`.
 
 :::{admonition} Why this check exists
 :class: note
 
 It did not, once, and it cost a matrix. `read_brick` fell back to treating an
-unresolvable path as *inline text*, so `prompt = "bricks/vague-ticket.md"` was sent to
-the agent as the literal string `bricks/vague-ticket.md`. Twelve runs were paid for, and
-every one looked normal in the log.
+unresolvable path as *inline text*, so `prompt = "tickets/vague.md"` was sent to the
+agent as the literal string `tickets/vague.md`. Twelve runs were paid for, and every one
+looked normal in the log.
 
 Now a value that looks like a path and does not exist raises, and the whole scenario is
 checked **before the first token**.
@@ -124,7 +124,7 @@ Read `runs/<id>/validation/script.stderr`. The run itself is fine - only the sco
 failed - so **it does not need remeasuring**: fix the validator and re-score.
 
 ```bash
-trysquare replay results/<experiment> --scenario scenarios/<scenario>.toml --rescore
+trysquare replay results/<experiment> --scenario <scenario>.toml --rescore
 ```
 
 That rebuilds each tree from the tag and the archived diff, re-runs the script validators
@@ -180,11 +180,11 @@ partial harness produces a plausible measurement, which is worse than a crash.
 ## A repository URL could not be cloned
 
 ```text
-error: could not clone [repos] neon at etalon 'etalon-v1'
-  url: https://host/neon.git
+error: could not clone [repos] my-repo at etalon 'etalon-v1'
+  url: https://host/my-repo.git
   git: fatal: Remote branch etalon-v1 not found in upstream origin
 Nothing was measured. Fix the entry in /path/trysquare.toml, check network access, or
-list what the remote has: git ls-remote --tags https://host/neon.git
+list what the remote has: git ls-remote --tags https://host/my-repo.git
 ```
 
 Raised **before** anything is written, so nothing was spent and no output directory was
@@ -205,7 +205,7 @@ paid for twice.
 ## A repository path does not exist
 
 ```text
-error: [repos] neon resolves to /path/neon, which does not exist. Fix it in
+error: [repos] my-repo resolves to /path/my-repo, which does not exist. Fix it in
 /path/trysquare.toml
 ```
 

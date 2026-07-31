@@ -118,7 +118,7 @@ wall clock to fix it. Per-run values are persisted for exactly this.
 `--reference` writes a suffixed file from the same measures:
 
 ```bash
-trysquare render scenarios/2x3.toml -o out --reference "rule / off"
+trysquare render my-scenario.toml -o out --reference "rule / off"
 # -> synthesis_ref-rule-off.md
 ```
 
@@ -129,7 +129,7 @@ hand-renamed `_ref-thinking` file was a symptom rather than a solution.
 ### `--html` rebuilds the session pages
 
 ```bash
-trysquare render scenarios/2x3.toml -o out --html
+trysquare render my-scenario.toml -o out --html
 #   runs/658df337/session/2026-07-30T07-27-59-046Z_019fb1ec.html
 #   ...
 #   12 session pages written
