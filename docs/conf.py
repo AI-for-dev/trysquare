@@ -12,10 +12,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from trysquare import __version__  # noqa: E402 - the path above is what makes it importable
+
 project = "trysquare"
+# The holders LICENSE names, so a page and a licence cannot disagree about who they are.
+copyright = "2026, The trysquare Authors"
 author = "Loic Gouarin"
-copyright = "2026, Loic Gouarin"
-release = "0.1.0"
+# Derived rather than written a third time: `pyproject.toml` names the version.
+release = __version__
 
 extensions = [
     "myst_parser",

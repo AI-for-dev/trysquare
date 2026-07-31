@@ -1,6 +1,6 @@
 [project]
 name = "trysquare"
-version = "0.1.0"
+version = "0.1.1"
 description = "A scenario harness for measuring coding agents reproducibly."
 requires-python = ">=3.11"
 # An SPDX expression, not a `License ::` classifier: PEP 639 made the expression the
