@@ -135,16 +135,26 @@ def gap_rows(
     return rows
 
 
+def _markdown(columns: list[str], rows: list[tuple[str, list[str]]]) -> list[str]:
+    """The skeleton the three tables share: header, separator, one line per cell.
+
+    Assembled in one place so they cannot drift apart on the markdown itself -
+    what distinguishes them is what fills the cells and what the notes say.
+    """
+    return [
+        "| cell | " + " | ".join(columns) + " |",
+        "| " + " | ".join(["---"] * (len(columns) + 1)) + " |",
+        *(f"| {label} | " + " | ".join(cells) + " |" for label, cells in rows),
+    ]
+
+
 def gap_table(rows: list[dict], reference: str, draws: int, seed: int) -> str:
     """The gap table, in markdown."""
     if not rows:
         return "No cell to compare against the reference."
 
     names = [c["measure"] for c in rows[0]["measures"]]
-    header = "| cell | " + " | ".join(names) + " |"
-    sep = "| " + " | ".join(["---"] * (len(names) + 1)) + " |"
-
-    lines = []
+    body = []
     established = []
     for row in rows:
         cells = []
@@ -156,7 +166,7 @@ def gap_table(rows: list[dict], reference: str, draws: int, seed: int) -> str:
                     f"- `{row['cell']}`: **{c['measure']} {c['rendered']}**, "
                     f"interval {c['interval']}"
                 )
-        lines.append(f"| {row['cell']} | " + " | ".join(cells) + " |")
+        body.append((row["cell"], cells))
 
     return "\n".join(
         [
@@ -164,9 +174,7 @@ def gap_table(rows: list[dict], reference: str, draws: int, seed: int) -> str:
             "",
             f"{draws} draws, seed {seed}: the verdict is reproducible.",
             "",
-            header,
-            sep,
-            *lines,
+            *_markdown(names, body),
             "",
             "`*` established, the interval excludes zero - `o` inconclusive.",
             "",
@@ -181,7 +189,9 @@ def gap_table(rows: list[dict], reference: str, draws: int, seed: int) -> str:
     )
 
 
-COST_MEASURES = ("in", "out", "turns", "duration")
+# The names above, for the warning that must list them: derived, so a renamed
+# column cannot leave the warning naming one that no longer exists.
+COST_MEASURES = tuple(m.name for m in cost_measures())
 
 
 def retry_warning(by_cell: dict[str, list[Run]]) -> str:
@@ -268,10 +278,8 @@ def spend_table(rows: list[dict], measures: tuple[Measure, ...], draws: int, see
     if not rows:
         return "No cell to cost."
 
-    names = [m.name for m in measures]
-    header = "| cell | n | " + " | ".join(names) + " |"
-    sep = "| " + " | ".join(["---"] * (len(names) + 2)) + " |"
-    lines = [f"| {row['cell']} | {row['n']} | " + " | ".join(row["spend"]) + " |" for row in rows]
+    columns = ["n"] + [m.name for m in measures]
+    body = [(row["cell"], [str(row["n"]), *row["spend"]]) for row in rows]
 
     return "\n".join(
         [
@@ -279,9 +287,7 @@ def spend_table(rows: list[dict], measures: tuple[Measure, ...], draws: int, see
             "",
             f"{draws} draws, seed {seed}: the interval is reproducible.",
             "",
-            header,
-            sep,
-            *lines,
+            *_markdown(columns, body),
             "",
             "Over the runs the verdict rests on: valid, and passing `[verdict].validity`.",
             "A level carries no verdict - two intervals that do not overlap are not a",
@@ -350,9 +356,7 @@ def score_table(rows: list[dict], tests: tuple[str, ...], other: tuple[str, ...]
     if not rows or not tests:
         return "No test to score: no declared metric is a boolean."
 
-    header = "| cell | " + " | ".join(tests) + " |"
-    sep = "| " + " | ".join(["---"] * (len(tests) + 1)) + " |"
-    lines = [f"| {row['cell']} | " + " | ".join(row["scores"]) + " |" for row in rows]
+    body = _markdown(list(tests), [(row["cell"], row["scores"]) for row in rows])
 
     notes = [
         "`x/n`: the test was true in `x` of the `n` runs that could judge it.",
@@ -368,4 +372,4 @@ def score_table(rows: list[dict], tests: tuple[str, ...], other: tuple[str, ...]
     if dropped:
         notes.append("Runs left out as invalid: " + ", ".join(dropped) + ".")
 
-    return "\n".join(["### Scores, cell by test", "", header, sep, *lines, "", *notes])
+    return "\n".join(["### Scores, cell by test", "", *body, "", *notes])
