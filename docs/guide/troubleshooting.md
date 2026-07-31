@@ -200,14 +200,24 @@ Point `--scenario` at the file that measured this directory.
 ## A validator refuses "the context carries no ..."
 
 ```text
-the context carries no 'response', so the agent's final prose cannot be read. A
-harness older than this validator writes a context without it
+the context carries no 'response', so the agent's final prose cannot be read. A replayed
+context never carries prompt, response, trace: the first two lived in the work directory,
+and the raw stream is deliberately never archived
 ```
 
-Expected after `replay`, and it is the honest answer. The prompt and the agent's final
-prose lived in the work directory, which the system may purge, and the raw stream is
-deliberately never archived - so a replayed context cannot carry them, and a validator
-that reads one refuses **by name** instead of scoring on material it does not have.
+Expected after `replay`, and it is the honest answer. Those three cannot be reconstituted,
+so a validator that reads one refuses **by name** instead of scoring on material it does
+not have.
+
+Any *other* missing key names a different cause, because every run writes it:
+
+```text
+the context carries no 'touched', so the files the agent changed cannot be read. A harness
+older than this validator writes a context without it
+```
+
+The two are worth keeping apart. Blaming an old harness for a replayed context - the
+common case by far - sends a reader looking for an upgrade that does not exist.
 
 That named refusal is also why an archived context needs no version number: "the context
 carries no 'response'" tells a reader more than "this archive is version 1" ever could.

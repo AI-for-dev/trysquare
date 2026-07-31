@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 from . import agent as agent_mod
+from . import assay as assay_mod
 from . import scaffold as scaffold_mod
 from . import config as config_mod
 from . import measure as measure_mod
@@ -723,9 +724,9 @@ def cmd_replay(args) -> int:
 
     print("\n  trees reconstituted, each with a context beside it. Point the scenario's")
     print("  validators at those contexts - re-scoring costs no tokens.")
-    if UNREPLAYABLE:
+    if assay_mod.UNREPLAYABLE:
         print(
-            f"  a validator reading {', '.join(UNREPLAYABLE)} will refuse by name: "
+            f"  a validator reading {', '.join(assay_mod.UNREPLAYABLE)} will refuse by name: "
             f"those lived in the work directory, which is disposable by design"
         )
     return 0
@@ -917,14 +918,6 @@ def publish_rescore(scored: Rescore, scenario) -> int:
         scored.output.write_state(state)
 
     return _write_synthesis(scored.output, scenario, scored.runs)
-
-
-# What a replay cannot put back. The prompt and the agent's final prose lived in the work
-# directory, which the OS may purge; the raw stream is deliberately never archived
-# (`outputs.py:24-27`). A validator reading one of them refuses **by name**, thanks to
-# `Assay._given` - which is why no context version number is needed: "the context carries
-# no 'response'" tells a reader more than "this archive is version 1" ever could.
-UNREPLAYABLE = ("prompt", "response", "trace")
 
 
 def archived_session_dir(run_dir: Path) -> Path:

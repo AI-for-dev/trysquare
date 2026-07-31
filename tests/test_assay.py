@@ -289,6 +289,28 @@ class TestTheFakeRefusesToInvent:
             run.touched
         assert "touched" in str(raised.value)
 
+    def test_a_piece_a_replay_cannot_give_back_says_so(self):
+        """The common case, and it used to be told the wrong cause. A replayed context
+        never carries the prose, so blaming an old harness sent a reader looking for an
+        upgrade that does not exist."""
+        run = Assay({"repo": "/r", "touched": []})
+        with pytest.raises(CannotJudge) as raised:
+            run.response
+        said = str(raised.value)
+        assert "carries no 'response'" in said
+        assert "replayed context" in said
+        assert "older than this validator" not in said
+
+    def test_any_other_missing_key_still_suggests_an_older_harness(self):
+        """`touched` is written by every run, so its absence really is a stale context -
+        and the two diagnoses must not be swapped."""
+        run = Assay({"repo": "/r"})
+        with pytest.raises(CannotJudge) as raised:
+            run.touched
+        said = str(raised.value)
+        assert "older than this validator" in said
+        assert "replayed context" not in said
+
 
 ETALON = {
     "src/basket.js": "export function step() {}\n// a comment\n",

@@ -204,6 +204,18 @@ def _tool_calls(session: str):
     ]
 
 
+# What a replay cannot put back. The prompt and the agent's final prose lived in the work
+# directory, which the OS may purge; the raw stream is deliberately never archived
+# (`outputs.py:24-27`).
+#
+# Here rather than beside the command that replays, because this is the module that
+# refuses **by name** - which is why no context version number is needed: "the context
+# carries no 'response'" tells a reader more than "this archive is version 1" ever could.
+# A name-list and the code that reads it belong together, or the refusal drifts from the
+# reason it gives.
+UNREPLAYABLE = ("prompt", "response", "trace")
+
+
 class CannotJudge(Exception):
     """This run cannot be scored, which is not the same as scoring it badly.
 
@@ -419,11 +431,23 @@ class Assay:
         An absent key is never read as an empty value. An empty set means the agent
         touched nothing, which is a measurement; a missing key means nobody measured,
         which is not.
+
+        The refusal names the **likely cause**, and the two are not the same. For the
+        three keys a replay cannot put back it says so; anything else really does
+        suggest a context older than the validator reading it. Saying "older harness"
+        for a replayed context - which is the common case - sent a reader looking for
+        an upgrade that does not exist.
         """
         if key not in self._context:
             raise CannotJudge(
-                f"the context carries no {key!r}, so {what} cannot be read. A harness "
-                f"older than this validator writes a context without it"
+                f"the context carries no {key!r}, so {what} cannot be read. "
+                + (
+                    f"A replayed context never carries {', '.join(UNREPLAYABLE)}: the "
+                    f"first two lived in the work directory, and the raw stream is "
+                    f"deliberately never archived"
+                    if key in UNREPLAYABLE
+                    else "A harness older than this validator writes a context without it"
+                )
             )
         return self._context[key]
 

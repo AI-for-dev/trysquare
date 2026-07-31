@@ -16,6 +16,7 @@ from tests.test_scenario import MINIMAL
 import pytest
 
 from trysquare import cli, parity, repo
+from trysquare import assay
 from trysquare.assay import Assay, CannotJudge
 from trysquare.cli import build_parser, main
 from trysquare.scenario import parse
@@ -911,7 +912,7 @@ class TestTheReplayContext:
 
     def test_what_a_replay_cannot_give_back_is_absent_rather_than_empty(self):
         context = self.context()
-        for key in cli.UNREPLAYABLE:
+        for key in assay.UNREPLAYABLE:
             assert key not in context, key
 
     def test_a_validator_reading_a_missing_piece_refuses_by_name(self):
