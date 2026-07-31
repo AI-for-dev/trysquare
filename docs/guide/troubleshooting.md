@@ -212,3 +212,19 @@ error: [repos] neon resolves to /path/neon, which does not exist. Fix it in
 Relative paths in the config resolve against the config file, not against the current
 directory. The check touches the disk, so like the URL failures above it happens when a
 run starts rather than during a `--dry-run`.
+
+## No progress bar appears
+
+By design, in three of the four cases: output is not a terminal (piped, redirected, or
+captured by a test), `TERM=dumb`, `TRYSQUARE_NO_PROGRESS` is set, or `--no-progress` was
+passed. A bar that lands in a log file is noise in the one place somebody reads later,
+so off a terminal the output is exactly the bytes it has always been.
+
+## The cursor is gone after a hard kill
+
+`Ctrl-C` is handled - the bar restores the cursor on its way out - but a `SIGKILL` or a
+closed terminal window leaves the live display no chance to. Any terminal recovers with:
+
+```bash
+tput cnorm
+```

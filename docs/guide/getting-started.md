@@ -10,8 +10,8 @@ git clone <this repository> trysquare && cd trysquare
 uv sync                      # or: pip install -e .
 ```
 
-The tool has **no runtime dependencies**. Python >= 3.11 is the only requirement,
-because TOML parsing uses `tomllib` from the standard library.
+Python >= 3.11 is the floor, because TOML parsing uses `tomllib` from the standard
+library.
 
 Check the test suite. It runs offline and takes about a second:
 

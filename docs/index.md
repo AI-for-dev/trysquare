@@ -146,8 +146,8 @@ validity = ["delivered", "tests"]
 
 ## Requirements
 
-Python >= 3.11 and nothing else. TOML parsing is `tomllib` from the standard
-library, which is why the floor is 3.11.
+Python >= 3.11: TOML parsing is `tomllib` from the standard library, which is why
+the floor is there. `uv sync` - or `pip install -e .` - installs the rest.
 
 :::{note}
 Measuring anything also needs the agent binary (`pi`) on `PATH` and a provider you

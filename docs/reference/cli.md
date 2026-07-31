@@ -37,7 +37,31 @@ trysquare run <scenario> --output <dir> [options]
   - Fill only what produced nothing.
 * - `--dry-run`
   - Show the plan and write nothing at all.
+* - `--no-progress`
+  - Never draw the live bar. Also `TRYSQUARE_NO_PROGRESS=1`.
 ```
+
+### The record scrolls, the bar is pinned
+
+```text
+  ok  rule / off               412s  15234 in / 812 out  4 turns  0 retries
+  !!  careful ticket / high    901s  ...  timeout: no productive attempt
+  ⠹ runs ━━━━━━━━━━╸━━━━━━━━━━  23/60  elapsed 1h 12m  left 1h 55m
+```
+
+Every per-run line still prints, unchanged, above the bar: those lines are the record,
+and the bar is not. What the bar adds is the part a terminal never said - how many runs
+are left, and when the matrix is expected to land.
+
+**The estimate is the throughput since launch**, `elapsed / completed x remaining`, not
+a recent rate. Runs finish in batches the width of `--concurrency`, so a sliding-window
+estimate would swing by minutes every few seconds while the true arrival time barely
+moves. Nothing is claimed until the first run lands.
+
+**The bar is drawn only on a terminal.** Piped, redirected, or captured by a test, the
+output is exactly the bytes it was before the bar existed - no escape sequences in a log
+file. `--no-progress`, `TRYSQUARE_NO_PROGRESS=1` and `TERM=dumb` each turn it off on a
+terminal too. `NO_COLOR` does not: it asks for no colour, not for no motion.
 
 ### Overrides are announced and stamped
 
@@ -84,6 +108,7 @@ Rebuilds tables from stored measures. Costs nothing.
 
 ```bash
 trysquare render <scenario> -o <dir> [--repetitions N] [--reference CELL] [--html]
+                                     [--no-progress]
 ```
 
 Measuring and scoring are separate. When you find a scoring defect - and there were
@@ -137,7 +162,7 @@ Reconstitutes archived runs so they can be re-scored. Costs no tokens.
 
 ```bash
 trysquare replay <experiment dir or run dir> --scenario <scenario> [--config <file>]
-trysquare replay <experiment dir> --scenario <scenario> --rescore
+trysquare replay <experiment dir> --scenario <scenario> --rescore [--no-progress]
 ```
 
 Clones the etalon at its tag, applies the archived `diff.patch`, and writes a fresh

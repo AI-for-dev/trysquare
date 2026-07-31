@@ -40,6 +40,16 @@ class TestParser(unittest.TestCase):
             available, {"run", "render", "replay", "compare", "parity", "form"}
         )
 
+    def test_the_bar_can_be_refused_on_every_command_that_draws_one(self):
+        parser = build_parser()
+        self.assertFalse(parser.parse_args(["run", SCENARIO, "-o", "x"]).no_progress)
+        for argv in (
+            ["run", SCENARIO, "-o", "x", "--no-progress"],
+            ["render", SCENARIO, "-o", "x", "--no-progress"],
+            ["replay", "d", "--scenario", SCENARIO, "--no-progress"],
+        ):
+            self.assertTrue(parser.parse_args(argv).no_progress, argv[0])
+
 
 class TestDryRun(unittest.TestCase):
     def quietly(self, argv) -> int:

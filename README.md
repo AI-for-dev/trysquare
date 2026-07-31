@@ -22,12 +22,11 @@ not do the work reading as a run that worked well.**
 
 ## Requirements
 
-Python >= 3.11 and nothing else. TOML parsing is `tomllib` from the standard
-library. A measurement tool that needs an install step is a measurement tool people
-work around.
+Python >= 3.11, because TOML parsing is `tomllib` from the standard library.
+`uv sync` - or `pip install -e .` - installs the rest.
 
 ```bash
-uv run python -m unittest discover -s tests -t .     # 416 tests, no network
+uv run python -m unittest discover -s tests -t .     # 435 tests, no network
 ```
 
 Measuring anything also needs the agent binary (`pi`) on PATH and a provider you
@@ -54,8 +53,8 @@ uv run trysquare run scenarios/2x3.toml --output out
 `trysquare` is a console script, so `uv tool install .` - or `pip install -e .` in a
 virtual environment - puts the same command on PATH without `uv run` in front of it.
 `uv run trysquare --help` lists the subcommands, and `uv run trysquare <command>
---help` the flags of one. A clone that is not installed at all still runs
-everything, through `python -m trysquare`.
+--help` the flags of one. `python -m trysquare` runs the same six subcommands from
+an installed environment, which is what the tests use.
 
 ## Commands
 
@@ -274,6 +273,7 @@ trysquare/
   agent.py      the invocation, and running it                          |
   validation.py validators, blinding, preconditions                     |
   runner.py     orchestration: interleaving, concurrency, archiving      |
+  progress.py   a pinned bar for the loops that take hours               |
   cli.py        argparse, overrides, reporting                          /
 ```
 
@@ -316,5 +316,4 @@ make -C docs html          # then open docs/_build/html/index.html
   validator, the invariants and their reasoning, parity, troubleshooting
 - **Reference** - CLI, scenario schema, config schema, outputs, Python API
 
-Sphinx lives in the `docs` optional group and is never imported by the package: the
-tool itself keeps zero runtime dependencies.
+Sphinx lives in the `docs` optional group and is never imported by the package.

@@ -113,6 +113,14 @@ harness; this is what the thing being run is written with.
    :undoc-members:
 ```
 
+### `trysquare.progress`
+
+```{eval-rst}
+.. automodule:: trysquare.progress
+   :members:
+   :undoc-members:
+```
+
 ### `trysquare.cli`
 
 ```{eval-rst}
