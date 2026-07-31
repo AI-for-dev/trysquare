@@ -13,10 +13,10 @@ uv sync                      # or: pip install -e .
 Python >= 3.11 is the floor, because TOML parsing uses `tomllib` from the standard
 library.
 
-Check the test suite. It runs offline and takes about a second:
+Check the test suite. It runs offline and takes about fifteen seconds:
 
 ```bash
-uv run python -m unittest discover -s tests -t .
+uv run --group dev pytest
 ```
 
 :::{tip}

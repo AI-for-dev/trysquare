@@ -32,11 +32,19 @@ TEST_COMMAND = "python3 -m unittest discover -s tests -t ."
 
 
 def fixture_files() -> dict[str, str]:
-    """The versioned fixture, as a mapping the git helper can commit."""
+    """The versioned fixture, as a mapping the git helper can commit.
+
+    Only what is versioned. The fixture is importable Python that carries its own
+    suite, so anything that imports it - an IDE discovering tests, a stray `pytest`
+    aimed here - drops a `__pycache__` beside the sources. Swept up by the glob, the
+    bytecode becomes a file the measured agent is judged on, and the example scores
+    against a tree nobody wrote. The failure is silent and it is not hypothetical:
+    it cost ten tests once.
+    """
     return {
         str(path.relative_to(FIXTURE)): path.read_text()
         for path in sorted(FIXTURE.rglob("*"))
-        if path.is_file()
+        if path.is_file() and "__pycache__" not in path.parts
     }
 
 

@@ -18,7 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv run --python ${{ matrix.python }} python -m unittest discover -s tests -t .
+      # pytest rather than `unittest discover`, and for this job's own sake. With
+      # nothing to collect, `unittest discover` exits 5 on 3.12+ but **0** on 3.11 -
+      # so a test file gutted by a refactor reads as a green gate on the first
+      # version of this matrix. pytest exits 5 everywhere. The hole is documented
+      # from the other side in `tests/test_example.py`, where it is a thing the
+      # harness refuses to score; a gate that cannot see it is the same
+      # silence-read-as-success this tool exists to catch.
+      - run: uv run --python ${{ matrix.python }} --group dev pytest
 
   lint:
     runs-on: ubuntu-latest
