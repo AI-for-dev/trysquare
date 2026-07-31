@@ -1,0 +1,10 @@
+# Commits that moved lines without changing what they do. GitHub skips these in a blame
+# by itself; locally it takes one command, once:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only pure reformatting belongs here. A commit that changes behaviour has to stay
+# visible in a blame even when it moved lines too.
+
+# Reformat with ruff, and hold it there
+6f5ef5b8b31421ef01113d4a701d578e8116eaca
