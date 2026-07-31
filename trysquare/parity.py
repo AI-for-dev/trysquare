@@ -9,8 +9,10 @@ arose while we believed two samples had to be compared.
     layer 3  aggregation + verdict  exact   from the published per-run rows
     layer 4  launching the agent    not comparable, it samples
 
-This module owns layer 3, which needs nothing but a JSON file that already
-exists. It can therefore be verified before half of this tool is written.
+Layer 3 needs nothing but a JSON file that already exists, so it could be
+verified before half of this tool was written. Layer 2 needs a tree, so it takes
+its reconstitution from the caller: the machinery belongs to `replay`, and the
+cost of a clone per run is the caller's to declare.
 
 **Neither tool is the reference.** Two computations are compared over the same
 archived material, and the material arbitrates. A gap on an exact layer blocks,
@@ -109,6 +111,26 @@ def read_bench_measures(path: str | Path) -> dict[str, list[Run]]:
     return by_cell
 
 
+def published_by_id(path: str | Path) -> dict[str, dict]:
+    """The published rows keyed by run identifier, which is how an archive is laid out.
+
+    Rows without an identifier are dropped: they cannot be matched to anything on
+    disk, so no layer that reads the archive can say a word about them.
+    """
+    rows = json.loads(Path(path).read_text())
+    return {r["identifiant"]: r for r in rows if r.get("identifiant")}
+
+
+def archived_runs(rows: dict[str, dict], archive: str | Path) -> list[Path]:
+    """The published runs an archive can reconstitute: those holding a diff.patch.
+
+    Exposed rather than inlined so a caller can say what a re-scoring is about to
+    cost - one clone per run - without restating the rule that decides it.
+    """
+    archive = Path(archive)
+    return [archive / ident for ident in sorted(rows) if (archive / ident / "diff.patch").is_file()]
+
+
 def layer3(
     measures_path: str | Path,
     reference: str = "base",
@@ -143,13 +165,12 @@ def layer1(measures_path: str | Path, archive: str | Path) -> Report:
     from .measure import strip_session
 
     archive = Path(archive)
-    rows = json.loads(Path(measures_path).read_text())
+    rows = published_by_id(measures_path)
     published = {
-        r["identifiant"]: (r.get("input"), r.get("output"), r.get("tours"))
-        for r in rows
-        if r.get("identifiant")
+        ident: (row.get("input"), row.get("output"), row.get("tours"))
+        for ident, row in rows.items()
     }
-    cell_of = {r["identifiant"]: r.get("cellule") for r in rows if r.get("identifiant")}
+    cell_of = {ident: row.get("cellule") for ident, row in rows.items()}
 
     problems = []
     checked = 0
@@ -212,39 +233,68 @@ def layer2(
 ) -> Report:
     """Re-scores archived runs by reconstituting their trees, and compares.
 
-    `reconstitute(run_dir) -> Path` rebuilds a tree from the tag and the archived
-    diff; `validate(tree) -> dict` returns the metrics. Both are injected so this
-    stays testable and so the caller owns the cost of cloning.
+    `reconstitute(run_dir) -> Path` rebuilds the tree from the tag and the archived
+    diff and returns the context naming it; `validate(context) -> dict` returns the
+    metrics. Both are injected so this stays testable and so the caller owns the cost
+    of cloning.
 
     Costs no tokens, which is what makes "fix a signature and re-score runs already
     paid for" true rather than aspirational.
+
+    A metric no validator returns for **any** run is a statement about scope, not a
+    defect: the bench scored some metrics with a judge, whose verdict costs tokens and
+    is not in this archive to be reused. Those are named once and left out, the way
+    layer 1 leaves out `retries`. A metric returned for some runs and missing for
+    others is the opposite - the validator is unreliable - and blocks.
     """
-    archive = Path(archive)
-    rows = {
-        r["identifiant"]: r
-        for r in json.loads(Path(measures_path).read_text())
-        if r.get("identifiant")
-    }
-    problems = []
+    rows = published_by_id(measures_path)
+    runs = archived_runs(rows, archive)
+    if not runs:
+        return Report(problems=[f"no archived diff found under {archive}"])
 
-    for ident, row in rows.items():
-        directory = archive / ident
-        if not (directory / "diff.patch").is_file():
-            continue
+    problems: list[str] = []
+    absent: dict[str, int] = {}
+    agreeing = scored = compared = 0
+
+    for directory in runs:
         try:
-            tree = reconstitute(directory)
-            got = validate(tree)
+            got = validate(reconstitute(directory))
         except Exception as e:  # noqa: BLE001 - report, do not abort the layer
-            problems.append(f"{ident}: could not re-score: {type(e).__name__}: {e}")
+            problems.append(f"{directory.name}: could not re-score: {type(e).__name__}: {e}")
             continue
+        scored += 1
 
-        want = {BENCH_METRICS.get(k, k): v for k, v in (row.get("note") or {}).items()}
-        for metric, expected in want.items():
+        want = {
+            BENCH_METRICS.get(k, k): v for k, v in (rows[directory.name].get("note") or {}).items()
+        }
+        gaps = []
+        checked = 0
+        for metric, expected in sorted(want.items()):
             if metric not in got:
-                problems.append(f"{ident}/{metric}: not returned by the validator")
-            elif got[metric] != expected:
-                problems.append(f"{ident}/{metric}: bench {expected!r}, here {got[metric]!r}")
-    return Report(problems=problems)
+                absent[metric] = absent.get(metric, 0) + 1
+                continue
+            checked += 1
+            if got[metric] != expected:
+                gaps.append(f"{directory.name}/{metric}: bench {expected!r}, here {got[metric]!r}")
+        problems.extend(gaps)
+        compared += checked
+        # A run whose every published metric is out of scope agreed about nothing, and
+        # counting it as agreeing would turn an empty comparison into a reassurance.
+        if checked and not gaps:
+            agreeing += 1
+
+    if not compared:
+        problems.append("no published metric came back: these validators compared nothing")
+
+    observed = [f"{agreeing}/{scored} runs re-score to their published metrics exactly"]
+    for metric, count in sorted(absent.items()):
+        if count == scored:
+            observed.append(f"{metric}: no validator here returns it, so it is out of scope")
+        else:
+            problems.append(
+                f"{metric}: returned for {scored - count} of {scored} runs and missing on the rest"
+            )
+    return Report(observed=observed, problems=problems)
 
 
 def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:

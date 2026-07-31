@@ -284,7 +284,5 @@ Stated rather than left to be discovered.
 
 - **A judge is not re-scored.** `replay --rescore` re-runs script validators and reuses the
   archived judge verdict, because re-running a judge costs tokens. Re-scoring a judged
-  metric therefore means measuring again.
-- **Parity layer 2 is demonstrated but is not a command.** Two archived runs were
-  reconstituted and re-scored by hand and matched exactly; `parity --archive` runs layers
-  3 and 1.
+  metric therefore means measuring again. Parity layer 2 inherits the limit: it re-scores
+  what a script can score, and names the judged metrics as out of scope.

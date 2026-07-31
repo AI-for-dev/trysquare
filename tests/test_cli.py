@@ -1195,3 +1195,128 @@ class TestReplayRescore:
         (self.experiment / "measures.json").write_text(json.dumps(rows))
         self.replay("--rescore")
         assert "empty" == self.measures()["bbbbbbbb"]["state"]
+
+
+@unittest.skipUnless(shutil.which("git"), "git is not on PATH")
+class TestParityLayer2:
+    """Layer 2 as a command: reconstitute the bench's runs, re-score, compare.
+
+    The archive here is the **bench's** layout, which is not this tool's: rows keyed
+    `identifiant` with their scoring under a French `note`, and the sessions at the top
+    of the run directory rather than under `session/`.
+
+    Offline and free of tokens throughout, which is the property that makes layer 2
+    exact: a local repository, a real patch, a script validator, no judge.
+    """
+
+    @pytest.fixture(autouse=True)
+    def a_bench_archive(self):
+        self.home = Path(tempfile.mkdtemp())
+        self.source = a_repo({"a.js": "one\n", "game/b.js": "two\n"})
+        (self.home / "trysquare.toml").write_text(
+            f'[repos]\nmy-repo = "{self.source}"\n[defaults]\nworkdir = "{self.home / "work"}"\n'
+        )
+        self.scenario = self.home / "s.toml"
+        self.scenario.write_text(SCENARIO_TOML)
+        validator = self.home / "v.py"
+        validator.write_text(TREE_DEPENDENT)
+        validator.chmod(0o755)
+        self.archive = self.home / "traces"
+
+    def patch(self, content: str) -> str:
+        tree = Path(tempfile.mkdtemp()) / "tree"
+        repo.clone(self.source, "etalon-v1", tree)
+        (tree / "a.js").write_text(content)
+        return repo.diff(tree)
+
+    def published(self, note: dict, content: str = "overflow\n") -> Path:
+        """One archived run, and the row the bench published for it.
+
+        `tests` is always published and never re-scored: the bench ran a test suite this
+        scenario does not declare, which is the out-of-scope case in its plainest form.
+        `tests` and `livre` are the bench's validity condition, without which layer 3
+        has no run left to aggregate, so both are always published.
+        """
+        note = {"tests": True, "livre": True, **note}
+        run_dir = self.archive / "base-0"
+        run_dir.mkdir(parents=True)
+        (run_dir / "diff.patch").write_text(self.patch(content))
+        (run_dir / "attempt-1.jsonl").write_text("{}\n")
+        measures = self.home / "bench.json"
+        measures.write_text(
+            json.dumps(
+                [
+                    {
+                        "identifiant": "base-0",
+                        "cellule": "base",
+                        "input": 0,
+                        "output": 0,
+                        "tours": 0,
+                        "note": note,
+                    }
+                ]
+            )
+        )
+        return measures
+
+    def parity(self, measures: Path, *extra: str) -> tuple[int, str]:
+        return compared(
+            [
+                "parity",
+                str(measures),
+                "--archive",
+                str(self.archive),
+                "--config",
+                str(self.home / "trysquare.toml"),
+                "--reference",
+                "base",
+                *extra,
+            ]
+        )
+
+    def test_a_re_scoring_that_agrees_says_so_and_exits_zero(self):
+        measures = self.published({"debordement": True, "livre": True})
+        code, said = self.parity(measures, "--scenario", str(self.scenario))
+        assert code == 0, said
+        assert "1/1 runs re-score to their published metrics exactly" in said
+
+    def test_a_wrong_published_value_is_named_and_blocks(self):
+        """The whole point of an exact layer: the gap names the run, the metric and
+        both computations, so a reader can decide which of the two is wrong."""
+        measures = self.published({"debordement": False, "livre": True})
+        code, said = self.parity(measures, "--scenario", str(self.scenario))
+        assert code == 1
+        assert "base-0/overflow: bench False, here True" in said
+
+    def test_the_scoring_reads_the_reconstituted_tree(self):
+        """Not the archive: the diff was just applied, so the tree is the authority.
+        A run whose diff changed nothing must score differently from one that did."""
+        measures = self.published({"debordement": True}, content="one\n")
+        code, said = self.parity(measures, "--scenario", str(self.scenario))
+        assert code == 1
+        assert "base-0/overflow: bench True, here False" in said
+        assert "base-0/delivered: bench True, here False" in said
+
+    def test_the_bench_session_is_found_where_the_bench_put_it(self):
+        """The bench kept sessions at the top of the run directory. A metric of process
+        reads them, so the layout is read rather than assumed."""
+        measures = self.published({"debordement": True, "livre": True})
+        self.parity(measures, "--scenario", str(self.scenario))
+        context = json.loads(
+            next((self.home / "work" / "parity").glob("*/validation/context.json")).read_text()
+        )
+        assert list(Path(context["session"]).glob("*.jsonl"))
+
+    def test_a_metric_the_bench_judged_is_out_of_scope_rather_than_a_gap(self):
+        """`apiStable` was scored by a judge, whose verdict costs tokens and is not in
+        this archive. Layer 2 names it once instead of reporting sixty disagreements."""
+        measures = self.published({"debordement": True, "apiStable": True})
+        code, said = self.parity(measures, "--scenario", str(self.scenario))
+        assert code == 0, said
+        assert "api_stable: no validator here returns it, so it is out of scope" in said
+
+    def test_without_a_scenario_layer_2_says_what_it_needs(self):
+        measures = self.published({"debordement": True, "livre": True})
+        code, said = self.parity(measures)
+        assert code == 0
+        assert "layer 2 needs --scenario" in said

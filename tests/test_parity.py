@@ -1,4 +1,4 @@
-"""Layer 3 of parity: aggregation and verdict, checked exactly.
+"""The exact layers of parity: scoring and aggregation, checked without a token.
 
 The fixture is the bench's own published measures for the 2x3 matrix of module
 2.1 - 60 per-run rows, 6 cells of 10. The expected values below are what the
@@ -11,9 +11,17 @@ one worth remembering: this harness is wrong, or the bench was wrong and a
 published number needs correcting, or the archive is missing something.
 """
 
+import json
 from pathlib import Path
 
-from trysquare.parity import compare, layer3, read_bench_measures
+from trysquare.parity import (
+    archived_runs,
+    compare,
+    layer2,
+    layer3,
+    published_by_id,
+    read_bench_measures,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bench_2x3_n10.json"
 
@@ -115,3 +123,97 @@ class TestLayer3:
         row = next(r for r in rows if r["cell"] == "+AGENTS.md")
         overflow = next(c for c in row["measures"] if c["measure"] == "overflow")
         assert overflow["state"] == "inconclusive"
+
+
+class TestLayer2:
+    """Scoring, with the reconstitution injected so the layer itself stays offline.
+
+    What the wiring does with a real repository and a real validator is checked end to
+    end in `tests/test_cli.py::TestParityLayer2`.
+    """
+
+    def archive(self, tmp_path, notes: dict) -> tuple[Path, Path]:
+        """A mini bench archive: one row and one diff per run, French keys and all."""
+        archive = tmp_path / "archive"
+        rows = []
+        for ident, note in notes.items():
+            (archive / ident).mkdir(parents=True)
+            (archive / ident / "diff.patch").write_text("")
+            rows.append({"identifiant": ident, "cellule": "base", "note": note})
+        measures = tmp_path / "m.json"
+        measures.write_text(json.dumps(rows))
+        return measures, archive
+
+    def scored(self, tmp_path, notes: dict, metrics: dict):
+        measures, archive = self.archive(tmp_path, notes)
+        return layer2(measures, archive, lambda run_dir: run_dir, lambda context: metrics)
+
+    def test_agreement_is_exact_and_counted(self, tmp_path):
+        report = self.scored(
+            tmp_path,
+            {"base-0": {"debordement": 40, "livre": True}},
+            {"overflow": 40, "delivered": True},
+        )
+        assert report.holds
+        assert "1/1 runs re-score" in report.observed[0]
+
+    def test_a_wrong_published_value_is_named_with_both_sides(self, tmp_path):
+        """Named, not counted: a gap is only actionable if a reader can see which run,
+        which metric, and what the two computations said."""
+        report = self.scored(
+            tmp_path,
+            {"base-0": {"debordement": 40}},
+            {"overflow": 90},
+        )
+        assert not report.holds
+        assert "base-0/overflow: bench 40, here 90" in report.problems
+
+    def test_a_metric_no_validator_returns_is_out_of_scope_not_a_gap(self, tmp_path):
+        """The bench scored some metrics with a judge, whose verdict costs tokens and is
+        not in this archive. Reporting those as disagreements would be sixty lies."""
+        report = self.scored(
+            tmp_path,
+            {"base-0": {"debordement": 40, "apiStable": True}},
+            {"overflow": 40},
+        )
+        assert report.holds
+        assert any("api_stable" in line and "out of scope" in line for line in report.observed)
+
+    def test_a_metric_missing_on_some_runs_only_blocks(self, tmp_path):
+        """The opposite case: a validator that answers for one run and not the next is
+        unreliable, and that is a defect rather than a scope statement."""
+        measures, archive = self.archive(
+            tmp_path, {"base-0": {"debordement": 40}, "base-1": {"debordement": 40}}
+        )
+        answers = iter(({"overflow": 40}, {}))
+        report = layer2(measures, archive, lambda d: d, lambda c: next(answers))
+        assert not report.holds
+        assert any("missing on the rest" in p for p in report.problems)
+
+    def test_a_reconstitution_that_fails_is_reported_and_the_layer_goes_on(self, tmp_path):
+        measures, archive = self.archive(
+            tmp_path, {"base-0": {"debordement": 40}, "base-1": {"debordement": 40}}
+        )
+
+        def reconstitute(run_dir: Path) -> Path:
+            if run_dir.name == "base-0":
+                raise OSError("the diff does not apply")
+            return run_dir
+
+        report = layer2(measures, archive, reconstitute, lambda c: {"overflow": 40})
+        assert any("base-0: could not re-score" in p for p in report.problems)
+        assert "1/1 runs re-score" in report.observed[0]
+
+    def test_a_comparison_of_nothing_is_not_an_agreement(self, tmp_path):
+        """Every published metric out of scope means the layer compared nothing, and
+        "1/1 runs re-score exactly" would read as a reassurance it did not earn."""
+        report = self.scored(tmp_path, {"base-0": {"apiStable": True}}, {"overflow": 40})
+        assert not report.holds
+        assert any("compared nothing" in p for p in report.problems)
+
+    def test_a_run_without_a_diff_is_not_in_scope(self, tmp_path):
+        measures, archive = self.archive(tmp_path, {"base-0": {"debordement": 40}})
+        (archive / "base-0" / "diff.patch").unlink()
+        assert archived_runs(published_by_id(measures), archive) == []
+        report = layer2(measures, archive, lambda d: d, lambda c: {})
+        assert any("no archived diff" in p for p in report.problems)

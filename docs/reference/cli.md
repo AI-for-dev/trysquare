@@ -313,11 +313,19 @@ Checks this harness against the tool it replaces. See {doc}`../guide/parity`.
 
 ```bash
 trysquare parity <bench measures.json> [--archive <traces dir>]
+trysquare parity <bench measures.json> --archive <traces dir> --scenario <scenario>
 trysquare parity --smoke <experiment dir> [--workdir <dir>]
 ```
 
-Without `--archive`, layer 3 only. With it, layers 3 and 1. With `--smoke`, layer 4's
-mechanical checks over a matrix you measured.
+Layers run cheapest first: layer 3 always, layer 1 with `--archive`, layer 2 with
+`--scenario` as well. With `--smoke`, layer 4's mechanical checks over a matrix you
+measured. The command exits non-zero when an exact layer disagrees.
+
+`--scenario` is what layer 2 re-scores with: each archived run is reconstituted from the
+tag and its `diff.patch`, then that scenario's **script** validators run against the
+tree. A judge is not run - its verdict costs tokens, and layer 2 costs none - so a metric
+only a judge can produce is named as out of scope rather than reported as a
+disagreement. Expect one clone of the etalon per run.
 
 ## `form`
 
