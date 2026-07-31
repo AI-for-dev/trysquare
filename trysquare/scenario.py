@@ -303,6 +303,7 @@ def _check_test_command(task: dict, validators: tuple[Validator, ...], where: st
     for i, step in enumerate(task.get("prepare", ())):
         _check_one_command(step, f"[task].prepare[{i}]", where)
 
+    _check_artefacts(task, where)
     command = task.get("test_command")
 
     if command is None:
@@ -319,6 +320,36 @@ def _check_test_command(task: dict, validators: tuple[Validator, ...], where: st
         return
 
     _check_one_command(command, "[task].test_command", where)
+
+
+def _check_artefacts(task: dict, where: str) -> None:
+    """What running the task leaves behind that is not the agent's work.
+
+    Declared, for the same reason `test_command` is declared and never detected: only the
+    author of the task knows which paths in this repository are by-products. A built-in
+    list would be a guess about somebody else's language, and it would eventually hide a
+    file an agent really did write.
+
+    Measured on a real matrix, which is why this key exists at all. An agent asked to fix
+    a defect ran the declared suite to check itself, leaving `__pycache__/*.pyc` in the
+    clone; scope scoring counted the bytecode as work and `in_scope` was false in every
+    run of every cell. The criterion saturated at zero and six paid runs concluded
+    nothing - and not at random, since the runs that scored badly were the ones where the
+    agent verified itself.
+    """
+    declared = task.get("artefacts")
+    if declared is None:
+        return
+    if isinstance(declared, str) or not isinstance(declared, (list, tuple)):
+        raise ScenarioError(
+            f"{where}[task].artefacts must be a list of path patterns - got {declared!r}.\n"
+            f'  artefacts = ["__pycache__", "*.pyc"]'
+        )
+    for pattern in declared:
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ScenarioError(
+                f"{where}[task].artefacts holds {pattern!r}: every entry is a path pattern"
+            )
 
 
 def _check_one_command(command, field: str, where: str) -> None:

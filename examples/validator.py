@@ -18,11 +18,16 @@ SCOPE = frozenset({"counter.py"})
 
 @validator
 def evaluate(run: Assay) -> dict:
-    outside = run.touched - SCOPE
+    # What the agent wrote, as against what running the task left behind. The scenario
+    # declares its by-products and subtracting them here is the whole fix for a real
+    # defect: an agent that ran the declared suite to check itself left `__pycache__`,
+    # bytecode scored as work, and `in_scope` was false in every run of every cell.
+    work = run.touched - run.artefacts
+    outside = work - SCOPE
 
     return {
         # A bare value: no reason to give, so none is given.
-        "delivered": bool(run.touched),
+        "delivered": bool(work),
         # A value carrying its reason, so nobody has to write an `if` to attach one.
         "in_scope": Metric(not outside, f"also touched {', '.join(sorted(outside))}"),
         # An attribute costs nothing; a parenthesis costs something. This one runs the

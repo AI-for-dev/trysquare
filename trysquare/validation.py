@@ -80,6 +80,7 @@ def write_context(
     response_file: Path | None = None,
     test_command: str | None = None,
     prepare: list[str] | None = None,
+    artefacts: list[str] | None = None,
     touched: list[str] | None = None,
     files: list[str] | None = None,
     declared: tuple[str, ...] = (),
@@ -111,6 +112,12 @@ def write_context(
     from an empty command: it says this experiment scores no test suite, which is
     something a validator may need to refuse over rather than score.
 
+    `artefacts` names what running that task leaves behind and is not the agent's work -
+    declared for the same reason the suite is, since only the task's author knows which
+    paths in this repository are by-products. It filters what a verdict rests on and never
+    what is recorded: `touched` stays complete, because hiding a measurement is the other
+    dishonesty this harness refuses.
+
     `touched` and `files` are the two facts every validator wanted and each computed for
     itself. `repo.changed_files`, `repo.etalon_files` and `repo.etalon_file` had held
     that knowledge all along, and three shipped validators reimplemented it with a raw
@@ -141,6 +148,11 @@ def write_context(
     # failures mean different things: one says nobody judged, the other is a measurement.
     if prepare:
         context["prepare"] = list(prepare)
+    # The patterns the scenario declared for what running the task leaves behind. Like
+    # `test_command`, a property of the task and identical in every cell, so it tells a
+    # blind judge nothing about which configuration produced the work in front of it.
+    if artefacts:
+        context["artefacts"] = list(artefacts)
     # Written even when empty, and that is the one place where absent and empty must not
     # be confused: an agent that changed nothing is a **result**, and a validator has to
     # be able to read it. A missing key means nobody looked.
