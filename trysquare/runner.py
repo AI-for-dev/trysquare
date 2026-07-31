@@ -674,7 +674,14 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
 
 
 def execute(plan: Plan, on_run=None) -> list[Run]:
-    """Runs the plan, writing state as it goes so an interruption is resumable.
+    """Runs the plan, writing state and measures as it goes so an interruption is resumable.
+
+    The two are written **together**, run by run. Writing the ledger alone was enough to
+    resume and not enough to keep what had been paid for: a Ctrl-C left runs marked
+    `valid` in `state.json` with no row in `measures.json`, and those runs were then
+    out of reach - `--resume` relaunches only what produced nothing, and `replay` has no
+    row to re-score. The matrix went on to publish as complete over fewer runs than were
+    measured, and nothing in the output said so.
 
     The repository is pinned **first**, before a single directory is created. After
     `output.prepare()` an unreachable URL would leave behind an experiment directory
@@ -695,27 +702,31 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     # counter watching this loop would sit still and then jump by a whole batch.
     order = {rid: i for i, (rid, _) in enumerate(plan.todo)}
     done: list[Run] = []
+
+    # Where each row goes, decided before any run finishes, because rows are now written
+    # many times. The row order of `measures.json` is not cosmetic: `verdict.gap_interval`
+    # resamples with `random.choices`, which draws **by index**, so two identical matrices
+    # whose rows landed in a different order would publish different bounds under the same
+    # fixed seed. Rows already archived keep their place and this pass follows in plan
+    # order - the order runs complete in is a race, the order they were planned in is not.
+    archived = {r.id: r for r in plan.output.read_measures()}
+    place = {run_id: i for i, run_id in enumerate(archived)}
+    for run_id, _ in plan.todo:
+        place.setdefault(run_id, len(place))
+
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = {pool.submit(one_run, plan, rid, meta): rid for rid, meta in plan.todo}
         for future in as_completed(futures):
             run = future.result()
             done.append(run)
+            archived[run.id] = run
             plan.output.record(state, run.id, run)
             plan.output.write_state(state)
+            plan.output.write_measures(sorted(archived.values(), key=lambda r: place[r.id]))
             if on_run:
                 on_run(run)
 
-    # Back into plan order before anything is written. The row order of `measures.json`
-    # is not cosmetic: `verdict.gap_interval` resamples with `random.choices`, which
-    # draws **by index**, so two identical matrices whose rows landed in a different
-    # order would publish different bounds under the same fixed seed. The order runs
-    # complete in is a race; the order they were planned in is not.
     done.sort(key=lambda r: order.get(r.id, len(order)))
-
-    existing = {r.id: r for r in plan.output.read_measures()}
-    for run in done:
-        existing[run.id] = run
-    plan.output.write_measures(list(existing.values()))
     plan.output.summarise(state)
     plan.output.write_state(state)
     return done

@@ -37,7 +37,7 @@ from . import runner as runner_mod
 from . import table as table_mod
 from . import validation as validation_mod
 from .measure import EMPTY, Run, VALID
-from .outputs import SESSION, Output, incomplete_note
+from .outputs import SESSION, Output, incomplete_note, unmeasured_note
 from .scenario import ScenarioError, load as load_scenario
 
 # Overrides that change what is measured. They enter the directory name, so they
@@ -534,6 +534,14 @@ def _write_synthesis(
     if note:
         print(f"\n  {note}")
         return 0
+
+    # After the incompleteness check, because a matrix still missing runs is a state
+    # rather than a fault. A ledger and a measures file that disagree is a fault: it
+    # would publish a table over fewer runs than were paid for, with the right header.
+    lost = unmeasured_note(state, runs) if state else ""
+    if lost:
+        print(f"\nerror: {lost}", file=sys.stderr)
+        return 1
 
     by_cell: dict[str, list[Run]] = {}
     for r in runs:

@@ -479,7 +479,7 @@ class TestCompletionOrder:
     publish different bounds under the same fixed seed. A race must not reach a verdict.
     """
 
-    def plan_and_runs(self):
+    def plan_and_runs(self, watch=None):
         import time
         import unittest.mock
 
@@ -511,11 +511,19 @@ class TestCompletionOrder:
             )
 
         reported = []
+
+        def report(run):
+            reported.append(run)
+            if watch is not None:
+                # The plan is handed over, so a watcher can read what is on disk at
+                # the exact moment a run is reported.
+                watch(plan, run)
+
         with (
             unittest.mock.patch.object(runner, "prepare_source"),
             unittest.mock.patch.object(runner, "one_run", side_effect=slowest_first),
         ):
-            done = runner.execute(plan, on_run=reported.append)
+            done = runner.execute(plan, on_run=report)
         return plan, done, reported
 
     def test_measures_keep_plan_order_whatever_the_completion_order(self):
@@ -529,6 +537,34 @@ class TestCompletionOrder:
         assert [r.id for r in reported] == [rid for rid, _ in reversed(plan.todo)], (
             "reporting followed submission order, so the slowest run gated the rest"
         )
+
+    def test_a_finished_run_is_in_measures_before_the_next_one_is_reported(self):
+        """What an interrupt keeps. Measured on a real matrix: a Ctrl-C left two runs
+        `valid` in `state.json` with no row in `measures.json`, and they were then
+        unreachable - `--resume` skips what produced something - so the matrix
+        published `complete` over six runs of the eight that were paid for."""
+        on_disk = {}
+
+        def watch(plan, run):
+            on_disk[run.id] = {r.id for r in plan.output.read_measures()}
+
+        self.plan_and_runs(watch=watch)
+        for run_id, measured in on_disk.items():
+            assert run_id in measured, f"{run_id} was reported before its row was written"
+
+    def test_measures_keep_plan_order_at_every_intermediate_write(self):
+        """Rows are written many times now, and every one of them has to be ordered:
+        `verdict.gap_interval` draws by index, so a matrix read between two runs must
+        not be in a different order from the same matrix read at the end."""
+        snapshots = []
+
+        def watch(plan, _run):
+            snapshots.append([r.id for r in plan.output.read_measures()])
+
+        plan, _, _ = self.plan_and_runs(watch=watch)
+        planned = [rid for rid, _ in plan.todo]
+        for rows in snapshots:
+            assert rows == [rid for rid in planned if rid in set(rows)]
 
 
 class TestInstalledCommand:
