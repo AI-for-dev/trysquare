@@ -84,7 +84,9 @@ html_title = "trysquare"
 # currentColor would not have helped anyway - it does not reach an SVG referenced as an
 # image, so a monochrome file would go black in both themes.
 html_favicon = "_static/logo/trysquare-tile.svg"
-html_css_files = ["custom.css"]
+# cheatsheet.css is loaded on every page and inert on all but one: every selector in
+# it is under `.ts-sheet`, which only the cheat sheet carries.
+html_css_files = ["custom.css", "cheatsheet.css"]
 
 # Furo's variables, pointed at the palette `_static/custom.css` declares. The map lives
 # here rather than in the stylesheet because furo emits it in an inline <style> after every

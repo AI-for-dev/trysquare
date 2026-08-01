@@ -24,6 +24,7 @@ import math
 import re
 import statistics
 import sys
+import textwrap
 from pathlib import Path
 
 from . import agent as agent_mod
@@ -40,7 +41,7 @@ from . import table as table_mod
 from . import validation as validation_mod
 from .measure import EMPTY, Run, VALID, counted
 from .verdict import plain
-from .outputs import SESSION, Output, incomplete_note, unmeasured_note
+from .outputs import DIFF, SESSION, Output, archived_run_dirs, incomplete_note, unmeasured_note
 from .scenario import ScenarioError, load as load_scenario
 
 # Overrides that change what is measured. They enter the directory name, so they
@@ -103,6 +104,14 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--timeout", type=int, help="override, recorded in the state")
     run.add_argument(
         "--only", action="append", default=[], help="restrict to these cells (repeatable)"
+    )
+    run.add_argument(
+        "--group-by-cell",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="file each run under a directory named for its cell, or with --no- keep "
+        "runs/<id> flat and opaque. The default is grouped, and blind when a form "
+        "validator says a human scores by hand",
     )
     run.add_argument("--resume", action="store_true", help="fill only what produced nothing")
     run.add_argument(
@@ -233,6 +242,7 @@ def cmd_run(args) -> int:
         overrides=overrides,
         only=tuple(args.only),
         resume=args.resume,
+        grouped=args.group_by_cell,
     )
 
     print(f"{scenario.title or scenario.name}")
@@ -243,6 +253,9 @@ def cmd_run(args) -> int:
         # under $TMPDIR, which says nothing about what is about to be measured.
         print(f"  pinned at {plan.repo_path} (cloned on the first run)")
     print(f"  output {plan.output.directory}")
+    print(f"  {_layout_line(plan.output, scenario)}")
+    if unblinded := _unblinded_form(plan.output, scenario):
+        print(f"  ! {unblinded}")
     for note in plan.notes:
         print(f"  ! {note}")
     for line in _blindness_lines(plan):
@@ -409,6 +422,29 @@ def _blindness_lines(plan) -> list[str]:
     return describe_blindness(plan.blindness, len(plan.scenario.cells))
 
 
+def _layout_line(output: Output, scenario) -> str:
+    """Where the runs land, said at launch: a reader looks for a diff by cell or by id."""
+    if output.grouped:
+        return "runs/<cell>/<id>, grouped by cell"
+    hand = " - a form validator scores by hand" if scenario.manual_metrics else ""
+    return f"runs/<id>, flat and opaque{hand}"
+
+
+def _unblinded_form(output: Output, scenario) -> str:
+    """What a grouped tree owes its operator when a human is the one scoring.
+
+    Not a refusal: grouping is asked for on purpose, and exploring a matrix before
+    anybody scores it is exactly when it helps. But a form whose paths name the cell
+    is not a blind form, and it may not read as one.
+    """
+    if not (output.grouped and scenario.manual_metrics):
+        return ""
+    return (
+        "runs are grouped by cell, so this scenario's form names the configuration "
+        "in every path: whoever fills it can see which cell they are scoring"
+    )
+
+
 # --- init --------------------------------------------------------------------
 
 
@@ -563,12 +599,15 @@ def _export_sessions(output: Output, runs: list[Run], no_progress: bool = False)
     return 0
 
 
-def session_links(output: Output, runs: list[Run]) -> list[tuple[str, str, list[str]]]:
+def session_links(output: Output, runs: list[Run]) -> list[tuple[str, str, str, list[str]]]:
     """Each run's archived session pages, labelled by cell and ordered like the tables.
 
     The cell order is the order the cells first appear in the measures, which is the
     order the plan launched them in and therefore the order every other table shows -
     read from the material rather than restated here.
+
+    Each run carries the path its directory actually has, since that is what a link has
+    to point at and only the output knows the layout.
     """
     cells: dict[str, int] = {}
     for run in runs:
@@ -577,10 +616,13 @@ def session_links(output: Output, runs: list[Run]) -> list[tuple[str, str, list[
     found = [
         (run, names)
         for run in runs
-        if (names := [p.name for p in sorted((output.runs_dir / run.id / SESSION).glob("*.html"))])
+        if (names := [p.name for p in sorted((output.location(run.id) / SESSION).glob("*.html"))])
     ]
     found.sort(key=lambda pair: (cells[pair[0].cell], pair[0].repetition))
-    return [(f"{run.cell} #{run.repetition}", run.id, names) for run, names in found]
+    return [
+        (f"{run.cell} #{run.repetition}", run.id, output.relative_run(run.id), names)
+        for run, names in found
+    ]
 
 
 def _write_synthesis(
@@ -672,13 +714,7 @@ def cmd_replay(args) -> int:
     source = runner_mod.prepare_source(config, scenario.task["repo"], scenario.task["etalon"])
 
     directory = args.directory
-    runs = (
-        [directory]
-        if (directory / "diff.patch").is_file()
-        else sorted(d for d in (directory / "runs").iterdir() if d.is_dir())
-        if (directory / "runs").is_dir()
-        else []
-    )
+    runs = [directory] if (directory / DIFF).is_file() else archived_run_dirs(directory)
     if not runs:
         print(f"error: no archived run found under {directory}", file=sys.stderr)
         return 1
@@ -1189,7 +1225,7 @@ def cmd_form(args) -> int:
     if args.ingest:
         return _ingest_form(output, runs, args.ingest)
 
-    manual = [m for v in scenario.validators if v.mode == "form" for m in v.metrics]
+    manual = scenario.manual_metrics
     if not manual:
         print("this scenario declares no form validator")
         return 0
@@ -1203,17 +1239,33 @@ def cmd_form(args) -> int:
     order = sorted(runs, key=lambda r: r.id)
     random.Random(scenario.verdict.get("seed", 20260729)).shuffle(order)
 
+    # In the file as well as on the terminal, when the tree names the cells: the file is
+    # what reaches whoever scores, and a form that reads as blind while its paths name
+    # the configuration is the defect this warning exists for.
+    unblinded = _unblinded_form(output, scenario)
+    preamble = (
+        f"NOT BLIND: {unblinded}."
+        if unblinded
+        else "Shuffled, and cell names are withheld on purpose: do not try to work out "
+        "which configuration you are scoring."
+    )
     lines = [
         f"# Manual scoring for {scenario.name}",
-        "",
-        "Shuffled, and cell names are withheld on purpose: do not try to work out",
-        "which configuration you are scoring. An absent key means not yet filled,",
-        "so this file parses at any point.",
+        "#",
+        # Commented, every line of it: this file is read back by `--ingest`, and prose
+        # TOML cannot parse is a form that cannot be handed in.
+        *(
+            f"# {line}"
+            for line in textwrap.wrap(
+                f"{preamble} An absent key means not yet filled, so this file parses at any point.",
+                84,
+            )
+        ),
         "",
     ]
     for r in order:
         lines.append(f"[run.{r.id}]")
-        lines.append(f'diff = "runs/{r.id}/diff.patch"')
+        lines.append(f'diff = "{output.relative_run(r.id)}/{DIFF}"')
         for metric in manual:
             lines.append(f"# {metric} =")
         lines.append("")
@@ -1221,6 +1273,8 @@ def cmd_form(args) -> int:
     path = output.directory / f"form-{scenario.name}.toml"
     path.write_text("\n".join(lines))
     print(f"written {path}  ({counted(len(order), 'run')}, metrics: {', '.join(manual)})")
+    if unblinded:
+        print(f"  ! {unblinded}")
     return 0
 
 

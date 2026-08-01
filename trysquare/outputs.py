@@ -17,10 +17,22 @@ The layout, as a literal block so the underscores are not read as markup::
       state.json        cells, runs, valid / empty / failed, attempt counters
       measures.json     one line per run
       synthesis.md      scores, costs, gaps and verdicts, written when complete
-      runs/<id>/
+      runs/<cell>/<id>/           grouped, or runs/<id>/ when the tree is blind
         context.json  configuration.json  diff.patch
         session/*.jsonl          the agent's per-message record, one file per attempt
         validation/<mode>.json   validation/<mode>.stderr
+
+`runs/` takes one of two layouts, and which one is a property of the tree rather than
+of the measurement: a run id is an opaque hash, so a cell directory is the difference
+between reading a diff and looking a hash up first. Blind is the layout that costs
+something - a human filling a scoring form who knows which configuration they are
+grading grades it better - so a scenario declaring a `form` validator is blind by
+default and every other one is grouped. `Output` settles it once and is the only
+place a run's path is built.
+
+The layout is recorded in the state and deliberately *not* in the directory name: it
+changes where bytes land, not what is measured, so it is not part of the experiment's
+identity.
 
 The session files are the agent's own trace, copied here so it outlives the work
 directory - which is disposable by design and which the OS may purge. The raw event
@@ -43,6 +55,16 @@ STATE = "state.json"
 MEASURES = "measures.json"
 SYNTHESIS = "synthesis.md"
 SESSION = "session"
+RUNS = "runs"
+DIFF = "diff.patch"
+CONFIGURATION = "configuration.json"
+VALIDATION = "validation"
+# What tells a run's directory from a cell's, whatever the run managed to produce.
+RUN_MARKERS = (DIFF, CONFIGURATION, SESSION, VALIDATION)
+
+# The two layouts `runs/` can take, as they are written in the state.
+BY_CELL = "by-cell"
+BLIND = "blind"
 
 MISSING = "missing"
 
@@ -95,6 +117,86 @@ def experiment_name(scenario, repetitions: int | None = None) -> str:
     return "_".join(slug(p) for p in parts)
 
 
+def cell_dir(cell: str) -> str:
+    """One path component per cell.
+
+    A grid cell is named by joining its axis values with ` / `, which `slug` alone
+    would turn into `nothing---off`. The separator becomes one underscore, as in the
+    experiment's own directory name.
+    """
+    return slug(str(cell).replace(" / ", "_"))
+
+
+def run_location(runs_dir: Path, run_id_: str, cell: str | None) -> Path:
+    """Where one run's directory is. The only rule, so both layouts have one author.
+
+    `cell` is `None` for a blind tree, and also for an id the scenario does not plan -
+    a tree written under another scenario, whose runs have no cell here to be filed
+    under and so stay at the root.
+    """
+    return runs_dir / cell_dir(cell) / run_id_ if cell else runs_dir / run_id_
+
+
+def is_run_dir(directory: Path) -> bool:
+    """Whether a directory is a run's rather than a cell's.
+
+    By what a run leaves behind, because a cell directory holds nothing but run
+    directories. A run that produced nothing still archives its session, and one that
+    failed before its diff still holds its validation, so no single marker covers them
+    all - and a run with none of these is a directory with nothing in it to read.
+    """
+    return any((directory / marker).exists() for marker in RUN_MARKERS)
+
+
+def sniff_layout(runs_dir: Path) -> str | None:
+    """The layout a tree already has, read from its shape. `None` when it has none.
+
+    Read rather than assumed because a tree whose ledger was lost is still a tree
+    somebody wants to render, and guessing wrong there does not fail loudly - it
+    reports missing sessions for runs that are sitting on disk.
+    """
+    if not runs_dir.is_dir():
+        return None
+    for child in sorted(p for p in runs_dir.iterdir() if p.is_dir()):
+        if is_run_dir(child):
+            return BLIND
+        if any(is_run_dir(grandchild) for grandchild in child.iterdir() if grandchild.is_dir()):
+            return BY_CELL
+    return None
+
+
+def ledger_run_dirs(experiment: Path, state: dict) -> dict[str, Path]:
+    """Where each run of a ledger sits, in the layout that ledger records.
+
+    For a reader that has the state in hand and wants the runs it names, rather than
+    whatever directories happen to be there.
+    """
+    runs_dir = experiment / RUNS
+    grouped = (state.get("layout") or sniff_layout(runs_dir)) == BY_CELL
+    return {
+        rid: run_location(runs_dir, rid, meta.get("cell") if grouped else None)
+        for rid, meta in state.get("runs", {}).items()
+    }
+
+
+def archived_run_dirs(experiment: Path) -> list[Path]:
+    """Every run directory under an experiment, in either layout.
+
+    The leaf name is the run id in both, so a caller can still identify a run by the
+    directory it reads - which is how a re-scoring finds the row to rewrite.
+    """
+    runs_dir = experiment / RUNS
+    if not runs_dir.is_dir():
+        return []
+    found = []
+    for child in sorted(p for p in runs_dir.iterdir() if p.is_dir()):
+        if is_run_dir(child):
+            found.append(child)
+        else:
+            found.extend(sorted(p for p in child.iterdir() if p.is_dir() and is_run_dir(p)))
+    return found
+
+
 def run_id(scenario_name: str, cell: str, repetition: int) -> str:
     """A short opaque id, stable for a given (scenario, cell, repetition).
 
@@ -109,20 +211,73 @@ def run_id(scenario_name: str, cell: str, repetition: int) -> str:
 class Output:
     """The directory for one experiment, and everything written into it."""
 
-    def __init__(self, root: Path, scenario, repetitions: int | None = None):
+    def __init__(
+        self, root: Path, scenario, repetitions: int | None = None, grouped: bool | None = None
+    ):
         self.scenario = scenario
         self.repetitions = repetitions or scenario.protocol["repetitions"]
         self.directory = Path(root) / experiment_name(scenario, self.repetitions)
-        self.runs_dir = self.directory / "runs"
+        self.runs_dir = self.directory / RUNS
+        self.cell_of = {i: meta["cell"] for i, meta in self.plan().items()}
+        self.grouped = self._settle(grouped)
+        if self.grouped:
+            self._refuse_colliding_cells()
 
     # --- layout ---------------------------------------------------------
+
+    def _settle(self, asked: bool | None) -> bool:
+        """Which layout this tree has, from the three things that may decide it.
+
+        An explicit answer wins, then the tree already on disk, then the rule: grouped
+        unless a human scores something. Asking for a layout a non-empty tree
+        contradicts is refused rather than applied, because the two layouts do not
+        merge - every run would end up archived twice, once under each, and no reader
+        could tell which half was this launch.
+        """
+        found = self.read_state().get("layout") or sniff_layout(self.runs_dir)
+        if asked is None:
+            return found == BY_CELL if found else not self.scenario.manual_metrics
+        if found and found != (BY_CELL if asked else BLIND):
+            raise RuntimeError(
+                f"{self.directory} already holds runs laid out {found}, and this asks "
+                f"for {BY_CELL if asked else BLIND}: the two layouts do not merge, so "
+                f"every run would be archived twice. Write elsewhere, or delete it - "
+                f"the archive of previous versions is git"
+            )
+        return asked
+
+    def _refuse_colliding_cells(self) -> None:
+        """Two cells reduced to one directory name would share it, and read as one."""
+        taken: dict[str, str] = {}
+        for cell in self.cell_of.values():
+            first = taken.setdefault(cell_dir(cell), cell)
+            if first != cell:
+                raise RuntimeError(
+                    f"cells {first!r} and {cell!r} both name the directory "
+                    f"{cell_dir(cell)!r}, so a tree grouped by cell would file them "
+                    f"together. Rename one, or measure with --no-group-by-cell"
+                )
 
     def prepare(self) -> Path:
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         return self.directory
 
+    @property
+    def layout(self) -> str:
+        """The layout as the state records it."""
+        return BY_CELL if self.grouped else BLIND
+
+    def location(self, run_id_: str) -> Path:
+        """A run's directory, whether or not anything has been written to it."""
+        cell = self.cell_of.get(run_id_) if self.grouped else None
+        return run_location(self.runs_dir, run_id_, cell)
+
+    def relative_run(self, run_id_: str) -> str:
+        """The same path, relative to the experiment directory, for a link or a form."""
+        return self.location(run_id_).relative_to(self.directory).as_posix()
+
     def run_dir(self, run_id_: str) -> Path:
-        d = self.runs_dir / run_id_
+        d = self.location(run_id_)
         d.mkdir(parents=True, exist_ok=True)
         return d
 
@@ -169,6 +324,7 @@ class Output:
             "repetitions": self.repetitions,
             "concurrency": self.scenario.protocol.get("concurrency"),
             "timeout": self.scenario.protocol.get("timeout"),
+            "layout": self.layout,
             "overrides": overrides or {},
             "complete": False,
             "runs": {
@@ -194,7 +350,9 @@ class Output:
                 f"repetitions, this run asks for {self.repetitions}: that is "
                 f"another experiment, so another directory"
             )
-        # A ledger may predate a scenario edit that added cells.
+        # A ledger may predate a scenario edit that added cells, or the layout field.
+        # The layout itself is settled before this, against the tree the ledger describes.
+        state.setdefault("layout", self.layout)
         for run_id_, meta in self.plan().items():
             state["runs"].setdefault(run_id_, {**meta, "state": MISSING, "attempts": 0})
         return state
@@ -266,7 +424,7 @@ class Output:
         An absent `session_dir` is not an error: the agent may have failed to start at all,
         and that is a run to record, not an exception to raise.
         """
-        target = self.runs_dir / run_id_ / SESSION
+        target = self.location(run_id_) / SESSION
         if target.exists():
             shutil.rmtree(target)
         if not session_dir.is_dir():
@@ -285,7 +443,7 @@ class Output:
 
     def sessions(self, run_id_: str) -> list[Path]:
         """A run's archived sessions, in order. Empty when none were archived."""
-        directory = self.runs_dir / run_id_ / SESSION
+        directory = self.location(run_id_) / SESSION
         return sorted(directory.glob("*.jsonl")) if directory.is_dir() else []
 
     def write_synthesis(self, text: str, suffix: str = "") -> Path:
@@ -295,12 +453,12 @@ class Output:
         return path
 
     def write_configuration(self, run_id_: str, configuration: dict) -> Path:
-        path = self.run_dir(run_id_) / "configuration.json"
+        path = self.run_dir(run_id_) / CONFIGURATION
         write_json(path, configuration)
         return path
 
     def write_validation(self, run_id_: str, mode: str, payload, stderr: str = "") -> None:
-        d = self.run_dir(run_id_) / "validation"
+        d = self.run_dir(run_id_) / VALIDATION
         d.mkdir(parents=True, exist_ok=True)
         if payload is not None:
             write_json(d / f"{mode}.json", payload)

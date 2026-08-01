@@ -207,9 +207,8 @@ path it needs is absolute in the context.
 ### Failure
 
 Exit non-zero, print unreadable JSON, exceed the timeout, or omit a declared metric,
-and the **run** becomes invalid. Its `stderr` is kept in
-`runs/<id>/validation/script.stderr`, the cell is not publishable, and the matrix
-continues.
+and the **run** becomes invalid. Its `stderr` is kept in that run's
+`validation/script.stderr`, the cell is not publishable, and the matrix continues.
 
 ## Mode `judge`
 

@@ -1,0 +1,482 @@
+<div class="ts-sheet">
+
+  <header class="ts-masthead">
+    
+    <p class="ts-creed">
+      Eight subcommands. <em>One</em> of them spends tokens - everything else loads,
+      re-scores, compares and renders for free, which is the whole point of keeping
+      measuring and scoring apart.
+    </p>
+
+    <div class="ts-invocations">
+      <span><b>uv run trysquare</b> &lt;cmd&gt;</span>
+      <span><b>python -m trysquare</b> &lt;cmd&gt;</span>
+      <span><b>uv tool install .</b> <span class="ts-hint">&rarr; trysquare on PATH</span></span>
+    </div>
+  </header>
+
+  <!-- ============================ SET UP ============================ -->
+  <section class="ts-band">
+    <div class="ts-band-head">
+      <span class="ts-step">1</span>
+      <h2>Set up</h2>
+      <span class="ts-blade" aria-hidden="true"></span>
+      <span class="ts-aside">before a single token</span>
+    </div>
+
+    <div class="ts-cards ts-pair">
+
+      <article class="ts-cmd">
+        <div class="ts-cmd-head">
+          <span class="ts-name">init <span class="ts-arg">[directory]</span></span>
+          <span class="ts-chip">free</span>
+        </div>
+        <p>
+          Writes the skeleton of a new experiment - <code>scenario.toml</code>,
+          <code>prompt.md</code>, <code>hypothesis.md</code>, and a
+          <code>trysquare.toml</code> when none is found walking up.
+          <strong>Refuses to overwrite anything.</strong> Default directory: here.
+        </p>
+        <div class="ts-note">
+          <code>score.py</code> is deliberately <b>not</b> written. Nothing runnable ships,
+          so <code>validate</code> refuses the fresh skeleton by name until the validator is
+          yours.
+        </div>
+      </article>
+
+      <article class="ts-cmd">
+        <div class="ts-cmd-head">
+          <span class="ts-name">validate <span class="ts-arg">&lt;scenario&gt;</span></span>
+          <span class="ts-chip">free</span>
+        </div>
+        <p>
+          Checks a scenario end to end with <strong>no output directory and no
+          token</strong>: the file loads, every referenced path exists,
+          <code>[repos]</code> has an entry, the thinking precondition holds.
+        </p>
+        <dl class="ts-flags">
+          <dt>--config</dt>
+          <dd>config file; defaults to the nearest <code>trysquare.toml</code> walking up</dd>
+        </dl>
+        <div class="ts-note">
+          The same refusals <code>run</code> applies, shared with it: <b>validate cannot
+          pass what run would refuse.</b> A missing <code>pi</code> on PATH is a note, not
+          a failure.
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ============================ MEASURE =========================== -->
+  <section class="ts-band">
+    <div class="ts-band-head">
+      <span class="ts-step">2</span>
+      <h2>Measure</h2>
+      <span class="ts-blade" aria-hidden="true"></span>
+      <span class="ts-aside">the only command that spends</span>
+    </div>
+
+    <div class="ts-cards ts-solo">
+      <article class="ts-cmd ts-wide">
+        <div class="ts-col">
+          <div class="ts-cmd-head">
+            <span class="ts-name">run <span class="ts-arg">&lt;scenario&gt; -o &lt;dir&gt;</span></span>
+            <span class="ts-chip ts-spends">spends tokens</span>
+          </div>
+          <p>
+            Measures a scenario. <code>--output</code> / <code>-o</code> is
+            <strong>required</strong> and roots everything that writes: one directory per
+            experiment.
+          </p>
+          <dl class="ts-flags">
+            <dt><span class="ts-req">--output</span>, -o</dt>
+            <dd><b>Required.</b> Directory every output is written under</dd>
+
+            <dt>--config</dt>
+            <dd>config file; defaults to the nearest <code>trysquare.toml</code></dd>
+
+            <dt>--repetitions N</dt>
+            <dd>override, <b>stamped into the directory name</b> (&rarr; <code>..._n3/</code>)</dd>
+
+            <dt>--concurrency N</dt>
+            <dd>override, recorded in <code>state.json</code> and the synthesis header</dd>
+
+            <dt>--timeout N</dt>
+            <dd>override, recorded in <code>state.json</code></dd>
+
+            <dt>--only CELL</dt>
+            <dd>restrict to these cells, repeatable; <b>leaves the matrix incomplete</b>, so
+              no synthesis is written and <code>--resume</code> finishes it later</dd>
+
+            <dt>--group-by-cell / --no-group-by-cell</dt>
+            <dd>file runs under <code>runs/&lt;cell&gt;/&lt;id&gt;/</code>, or keep
+              <code>runs/&lt;id&gt;/</code> flat and opaque. <b>Grouped by default</b>, blind when
+              a <code>form</code> validator says a human scores by hand</dd>
+
+            <dt>--resume</dt>
+            <dd>fill <b>only what produced nothing</b>; a validator failure is re-scored
+              instead, at no token cost</dd>
+
+            <dt>--until-complete [N]</dt>
+            <dd>after a pass, relaunch the runs that produced nothing, at most N passes
+              total (<b>default 3</b>). Never a re-measurement</dd>
+
+            <dt>--dry-run</dt>
+            <dd>show the whole plan and <b>write nothing at all</b> - not even the output
+              directory</dd>
+
+            <dt>--no-progress</dt>
+            <dd>never draw the live bar; also <code>TRYSQUARE_NO_PROGRESS=1</code></dd>
+          </dl>
+        </div>
+
+        <div class="ts-col">
+          <span class="ts-label">It refuses before spending</span>
+          <ul class="ts-plain">
+            <li><b>A missing brick.</b> Every referenced path is checked first - a mistyped
+              prompt path once became the literal string sent to the agent as its task.</li>
+            <li><b>A thinking mismatch</b> when the scenario uses subagents.</li>
+            <li><b>An agent with no model</b>, from neither its file nor an override.</li>
+          </ul>
+
+          <span class="ts-label">Overrides are announced and stamped</span>
+<pre>! OVERRIDE: repetitions 10 -&gt; 3
+! OVERRIDE: concurrency  5 -&gt; 10</pre>
+          <ul class="ts-plain">
+            <li><b>What changes the measurement enters the directory name</b>, so it cannot
+              corrupt a published matrix.</li>
+            <li><b>What changes the load</b> stays in the same directory but is recorded: it
+              conditions the retries, and therefore every cost column.</li>
+          </ul>
+
+          <span class="ts-label">The record scrolls, the bar is pinned</span>
+<pre>  ok  rule / off      412s  15234 in / 812 out
+  !!  ticket / high   901s  timeout: no attempt
+<span class="ts-k">  &#9209; runs</span> &#9473;&#9473;&#9473;&#9473;&#9592;&#9473;&#9473;&#9473;&#9473;  23/60  left 1h 55m</pre>
+          <p style="font-size:13px">
+            Estimate is throughput since launch, drawn on a terminal only. Relaunching the
+            same experiment <strong>overwrites</strong> it - the archive of previous
+            versions is git.
+          </p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ====================== READ THE RESULTS ======================== -->
+  <section class="ts-band">
+    <div class="ts-band-head">
+      <span class="ts-step">3</span>
+      <h2>Read the results</h2>
+      <span class="ts-blade" aria-hidden="true"></span>
+      <span class="ts-aside">no tokens, ever</span>
+    </div>
+
+    <div class="ts-cards ts-quad">
+
+      <article class="ts-cmd">
+        <div class="ts-cmd-head">
+          <span class="ts-name">render <span class="ts-arg">&lt;scenario&gt; -o &lt;dir&gt;</span></span>
+          <span class="ts-chip">free</span>
+        </div>
+        <p>
+          Rebuilds the tables from stored measures. Measuring and scoring are separate: a
+          scoring defect costs a render, not another hour of wall clock.
+        </p>
+        <dl class="ts-flags">
+          <dt>--repetitions N</dt>
+          <dd>which matrix to read</dd>
+          <dt>--reference CELL</dt>
+          <dd>a <b>rendering choice, not a measurement</b>: score another cell as the
+            baseline &rarr; <code>synthesis_ref-rule-off.md</code></dd>
+          <dt>--html</dt>
+          <dd>also export each archived session to a standalone page, in the run's own
+            directory. Opt-in: ~0.3 s per session, and needs <code>pi</code></dd>
+        </dl>
+        <div class="ts-note">
+          <code>synthesis.html</code> is written whenever <code>synthesis.md</code> is, by
+          any command. <b>An archive must render offline in five years.</b>
+        </div>
+      </article>
+
+      <article class="ts-cmd">
+        <div class="ts-cmd-head">
+          <span class="ts-name">replay <span class="ts-arg">&lt;dir&gt; --scenario &lt;file&gt;</span></span>
+          <span class="ts-chip">free</span>
+        </div>
+        <p>
+          Reconstitutes archived runs: clones the etalon at its tag, applies the archived
+          <code>diff.patch</code>, writes a <strong>fresh</strong> context beside each tree.
+          Takes an experiment directory or one run inside it.
+        </p>
+        <dl class="ts-flags">
+          <dt><span class="ts-req">--scenario</span></dt>
+          <dd><b>Required.</b> Whose validators re-score the archive</dd>
+          <dt>--rescore</dt>
+          <dd>re-run the <b>script</b> validators, then rewrite <code>measures.json</code>,
+            <code>state.json</code> and the synthesis</dd>
+          <dt>--config</dt>
+          <dd>config file</dd>
+        </dl>
+        <ul class="ts-plain">
+          <li><b>Never touched:</b> <code>usage</code>, <code>duration</code>,
+            <code>attempts</code> - facts about the run, not about the scoring.</li>
+          <li><b>A judge is never re-run</b>; the archived verdict is reused, because replay
+            exists on the promise that it costs nothing.</li>
+          <li>An <code>empty</code> run is <b>left alone</b>, and another scenario's
+            directory is refused by name.</li>
+        </ul>
+      </article>
+
+      <article class="ts-cmd">
+        <div class="ts-cmd-head">
+          <span class="ts-name">compare <span class="ts-arg">&lt;left&gt; &lt;right&gt;</span></span>
+          <span class="ts-chip">free</span>
+        </div>
+        <p>
+          Compares two experiments side by side and prints every difference. A different
+          model is a legitimate axis; it just has to be declared rather than hidden.
+        </p>
+        <ul class="ts-plain">
+          <li><b>Hard refusal on different etalons</b> - a different baseline means the two
+            measures are not of the same thing.</li>
+          <li><b>Cost columns are set aside</b> unless retries are near zero on both sides,
+            with the counts shown.</li>
+          <li>Rates only, and no verdict: a certified gap needs both cells measured in one
+            scenario.</li>
+        </ul>
+      </article>
+
+      <article class="ts-cmd">
+        <div class="ts-cmd-head">
+          <span class="ts-name">form <span class="ts-arg">&lt;scenario&gt; -o &lt;dir&gt;</span></span>
+          <span class="ts-chip">free</span>
+        </div>
+        <p>
+          Generates a manual scoring form - <strong>shuffled, with cell names
+          withheld</strong>, the same blinding as the judge and for the same reason. The
+          id-to-cell mapping lives in <code>state.json</code>.
+        </p>
+        <dl class="ts-flags">
+          <dt>--ingest &lt;form.toml&gt;</dt>
+          <dd>merge a filled form back in</dd>
+        </dl>
+        <div class="ts-note">
+          TOML, not markdown with blanks, for a mechanical reason: <b>an absent key is a
+          metric not yet filled</b>, so the file parses at any point. On ingest a manual
+          value may fill a hole but <b>never overwrite a measured one</b>.
+        </div>
+      </article>
+
+      <article class="ts-cmd ts-wide" style="grid-column: 1 / -1">
+        <div class="ts-col">
+          <div class="ts-cmd-head">
+            <span class="ts-name">parity <span class="ts-arg">[bench measures.json]</span></span>
+            <span class="ts-chip">free</span>
+            <span class="ts-chip ts-spends">--smoke: wall clock</span>
+          </div>
+          <p>
+            Checks this harness against the bench it replaces, cheapest layer first.
+            <strong>Neither tool is the reference</strong> - two computations are compared
+            over the same archived material, and the material arbitrates. Exits non-zero
+            when an exact layer disagrees.
+          </p>
+          <dl class="ts-flags">
+            <dt>--archive &lt;dir&gt;</dt>
+            <dd>the bench's archived run directories &rarr; adds <b>layer 1</b></dd>
+            <dt>--scenario &lt;file&gt;</dt>
+            <dd>whose validators re-score the archive &rarr; adds <b>layer 2</b>. One clone
+              of the etalon per run</dd>
+            <dt>--smoke &lt;dir&gt;</dt>
+            <dd>an experiment directory: <b>layer 4</b>'s mechanical checks</dd>
+            <dt>--workdir &lt;dir&gt;</dt>
+            <dd>where sessions live, for the thinking check</dd>
+            <dt>--reference</dt>
+            <dd>default <code>base</code></dd>
+            <dt>--criterion</dt>
+            <dd>default <code>overflow</code></dd>
+          </dl>
+        </div>
+        <div class="ts-col">
+          <span class="ts-label">The four layers</span>
+          <table class="ts-layers">
+            <tr><td>layer 1</td><td>stripping</td><td class="ts-exact">exact</td><td>from archived sessions</td></tr>
+            <tr><td>layer 2</td><td>scoring</td><td class="ts-exact">exact</td><td>from tag + diff.patch</td></tr>
+            <tr><td>layer 3</td><td>aggregation</td><td class="ts-exact">exact</td><td>from published per-run rows</td></tr>
+            <tr><td>layer 4</td><td>launching</td><td>not comparable</td><td>it samples</td></tr>
+          </table>
+          <div class="ts-note">
+            Layer 4 checks only what does not depend on the sample - above all that
+            <b>the thinking level each session recorded equals the level its cell
+            declared</b>, and that <b>the model which answered is still the one the
+            scenario names</b>. It concludes nothing about any configuration, and says so.
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ========================== REFERENCE =========================== -->
+  <section class="ts-band">
+    <div class="ts-band-head">
+      <h2>On disk</h2>
+      <span class="ts-blade" aria-hidden="true"></span>
+    </div>
+
+    <div class="ts-panels">
+
+      <div class="ts-panel">
+        <h3>A scenario, minimally</h3>
+<pre>[scenario]
+name = <span class="ts-k">"rule-vs-ticket"</span>
+hypothesis = <span class="ts-k">"hypothesis.md"</span>  <span class="ts-c"># before</span>
+
+[task]
+repo = <span class="ts-k">"my-repo"</span>     <span class="ts-c"># via [repos]</span>
+etalon = <span class="ts-k">"etalon-v1"</span>  <span class="ts-c">#* a tag</span>
+prompt = <span class="ts-k">"tickets/vague.md"</span>
+
+[agent]
+provider = <span class="ts-k">"ilaas"</span>   <span class="ts-c">#*</span>
+model = <span class="ts-k">"gemma-4-31b"</span> <span class="ts-c">#*</span>
+thinking = <span class="ts-k">"off"</span>      <span class="ts-c">#*</span>
+
+[protocol]
+repetitions = 10        <span class="ts-c">#*</span>
+concurrency = 5
+timeout = 900
+
+[axes]  <span class="ts-c"># order fixes the table</span>
+context = [<span class="ts-k">"nothing"</span>, <span class="ts-k">"rule"</span>]
+
+[values.context.rule]   <span class="ts-c"># the delta</span>
+context = <span class="ts-k">"AGENTS.md"</span>
+
+[[validation]]
+mode = <span class="ts-k">"script"</span>   <span class="ts-c"># or "judge"</span>
+command = <span class="ts-k">"score.py"</span>
+metrics = [<span class="ts-k">"in_scope"</span>, <span class="ts-k">"tests"</span>]
+
+[verdict]
+criterion = <span class="ts-k">"in_scope"</span>
+reference = { context = <span class="ts-k">"nothing"</span> }</pre>
+        <p>
+          <code>#*</code> mandatory and <strong>never inherited</strong>. Paths are relative
+          to the scenario file. <strong>The baseline of an axis is its first value</strong>
+          and needs no delta; every other value must declare one.
+        </p>
+      </div>
+
+      <div class="ts-stack">
+
+      <div class="ts-panel">
+        <h3>One directory per experiment</h3>
+<pre>out/<span class="ts-b">rule-vs-ticket</span>_etalon-v1_ilaas_gemma-4-31b_<span class="ts-b">n10</span>/
+  state.json      <span class="ts-c">cells, runs, valid / empty / failed, attempts</span>
+  measures.json   <span class="ts-c">one line per run</span>
+  synthesis.md    <span class="ts-c">scores, costs, gaps, verdicts - when complete</span>
+  synthesis.html  <span class="ts-c">the same, standalone</span>
+  runs/<span class="ts-b">&lt;cell&gt;</span>/&lt;id&gt;/ <span class="ts-c">context, configuration, diff, validation</span>
+    session/*.jsonl   <span class="ts-c">the agent's own trace, one per attempt</span>
+    session/*.html    <span class="ts-c">on render --html</span></pre>
+        <p>
+          The name <em>is</em> the experiment's identity, which is why an override that
+          changes the measurement lands in it. Relaunching the same experiment overwrites
+          it: a timestamped directory per launch would be optional stopping through the
+          back door.
+        </p>
+        <p>
+          The cell level goes away with <code>--no-group-by-cell</code>, and is absent by
+          default when a <code>form</code> validator scores by hand: an id nobody can read
+          is what keeps a human from knowing which configuration they are grading.
+        </p>
+      </div>
+
+      <div class="ts-panel">
+        <h3>Exit codes</h3>
+        <table class="ts-codes">
+          <tr><td>0</td><td>Success. For <code>parity</code>, every checked layer holds.</td></tr>
+          <tr><td>1</td><td>A refusal, a failed check, or a rendering error - the message says which.</td></tr>
+          <tr><td>2</td><td>Usage error, or a missing required argument.</td></tr>
+        </table>
+        <p>
+          A refusal is exit 1 with a plain message, <strong>never a traceback</strong>. A
+          rendering failure says explicitly that the measures are intact and only
+          <code>render</code> needs rerunning.
+        </p>
+        <h3 style="margin-top:6px">A validator, in one line</h3>
+<pre>score.py &lt;context.json&gt;
+  &rarr; {<span class="ts-k">"metrics"</span>: {&hellip;}, <span class="ts-k">"reasons"</span>: {&hellip;}}
+    on stdout, exit 0</pre>
+        <p>
+          A bool aggregates as a rate, a number as a median, anything else is diagnostic.
+          A declared metric the validator omits makes the <strong>run</strong> invalid;
+          extras are stored but carry no verdict.
+        </p>
+      </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================== INVARIANTS ========================== -->
+  <section class="ts-band">
+    <div class="ts-band-head">
+      <h2>The invariants</h2>
+      <span class="ts-blade" aria-hidden="true"></span>
+      <span class="ts-aside">each one a defect that was paid for</span>
+    </div>
+
+    <div class="ts-invariants">
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>A run counts only if it consumed tokens.</b> A cut stream leaves turns that are
+        real and empty: no rule broken, no file touched, no test failed - which a naive
+        harness records as exemplary.
+      </span></div>
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>Nothing that changes a measurement may be inherited.</b> Provider, model,
+        thinking, etalon and repetitions live in the scenario. There are <b>no environment
+        variables anywhere in this tool</b>.
+      </span></div>
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>A validator that could not judge never yields a verdict.</b> A crash, a timeout,
+        unreadable JSON or a missing declared metric makes the run <b>invalid, not
+        false</b>.
+      </span></div>
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>Two states only: established or inconclusive.</b> A gap is publishable if the
+        95% interval of its resampled difference excludes zero. The seed is fixed.
+      </span></div>
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>Repetitions are declared in advance</b>, and a matrix is never rerun "to see". A
+        resume may only relaunch runs that produced <em>nothing</em>; attempts are counted,
+        so an abusive resume leaves a trace.
+      </span></div>
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>What the harness injects is excluded from scoring.</b> Otherwise scope scoring
+        counts our own configuration as the agent's work, and every configured cell drops
+        to zero.
+      </span></div>
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>A judge is blind, and where it cannot be, the harness says so.</b> When the
+        treatment <em>is</em> the prompt, handing the judge the prompt reveals the cell.
+      </span></div>
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>Durations compare only within one matrix.</b> Runs are interleaved across cells
+        so they see the same provider load; across matrices they are not comparable.
+      </span></div>
+    </div>
+  </section>
+
+  <footer class="ts-colophon">
+    <span>A try square tells a joiner whether a joint is true. This one tells you whether a measured difference is.</span>
+    <span>The reasoning behind every refusal:
+      <a href="cli.html">command line reference</a>
+      &middot; <a href="../guide/invariants.html">the invariants</a>
+      &middot; <code>uv run trysquare &lt;cmd&gt; --help</code></span>
+  </footer>
+
+</div>

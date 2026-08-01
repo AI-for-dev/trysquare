@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .measure import Run, counted
+from .outputs import ledger_run_dirs
 from .table import cost_measures, criterion_measure, gap_rows
 
 
@@ -341,8 +342,9 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:
         if not (experiment / name).is_file():
             problems.append(f"missing output: {name}")
 
+    directories = ledger_run_dirs(experiment, state)
     for rid, meta in runs.items():
-        directory = experiment / "runs" / rid
+        directory = directories[rid]
         for name in ("configuration.json", "diff.patch"):
             if not (directory / name).is_file():
                 problems.append(f"{meta['cell']}: missing {name}")
@@ -352,7 +354,7 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:
     # Read from the archive rather than the work directory: `model_id` was written
     # beside the declared pattern when the run was archived, so this check survives a
     # purged workdir - which the thinking check below cannot.
-    observed, model_problems = _models_answered(experiment, runs)
+    observed, model_problems = _models_answered(directories, runs)
     problems.extend(model_problems)
 
     # The thinking check needs the sessions, which live in the work directory
@@ -384,7 +386,7 @@ def layer4(experiment: str | Path, workdir: str | Path | None = None) -> Report:
     return Report(observed=observed, problems=problems)
 
 
-def _models_answered(experiment: Path, runs: dict) -> tuple[list[str], list[str]]:
+def _models_answered(directories: dict[str, Path], runs: dict) -> tuple[list[str], list[str]]:
     """Checks that each run's model resolved to what its scenario asked for.
 
     `model` is a pattern, so equality would refuse every legitimate run: `gemma-4`
@@ -403,7 +405,7 @@ def _models_answered(experiment: Path, runs: dict) -> tuple[list[str], list[str]
     checked = matched = unrecorded = 0
 
     for rid, meta in runs.items():
-        path = experiment / "runs" / rid / "configuration.json"
+        path = directories[rid] / "configuration.json"
         if not path.is_file():
             continue
         configuration = json.loads(path.read_text())

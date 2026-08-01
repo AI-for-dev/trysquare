@@ -1,100 +1,27 @@
 /* The documentation's own type and colour.
  *
- * Two families, both vendored under tools/fonts and cut to webfonts by
- * tools/build-webfonts.py; docs/_static/fonts/README.md says what each file is. The mono
- * is the face the wordmark is outlined from, so the brand in the sidebar and the code
- * beside it are the same letters at last.
+ * The cheat sheet arrived with a type and colour system of its own - see
+ * `cheatsheet.css`, and `_static/logo/README.md` for where the palette is written down.
+ * This file lifts it out of that one page and gives it to the whole site: slate, brass
+ * and paper, a serif for prose, a mono for everything the tool says of itself.
  *
- * The palette is the mark's, and docs/_static/logo/README.md is where it is written down:
- * slate, brass, paper. This file declares it as `--ts-*` tokens; conf.py maps furo's own
- * variables onto them. The split is not arbitrary - furo emits its map in an inline
- * <style> after every stylesheet, on `body[data-theme=dark]`, and a rule here on plain
- * `body` could not outrank that.
+ * The font stacks are `cheatsheet.css`'s, verbatim and now declared here instead. They
+ * are system stacks - nothing is served, and a reader without Charter or Source Serif 4
+ * installed falls through to Georgia. That is the trade: no bytes, and no guarantee the
+ * page looks the same everywhere.
+ *
+ * The palette is declared here as `--ts-*` tokens; conf.py maps furo's own variables
+ * onto them. The split is not arbitrary - furo emits its map in an inline <style> after
+ * every stylesheet, on `body[data-theme=dark]`, and a rule here on plain `body` could
+ * not outrank that.
  *
  * `body` and not `:root`, for the same reason: furo declares its variables on `body`, and
  * inheritance from <html> never beats a direct declaration on the element itself.
+ *
+ * These declarations are deliberately the *weakest* in the file, so the cheat sheet keeps
+ * its own: `cheatsheet.css` declares on `.ts-sheet` and `body:has(.ts-sheet)`, both of
+ * which outrank plain `body`.
  */
-
-/* --- the faces ---------------------------------------------------------------------
- *
- * `swap` and not `optional`: the prose is the page, and a reader should not wait for it.
- *
- * The two ranges differ by the box-drawing block, which only the mono carries. Fourteen
- * pages draw tables and trees out of `─ │ ├ └`, and `unicode-range` decides what is
- * *fetched* - a codepoint outside it falls back to another face even when the glyph is
- * there, which breaks a table into mixed advance widths. Source Serif has no box glyphs,
- * so declaring them for it would only invite that fallback.
- *
- * These two lists are printed by build-webfonts.py from the same tuples it subsets to.
- * If you change one, take the other from the script's output rather than editing it.
- */
-@font-face {
-  font-family: "JetBrains Mono";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("fonts/jetbrains-mono-400.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2193, U+2212, U+2215,
-    U+2500-259F, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "JetBrains Mono";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("fonts/jetbrains-mono-700.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2193, U+2212, U+2215,
-    U+2500-259F, U+FEFF, U+FFFD;
-}
-
-/* Trysquare Serif is Source Serif 4, subset and renamed - Adobe reserves the name
- * 'Source' and the licence does not let a subset keep it. tools/fonts/README.md carries
- * the reasoning. Four faces, not two: this prose leans on emphasis constantly, and a
- * roman sheared into an oblique is visibly not an italic. */
-@font-face {
-  font-family: "Trysquare Serif";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("fonts/trysquare-serif-400.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "Trysquare Serif";
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url("fonts/trysquare-serif-400-italic.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
-}
-/* 600 and not 700: `strong` asks for 700, finds 400 and 600 declared, and settles on 600
- * without synthesising. Nothing has to say so in CSS, which is why 600 is what ships. */
-@font-face {
-  font-family: "Trysquare Serif";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("fonts/trysquare-serif-600.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "Trysquare Serif";
-  font-style: italic;
-  font-weight: 600;
-  font-display: swap;
-  src: url("fonts/trysquare-serif-600-italic.woff2") format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
-}
 
 /* --- the palette --------------------------------------------------------------------
  *
@@ -128,8 +55,8 @@ body {
   --ts-brass-wash: #f3e9d6;
   --ts-shadow: 0 1px 0 rgba(35, 43, 51, 0.04), 0 1px 3px rgba(35, 43, 51, 0.05);
 
-  --ts-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --ts-serif: "Trysquare Serif", Charter, "Iowan Old Style", Georgia, serif;
+  --ts-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  --ts-serif: Charter, "Iowan Old Style", "Source Serif 4", Georgia, serif;
 }
 
 @media not print {
@@ -184,32 +111,6 @@ body {
 .sidebar-logo {
   max-width: 84%;
 }
-
-/* --- the cost marker ------------------------------------------------------------------
- *
- * A command that spends tokens is the one thing a reader must not mistake, so it carries
- * the brand's brass; free is stated in words rather than left blank, because an empty cell
- * reads as unknown rather than as free.
- */
-.ts-cost {
-  font-family: var(--ts-mono);
-  font-size: 0.594rem;
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  padding: 0.18em 0.45em;
-  border: 1px solid var(--ts-rule);
-  border-radius: 2px;
-  color: var(--ts-ink-2);
-  background: transparent;
-}
-.ts-cost-spends {
-  color: var(--ts-brass-ink);
-  border-color: var(--ts-brass);
-  background: var(--ts-brass-wash);
-}
-
 /* ======================================================================================
  * The devices
  *
@@ -566,4 +467,23 @@ article {
   article h2::after {
     background-image: none;
   }
+}
+
+/* --- where this file stops -------------------------------------------------------------
+ *
+ * The cheat sheet is a poster, not a page of prose, and `cheatsheet.css` draws these same
+ * devices itself - band heads with their own blade, cards, chips, rules. That stylesheet
+ * already replaces furo's rhythm inside `.ts-sheet`, and its own selectors outrank the
+ * ones above wherever the two set the same property.
+ *
+ * Two do not collide that way. A pseudo-element cannot be unset by a stylesheet written
+ * before it existed, and a border nobody else declares has nothing to lose to. So the
+ * blade and the masthead rule are withdrawn here by name, at the sheet's edge.
+ */
+body:has(.ts-sheet) article h2::after,
+body:has(.ts-sheet) article h3::after {
+  content: none;
+}
+body:has(.ts-sheet) article h1 {
+  border-bottom: 0;
 }

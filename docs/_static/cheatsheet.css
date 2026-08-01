@@ -1,0 +1,605 @@
+/* The cheat sheet, which is a poster rather than a page of prose.
+ *
+ * It keeps the theme's left sidebar - navigation is the theme's job and doing it twice
+ * would be worse - and takes the rest of the width for itself. Everything else is its
+ * own: the brand's slate and brass, a card grid, and a graduated rule lifted from the
+ * blade of the mark. A cheat sheet is scanned, not read, and furo's single column of
+ * running text is the wrong shape for scanning.
+ *
+ * Two rules therefore hold throughout:
+ *
+ *   - every selector is under `.ts-sheet`, because names as ordinary as `.panel` and
+ *     `.chip` would otherwise collide with the theme's own on every other page;
+ *   - the page-level overrides are under `body:has(.ts-sheet)`, so this stylesheet is
+ *     inert on the pages that do not carry the sheet, even though it is loaded on all
+ *     of them.
+ */
+
+/* --- the width the sheet needs ----------------------------------------- */
+
+/* Furo sets `.content { width: 46em }` and hands 15em to the right-hand table of
+ * contents. The sheet is its own table of contents, so that column is given back and the
+ * sheet grows to the right.
+ *
+ * `.sidebar-drawer` is deliberately left alone. Furo sizes it `calc(50% - 26em)`, which
+ * is what centres the page, so pinning it would move the navigation the moment a reader
+ * arrives here from any other page - and a rail that jumps on navigation is worse than a
+ * column that is not quite as wide as it could be. Nothing outside this page moves. */
+body:has(.ts-sheet) .content {
+  width: auto;
+  flex: 1 1 auto;
+  max-width: 76rem;
+  padding: 0 2.5rem;
+}
+body:has(.ts-sheet) .toc-drawer {
+  display: none;
+}
+
+/* The page's own heading is what the toctree links to, so it stays a real heading -
+ * restyled as the sheet's masthead rather than repeated inside it. */
+body:has(.ts-sheet) article h1 {
+  margin: 0 0 1.4rem;
+  padding: 0;
+  font-family: var(--ts-mono);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+
+/* --- palette ------------------------------------------------------------ */
+
+/* The brand's five, from docs/_static/logo/README.md: slate, brass, paper, dark ground,
+ * inverse ink. The neutrals are mixed from the slate rather than from grey, so the mid
+ * tones keep the steel bias the mark has.
+ *
+ * Brass lifts one step on a dark ground, where `#A97C2A` goes muddy. The media query
+ * carries the OS preference and the `[data-theme]` selectors carry furo's own toggle,
+ * which must win in both directions. */
+.ts-sheet {
+  --ts-ink: #232B33;
+  --ts-ink-2: #5D6873;
+  --ts-ink-3: #7E8894;
+  --ts-panel: #FFFFFF;
+  --ts-panel-2: #E4E9ED;
+  --ts-rule: #C9D2D9;
+  --ts-rule-soft: #C9D2D9;
+  --ts-rule-strong: #232B33;
+  --ts-brass: #A97C2A;
+  --ts-brass-ink: #8A6520;
+  --ts-brass-wash: #F3E9D6;
+  --ts-shadow: 0 1px 0 rgba(35, 43, 51, .04), 0 1px 3px rgba(35, 43, 51, .05);
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) .ts-sheet {
+    --ts-ink: #C9D3DB;
+    --ts-ink-2: #93A0AC;
+    --ts-ink-3: #74808C;
+    --ts-panel: #1B2126;
+    --ts-panel-2: #232A30;
+    --ts-rule: #333C44;
+    --ts-rule-soft: #262E34;
+    --ts-rule-strong: #4C5761;
+    --ts-brass: #C79338;
+    --ts-brass-ink: #DBAA55;
+    --ts-brass-wash: #2A2419;
+    --ts-shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 1px 3px rgba(0, 0, 0, .35);
+  }
+}
+
+body[data-theme="dark"] .ts-sheet {
+  --ts-ink: #C9D3DB;
+  --ts-ink-2: #93A0AC;
+  --ts-ink-3: #74808C;
+  --ts-panel: #1B2126;
+  --ts-panel-2: #232A30;
+  --ts-rule: #333C44;
+  --ts-rule-soft: #262E34;
+  --ts-rule-strong: #4C5761;
+  --ts-brass: #C79338;
+  --ts-brass-ink: #DBAA55;
+  --ts-brass-wash: #2A2419;
+  --ts-shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 1px 3px rgba(0, 0, 0, .35);
+}
+
+/* --- the sheet ---------------------------------------------------------- */
+
+.ts-sheet {
+  color: var(--ts-ink);
+  font-family: var(--ts-serif);
+  font-size: 15px;
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.ts-sheet *,
+.ts-sheet *::before,
+.ts-sheet *::after {
+  box-sizing: border-box;
+}
+
+/* Furo styles every heading and paragraph in an article; inside the sheet those are
+ * band labels and card copy, so the theme's rhythm is replaced rather than fought. */
+.ts-sheet h2,
+.ts-sheet h3,
+.ts-sheet p {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+}
+.ts-sheet a {
+  color: var(--ts-brass-ink);
+}
+
+/* --- masthead ----------------------------------------------------------- */
+
+.ts-masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 32px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--ts-rule-strong);
+}
+
+.ts-creed {
+  flex: 1 1 320px;
+  min-width: 260px;
+  max-width: 52ch;
+  font-size: 14.5px;
+  color: var(--ts-ink-2);
+}
+.ts-creed em {
+  color: var(--ts-ink);
+  font-style: italic;
+}
+
+.ts-invocations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--ts-mono);
+  font-size: 11.5px;
+  color: var(--ts-ink-2);
+}
+.ts-invocations b {
+  color: var(--ts-ink);
+  font-weight: 700;
+}
+.ts-hint {
+  color: var(--ts-ink-3);
+}
+
+/* --- bands -------------------------------------------------------------- */
+
+.ts-band {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ts-band-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ts-band-head h2 {
+  flex: none;
+  font-family: var(--ts-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--ts-ink);
+}
+
+.ts-step {
+  flex: none;
+  font-family: var(--ts-mono);
+  font-size: 12px;
+  color: var(--ts-brass);
+}
+
+/* The blade of the mark: a hairline carrying graduations. */
+.ts-blade {
+  flex: 1 1 auto;
+  min-width: 40px;
+  height: 9px;
+  border-bottom: 1px solid var(--ts-rule);
+  background-image: repeating-linear-gradient(to right, var(--ts-rule) 0 1px, transparent 1px 14px);
+  background-size: 100% 5px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+}
+
+.ts-aside {
+  flex: none;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ts-ink-3);
+}
+
+/* --- cards -------------------------------------------------------------- */
+
+.ts-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  /* cards sharing a row share a height: the slack goes to the bottom of the shorter
+     one, since each card is a flex column of top-aligned content */
+  align-items: stretch;
+}
+.ts-cards.ts-solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ts-cmd {
+  background: var(--ts-panel);
+  border: 1px solid var(--ts-rule-soft);
+  border-radius: 3px;
+  box-shadow: var(--ts-shadow);
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ts-cmd.ts-wide {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 12px 30px;
+  align-items: start;
+}
+.ts-cmd.ts-wide > .ts-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ts-cmd-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.ts-cmd-head .ts-name {
+  font-family: var(--ts-mono);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+.ts-cmd-head .ts-name .ts-arg {
+  font-size: 14.5px;
+  font-weight: 400;
+  color: var(--ts-ink-3);
+}
+
+.ts-cmd p {
+  color: var(--ts-ink-2);
+}
+.ts-cmd p strong {
+  color: var(--ts-ink);
+  font-weight: 600;
+}
+
+/* One inline-code rule for the whole sheet. Furo's own is tuned for running prose and
+   its padding reads as a gap before a following comma at this density. */
+.ts-sheet code {
+  font-family: var(--ts-mono);
+  font-size: .86em;
+  color: var(--ts-ink);
+  background: var(--ts-panel-2);
+  padding: .06em .16em;
+  margin: 0 .03em;
+  border-radius: 2px;
+}
+
+/* --- the token-cost chip ------------------------------------------------ */
+
+/* Whether a command spends is the one thing a reader must not mistake, so it is marked
+   rather than described - and free is stated in words, because a blank reads as unknown
+   rather than as free. */
+.ts-chip {
+  font-family: var(--ts-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border: 1px solid var(--ts-rule);
+  border-radius: 2px;
+  color: var(--ts-ink-3);
+  background: transparent;
+}
+.ts-chip.ts-spends {
+  color: var(--ts-brass-ink);
+  border-color: var(--ts-brass);
+  background: var(--ts-brass-wash);
+}
+
+/* --- flags -------------------------------------------------------------- */
+
+.ts-sheet dl.ts-flags {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  align-items: baseline;
+}
+.ts-sheet dl.ts-flags dt {
+  font-family: var(--ts-mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--ts-ink);
+  white-space: nowrap;
+}
+.ts-sheet dl.ts-flags dt .ts-req {
+  color: var(--ts-brass);
+}
+.ts-sheet dl.ts-flags dd {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ts-ink-2);
+}
+.ts-sheet dl.ts-flags dd b {
+  color: var(--ts-ink);
+  font-weight: 600;
+}
+
+/* --- notes and lists ---------------------------------------------------- */
+
+.ts-note {
+  border-left: 2px solid var(--ts-brass);
+  padding: 2px 0 2px 12px;
+  font-size: 13.5px;
+  color: var(--ts-ink-2);
+}
+.ts-note b {
+  color: var(--ts-ink);
+  font-weight: 600;
+}
+
+.ts-sheet ul.ts-plain {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--ts-ink-2);
+}
+.ts-sheet ul.ts-plain > li {
+  position: relative;
+  margin: 0;
+  padding-left: 15px;
+}
+.ts-sheet ul.ts-plain > li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .62em;
+  width: 6px;
+  height: 1px;
+  background: var(--ts-brass);
+}
+.ts-sheet ul.ts-plain b {
+  color: var(--ts-ink);
+  font-weight: 600;
+}
+
+.ts-label {
+  font-family: var(--ts-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ts-ink-3);
+}
+
+/* --- code blocks -------------------------------------------------------- */
+
+.ts-sheet pre {
+  margin: 0;
+  font-family: var(--ts-mono);
+  font-size: 11.5px;
+  line-height: 1.62;
+  background: var(--ts-panel-2);
+  border: 0;
+  border-radius: 2px;
+  padding: 11px 13px;
+  overflow-x: auto;
+  color: var(--ts-ink);
+  tab-size: 2;
+}
+.ts-sheet pre .ts-c {
+  color: var(--ts-ink-3);
+}
+.ts-sheet pre .ts-k {
+  color: var(--ts-brass);
+}
+.ts-sheet pre .ts-b {
+  font-weight: 700;
+}
+
+/* --- reference panels --------------------------------------------------- */
+
+.ts-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+.ts-panels .ts-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+/* the stacked column is one grid item, so stretching it leaves the slack below its last
+   panel: hand that slack to the panel instead, and both columns end level */
+.ts-panels .ts-stack > .ts-panel:last-child {
+  flex: 1 1 auto;
+}
+
+.ts-panel {
+  background: var(--ts-panel);
+  border: 1px solid var(--ts-rule-soft);
+  border-radius: 3px;
+  box-shadow: var(--ts-shadow);
+  padding: 15px 17px 17px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.ts-panel h3 {
+  font-family: var(--ts-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ts-ink);
+}
+.ts-panel p {
+  font-size: 13.5px;
+  color: var(--ts-ink-2);
+}
+
+.ts-sheet table.ts-codes,
+.ts-sheet table.ts-layers {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  display: table;
+  box-shadow: none;
+}
+.ts-sheet table.ts-codes td,
+.ts-sheet table.ts-layers td {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--ts-rule-soft);
+  color: var(--ts-ink-2);
+  vertical-align: baseline;
+}
+.ts-sheet table.ts-codes tr:first-child td,
+.ts-sheet table.ts-layers tr:first-child td {
+  border-top: 0;
+}
+
+.ts-sheet table.ts-codes {
+  font-size: 13.5px;
+}
+.ts-sheet table.ts-codes td {
+  padding: 5px 0;
+}
+.ts-sheet table.ts-codes td:first-child {
+  width: 2.4em;
+  font-family: var(--ts-mono);
+  font-weight: 700;
+  color: var(--ts-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-sheet table.ts-layers {
+  font-family: var(--ts-mono);
+  font-size: 11.5px;
+}
+.ts-sheet table.ts-layers td {
+  padding: 5px 10px 5px 0;
+}
+.ts-sheet table.ts-layers td:first-child {
+  font-weight: 700;
+  color: var(--ts-ink);
+  white-space: nowrap;
+}
+.ts-sheet table.ts-layers td.ts-exact {
+  color: var(--ts-brass);
+  white-space: nowrap;
+}
+
+/* --- invariants --------------------------------------------------------- */
+
+.ts-invariants {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 34px;
+}
+.ts-invariants .ts-rule {
+  display: grid;
+  grid-template-columns: 1.2em minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--ts-rule-soft);
+  font-size: 13.5px;
+  color: var(--ts-ink-2);
+}
+.ts-invariants .ts-rule .ts-mark {
+  font-family: var(--ts-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ts-brass);
+}
+.ts-invariants .ts-rule b {
+  color: var(--ts-ink);
+  font-weight: 600;
+}
+
+/* --- colophon ----------------------------------------------------------- */
+
+.ts-colophon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  justify-content: space-between;
+  padding-top: 18px;
+  border-top: 1px solid var(--ts-rule);
+  font-family: var(--ts-mono);
+  font-size: 11px;
+  color: var(--ts-ink-3);
+}
+
+/* --- columns ------------------------------------------------------------ */
+
+@media (min-width: 60rem) {
+  .ts-cards.ts-pair,
+  .ts-cards.ts-quad,
+  .ts-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ts-invariants {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 46rem) and (max-width: 60rem) {
+  .ts-invariants {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* --- narrow ------------------------------------------------------------- */
+
+@media (max-width: 82em) {
+  body:has(.ts-sheet) .content {
+    padding: 0 1.5em;
+  }
+}
+
+@media (max-width: 46em) {
+  .ts-sheet {
+    gap: 34px;
+  }
+  .ts-cmd.ts-wide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .ts-aside {
+    display: none;
+  }
+}

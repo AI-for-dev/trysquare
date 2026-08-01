@@ -45,6 +45,10 @@ trysquare run <scenario> --output <dir> [options]
   - Override. Recorded in `state.json`.
 * - `--only CELL`
   - Restrict to these cells. Repeatable. Leaves the matrix **incomplete**.
+* - `--group-by-cell`, `--no-group-by-cell`
+  - File each run under a directory named for its cell, or keep `runs/<id>/` flat and
+    opaque. Grouped by default, blind when a `form` validator says a human scores by
+    hand - see {ref}`the two layouts <runs-layout>`.
 * - `--resume`
   - Fill only what produced nothing.
 * - `--until-complete [N]`
@@ -364,7 +368,20 @@ diff = "runs/a7f3/diff.patch"
 ```
 
 TOML rather than markdown with blanks, for a mechanical reason: **an absent key is a
-metric not yet filled**, so the file parses at any point without a bespoke parser.
+metric not yet filled**, so the file parses at any point without a bespoke parser. Every
+prose line is a comment for the same reason - `--ingest` reads this file back.
+
+A tree {ref}`grouped by cell <runs-layout>` puts the cell in every one of those paths, so
+the form says so at the top of the file and `form` says so on the terminal:
+
+```text
+! runs are grouped by cell, so this scenario's form names the configuration in every
+  path: whoever fills it can see which cell they are scoring
+```
+
+Not a refusal - grouping is asked for on purpose, and reading a matrix before anybody
+scores it is when it helps. But a form that names the cells is not a blind form, and it
+may not read as one.
 
 On ingest, a manual metric may **fill** a hole but never overwrite a measured value:
 
