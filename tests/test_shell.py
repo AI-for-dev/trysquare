@@ -474,6 +474,53 @@ class TestResume:
         assert state["overrides"] == {"concurrency": 10}
 
 
+class TestACellTheLedgerDoesNotKnow:
+    """A scenario edited between two launches, and a directory name that cannot say so."""
+
+    def output(self) -> outputs.Output:
+        return outputs.Output(Path(tempfile.mkdtemp()), parse(GRID))
+
+    def measured_without(self, o: outputs.Output, cell: str) -> dict:
+        """A finished ledger from before the scenario declared `cell`."""
+        state = o.initial_state()
+        state["runs"] = {
+            rid: meta | {"state": VALID}
+            for rid, meta in state["runs"].items()
+            if meta["cell"] != cell
+        }
+        return state
+
+    def test_a_cell_the_ledger_never_heard_of_counts_as_added(self):
+        o = self.output()
+        added, stale = o.cell_drift(self.measured_without(o, "ticket / high"))
+        assert added == {"ticket / high": 10}
+        assert not stale
+
+    def test_a_cell_the_scenario_dropped_counts_as_stale(self):
+        """A renamed variant leaves its old runs behind, and they are still rendered."""
+        o = self.output()
+        previous = o.initial_state()
+        previous["runs"]["deadbeef"] = {"cell": "witness", "repetition": 0, "state": VALID}
+        added, stale = o.cell_drift(previous)
+        assert stale == {"witness": 1}
+        assert not added
+
+    def test_a_ledger_that_matches_the_scenario_drifts_by_nothing(self):
+        """A note that fires on every ordinary resume is a note nobody reads."""
+        o = self.output()
+        assert o.cell_drift(o.initial_state()) == ({}, {})
+
+    def test_resuming_a_scenario_that_grew_a_cell_leaves_the_measured_runs_alone(self):
+        """`load_or_create_state` adds the new ids as missing, and `to_do` returns
+        those and nothing else."""
+        o = self.output()
+        o.prepare()
+        o.write_state(self.measured_without(o, "ticket / high"))
+        todo = o.to_do(o.load_or_create_state())
+        assert {meta["cell"] for _, meta in todo} == {"ticket / high"}
+        assert len(todo) == 10
+
+
 class TestBlindness:
     def scenario_with_judge(self, pieces):
         return parse(

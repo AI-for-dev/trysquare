@@ -208,6 +208,14 @@ def run_id(scenario_name: str, cell: str, repetition: int) -> str:
     return hashlib.blake2s(key, digest_size=4).hexdigest()
 
 
+def per_cell(runs: dict) -> dict[str, int]:
+    """How many runs a mapping of run ids holds for each cell, in first-seen order."""
+    counts: dict[str, int] = {}
+    for meta in runs.values():
+        counts[meta["cell"]] = counts.get(meta["cell"], 0) + 1
+    return counts
+
+
 class Output:
     """The directory for one experiment, and everything written into it."""
 
@@ -290,6 +298,25 @@ class Output:
             for cell in self.scenario.cells
             for i in range(self.repetitions)
         }
+
+    def cell_drift(self, previous: dict) -> tuple[dict[str, int], dict[str, int]]:
+        """Where the scenario and an existing ledger disagree about the cells.
+
+        Two mappings of cell name to run count: the cells the scenario declares and
+        the ledger does not know, and the cells the ledger holds and the scenario no
+        longer declares. The directory name carries the scenario, the etalon, the
+        agent and the repetition count - not the cells - so a scenario that grew a
+        variant reuses the directory of the matrix already published, and nothing but
+        this comparison can say so.
+
+        Read from the ledger as found. `load_or_create_state` fills in the ids it does
+        not know, which is the behaviour described here and also what erases the
+        evidence for it.
+        """
+        wanted, known = per_cell(self.plan()), per_cell(previous.get("runs", {}))
+        added = {name: n for name, n in wanted.items() if name not in known}
+        stale = {name: n for name, n in known.items() if name not in wanted}
+        return added, stale
 
     def read_state(self) -> dict:
         path = self.directory / STATE

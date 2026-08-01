@@ -100,6 +100,20 @@ rather than re-measured.
 
 `attempts` accumulates across resumes, so an abusive one leaves a trace.
 
+The ledger holds exactly the cells the scenario declared when it was written, and a
+later edit can make the two disagree. `run` compares them before spending, and says
+which way:
+
+- a cell the scenario declares and the ledger does not know is **added** to it, its runs
+  `missing`, so `--resume` measures that cell and leaves every measured run alone. This
+  is how a variant is added to a matrix already published - see
+  {doc}`../guide/writing-a-scenario`. The plan announces it as `ADDED:`.
+- a cell the ledger holds and the scenario no longer declares is **kept**. Its runs stay
+  counted and stay in every table, because a cell must never vanish from a synthesis
+  silently - and no launch can complete the ones that produced nothing, since the
+  scenario has no such cell to run. The plan announces it as `STALE:`, and the answer is
+  to delete the directory rather than resume onto it.
+
 The load is recorded whatever its origin, because retries depend on it and every cost
 column depends on retries.
 
