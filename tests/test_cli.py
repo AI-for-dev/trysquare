@@ -372,6 +372,50 @@ class TestPreRunHonesty:
         }
         o.write_state(state)
 
+    def a_finished_matrix(self, root) -> None:
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        o = Output(root, load(SCENARIO))
+        o.prepare()
+        state = o.initial_state()
+        for meta in state["runs"].values():
+            meta["state"] = "valid"
+        o.write_state(state)
+
+    def rewritten(self, root, **kwargs):
+        """The same scenario with its baseline prompt rewritten, resolved against root.
+
+        The replacement carries no `/` and no `.md`, so preflight - which runs first -
+        does not take it for a path that does not exist.
+        """
+        from dataclasses import replace
+
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        scenario = load(SCENARIO)
+        edited = replace(scenario, task=scenario.task | {"prompt": "fix it, differently"})
+        return runner.resolve(edited, config_mod.load(MACHINE), root, **kwargs)
+
+    def test_a_cell_that_changed_under_its_name_is_refused_by_a_resume(self, tmp_path):
+        """The operator's next move is a rename or a full relaunch, so the refusal
+        names the cell and both ways out."""
+        self.a_finished_matrix(tmp_path)
+        with pytest.raises(RuntimeError) as refusal:
+            self.rewritten(tmp_path, resume=True)
+        said = str(refusal.value)
+        assert "nothing / off" in said
+        assert "Rename the cell" in said and "without --resume" in said
+
+    def test_relaunching_without_resume_is_not_refused_when_a_cell_changed(self, tmp_path):
+        """Nothing is kept, so nothing can be published twice; OVERWRITE already says
+        the ledger is reset."""
+        self.a_finished_matrix(tmp_path)
+        plan = self.rewritten(tmp_path)
+        assert plan.runs == 60
+
     def test_resuming_a_scenario_that_grew_a_cell_measures_only_that_cell(self, tmp_path):
         """Adding a variant to a published matrix costs the variant, not the matrix."""
         self.measured_without(tmp_path, "careful ticket / high")

@@ -117,7 +117,8 @@
             <dt>--resume</dt>
             <dd>fill <b>only what produced nothing</b> - a cell added to the scenario since
               the ledger was written counts, having produced nothing by definition; a
-              validator failure is re-scored instead, at no token cost</dd>
+              validator failure is re-scored instead, at no token cost. <b>Refuses</b> a
+              cell whose declaration changed since it was measured</dd>
 
             <dt>--until-complete [N]</dt>
             <dd>after a pass, relaunch the runs that produced nothing, at most N passes

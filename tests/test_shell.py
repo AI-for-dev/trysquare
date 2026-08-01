@@ -521,6 +521,117 @@ class TestACellTheLedgerDoesNotKnow:
         assert len(todo) == 10
 
 
+class TestACellThatChangedUnderItsName:
+    """`state.json` records what each cell declares, so a resume cannot complete a
+    matrix whose cells no longer mean what their runs were measured under."""
+
+    def output(self, raw: dict, root=None) -> outputs.Output:
+        return outputs.Output(root or Path(tempfile.mkdtemp()), parse(raw))
+
+    def digest(self, raw: dict, cell: str) -> str:
+        s = parse(raw)
+        return outputs.cell_fingerprint(s, s.cell(cell))
+
+    def edited(self, **sections) -> dict:
+        """The same scenario with one section rewritten, which is what an author does."""
+        return GRID | {name: GRID[name] | values for name, values in sections.items()}
+
+    def reloaded(self, before: dict, after: dict, measured: str | None = None):
+        """A ledger written for `before`, then read back against `after`."""
+        o = self.output(before)
+        o.prepare()
+        state = o.initial_state()
+        if measured:
+            rid = outputs.run_id("t", measured, 0)
+            o.record(state, rid, Run(rid, measured, 0, state=VALID))
+        o.write_state(state)
+        later = self.output(after, o.directory.parent)
+        return later, later.load_or_create_state()
+
+    def test_the_ledger_records_what_every_cell_declares(self):
+        o = self.output(GRID)
+        assert sorted(o.initial_state()["cells"]) == sorted(c.name for c in parse(GRID).cells)
+
+    def test_two_cells_declaring_different_things_are_told_apart(self):
+        """A digest that is constant over a matrix guards nothing."""
+        assert self.digest(GRID, "none / off") != self.digest(GRID, "rule / high")
+
+    def test_the_same_declaration_digests_the_same_way_twice(self):
+        """One that moved on its own would refuse every resume of an unedited file."""
+        assert self.digest(GRID, "rule / high") == self.digest(GRID, "rule / high")
+
+    def test_a_cell_that_inherits_the_task_prompt_moves_when_it_is_edited(self):
+        """The case a delta-only digest misses: the cell declares nothing of its own
+        and still measures something else."""
+        after = self.edited(task={"prompt": "do the other thing"})
+        assert self.digest(GRID, "none / off") != self.digest(after, "none / off")
+
+    def test_a_cell_declaring_its_own_prompt_is_not_moved_by_the_baseline_one(self):
+        """`ticket / off` overrides the prompt, so a refusal there would fire on
+        something the cell cannot read."""
+        after = self.edited(task={"prompt": "do the other thing"})
+        assert self.digest(GRID, "ticket / off") == self.digest(after, "ticket / off")
+
+    def test_a_cell_that_inherits_the_thinking_level_moves_when_it_is_edited(self):
+        """`thinking` is not in the directory name, so nothing else would catch it."""
+        after = self.edited(agent={"thinking": "high"})
+        assert self.digest(GRID, "none / off") != self.digest(after, "none / off")
+
+    def test_a_cell_moves_when_the_brick_it_names_is_repointed(self):
+        """The delta names the brick, `[harness]` says what the brick is: a tag moved
+        there changes what the cell loads without changing its delta."""
+        before = MINIMAL | {
+            "variants": {"none": {}, "+kit": {"harness": ["kit"]}},
+            "harness": {"kit": {"repo": "https://example.invalid/kit", "tag": "v1"}},
+        }
+        after = before | {"harness": {"kit": {"repo": "https://example.invalid/kit", "tag": "v2"}}}
+        assert self.digest(before, "+kit") != self.digest(after, "+kit")
+        assert self.digest(before, "none") == self.digest(after, "none")
+
+    def test_a_cell_whose_runs_produced_nothing_takes_the_new_declaration(self):
+        """Nothing was measured under the old one, so there is nothing to protect."""
+        after = self.edited(task={"prompt": "do the other thing"})
+        o, state = self.reloaded(GRID, after)
+        assert o.changed_cells(state) == []
+        assert state["cells"]["none / off"] == self.digest(after, "none / off")
+
+    def test_a_cell_with_a_measured_run_is_refused(self):
+        """A resume keeps that run, so completing the matrix would publish two
+        configurations as one."""
+        after = self.edited(task={"prompt": "do the other thing"})
+        o, state = self.reloaded(GRID, after, measured="none / off")
+        assert o.changed_cells(state) == ["none / off"]
+
+    def test_a_failed_validator_freezes_the_cell_too(self):
+        """It produced a result, and re-scoring a run measured under another
+        declaration publishes the same two configurations."""
+        after = self.edited(task={"prompt": "do the other thing"})
+        o = self.output(GRID)
+        o.prepare()
+        state = o.initial_state()
+        rid = outputs.run_id("t", "none / off", 0)
+        o.record(state, rid, Run(rid, "none / off", 0, state=VALIDATOR_FAILED))
+        o.write_state(state)
+        later = self.output(after, o.directory.parent)
+        assert later.changed_cells(later.load_or_create_state()) == ["none / off"]
+
+    def test_a_ledger_written_before_fingerprints_existed_is_not_refused(self):
+        """A digest that was never recorded cannot have changed, and inventing one now
+        would record today's declaration as the one those runs were measured under."""
+        o = self.output(GRID)
+        o.prepare()
+        state = o.initial_state()
+        rid = outputs.run_id("t", "none / off", 0)
+        o.record(state, rid, Run(rid, "none / off", 0, state=VALID))
+        del state["cells"]
+        o.write_state(state)
+
+        after = self.output(self.edited(task={"prompt": "do the other thing"}), o.directory.parent)
+        state = after.load_or_create_state()
+        assert after.changed_cells(state) == []
+        assert "none / off" not in state["cells"]
+
+
 class TestBlindness:
     def scenario_with_judge(self, pieces):
         return parse(

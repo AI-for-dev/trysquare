@@ -85,6 +85,7 @@ The ledger, and what makes a matrix resumable.
   "layout": "by-cell",
   "overrides": { "repetitions": 2 },
   "complete": true,
+  "cells": { "nothing / off": "b6f0c2a1d4e37f58", "rule / off": "0a91c7d5e2b48366" },
   "runs": {
     "658df337": { "cell": "nothing / off", "repetition": 0, "state": "valid", "attempts": 1 },
     "962d7594": { "cell": "nothing / off", "repetition": 1, "state": "empty", "attempts": 2 }
@@ -113,6 +114,19 @@ which way:
   silently - and no launch can complete the ones that produced nothing, since the
   scenario has no such cell to run. The plan announces it as `STALE:`, and the answer is
   to delete the directory rather than resume onto it.
+
+`cells` is what makes the third case catchable: a cell **rewritten** under its own name.
+The directory name guards the experiment; this guards each cell inside it. The digest
+covers what the cell declares - its own `prompt`, `context`, `system` and `thinking`, the
+`[task].prompt` and `[agent].thinking` it falls back to, and the `[harness]` entries it
+names. A cell that has produced nothing takes the new digest; one that has produced a
+result is frozen, and a `--resume` that no longer matches it is refused.
+
+It is a digest of the **declaration**, not of the bytes it points at: a context brick is
+covered by its path, and editing that file in place is not caught. Same choice as
+`etalon` - a tag up front, the commit it resolved to recorded per run in
+`configuration.json`. A ledger written before digests existed carries none, and an absent
+digest is not a changed one.
 
 The load is recorded whatever its origin, because retries depend on it and every cost
 column depends on retries.
