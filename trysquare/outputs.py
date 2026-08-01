@@ -394,6 +394,45 @@ def _carried(directory: Path, repetitions: int, scenario, plan: dict) -> Carried
     )
 
 
+@dataclass(frozen=True)
+class Prior:
+    """What is already on disk that a launch has to decide about."""
+
+    # This matrix's own ledger: what produced a result, and what produced nothing.
+    kept: int
+    leftovers: int
+    # A lower matrix of the same experiment, when this one has no ledger of its own.
+    source: Carried | None
+
+    @property
+    def offerable(self) -> bool:
+        """Whether there is a decision to take at all.
+
+        A source that disagrees on what is measured is not one: it cannot be carried
+        whatever anybody answers, and the launch says why on its own.
+        """
+        return bool(self.kept or self.leftovers or (self.source and not self.source.mismatch))
+
+
+def prior(output: Output) -> Prior:
+    """What this launch is about to overwrite, carry or complete.
+
+    Reads and decides nothing, so what a launch would ask can be tested without a terminal
+    and a question can be built from the same facts the plan is.
+    """
+    runs = output.read_state().get("runs", {})
+    leftovers = sum(1 for meta in runs.values() if meta["state"] in RESUMABLE)
+    return Prior(
+        kept=len(runs) - leftovers,
+        leftovers=leftovers,
+        source=(
+            None
+            if runs
+            else carryable(output.root, output.scenario, output.plan(), output.repetitions)
+        ),
+    )
+
+
 def _archived_commit(trees: dict) -> str:
     """The commit the carried runs say they measured, from the first that says anything."""
     for tree in trees.values():
@@ -413,7 +452,10 @@ class Output:
     ):
         self.scenario = scenario
         self.repetitions = repetitions or scenario.protocol["repetitions"]
-        self.directory = Path(root) / experiment_name(scenario, self.repetitions)
+        # `root` is kept rather than re-derived from `directory.parent`: it is where the
+        # other matrices of this same experiment live, and a carry has to look there.
+        self.root = Path(root)
+        self.directory = self.root / experiment_name(scenario, self.repetitions)
         self.runs_dir = self.directory / RUNS
         self.cell_of = {i: meta["cell"] for i, meta in self.plan().items()}
         self.grouped = self._settle(grouped)

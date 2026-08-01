@@ -73,6 +73,17 @@ class TestParser:
             "form",
         }
 
+    def test_the_three_answers_cannot_be_given_at_once(self):
+        """They are the three answers to one question, so two of them says two things -
+        refused by argparse rather than by a precedence rule nobody can see."""
+        for pair in (
+            ("--resume", "--overwrite"),
+            ("--extend", "--overwrite"),
+            ("--resume", "--extend"),
+        ):
+            with pytest.raises(SystemExit):
+                build_parser().parse_args(["run", SCENARIO, "-o", "x", *pair])
+
     def test_the_bar_can_be_refused_on_every_command_that_draws_one(self):
         parser = build_parser()
         assert not parser.parse_args(["run", SCENARIO, "-o", "x"]).no_progress
@@ -596,6 +607,132 @@ class TestAnExtensionIsNeverSilent:
         assert "carried: 12 of 24 runs" in published
         assert "_n2" in published
         assert "This matrix was extended" in published
+
+
+class TestAskingBeforeSpending:
+    """The question a launch asks when results already exist, and everything that has to
+    keep working without one."""
+
+    def settled(self, root, *extra, answer=None, terminal=True):
+        """`settle_prior` with the terminal and the answer injected, so no test needs one."""
+        from trysquare.scenario import load
+
+        args = build_parser().parse_args(["run", SCENARIO, "-o", str(root), *extra])
+        asked = []
+
+        def asker(question, answers):
+            asked.append((question, answers))
+            return answer
+
+        settled = cli.settle_prior(args, load(SCENARIO), asker=asker, terminal=lambda: terminal)
+        return settled, asked
+
+    def test_off_a_terminal_the_announced_overwrite_is_kept(self, tmp_path):
+        """The path every scripted launch and every other test in this file takes: no
+        question, a fresh ledger, and the OVERWRITE note `resolve` already prints."""
+        a_measured_matrix(tmp_path, 10)
+        settled, asked = self.settled(tmp_path, terminal=False)
+        assert settled == (False, False)
+        assert asked == []
+
+    def test_a_dry_run_decides_nothing(self, tmp_path):
+        """Its whole promise is a free look at what a command would do."""
+        a_measured_matrix(tmp_path, 10)
+        settled, asked = self.settled(tmp_path, "--dry-run")
+        assert settled == (False, False)
+        assert asked == []
+
+    def test_nothing_on_disk_is_not_a_question(self, tmp_path):
+        settled, asked = self.settled(tmp_path)
+        assert settled == (False, False)
+        assert asked == []
+
+    def test_a_flag_is_never_second_guessed(self, tmp_path):
+        a_measured_matrix(tmp_path, 2)
+        for flags, expected in (
+            (("--resume",), (True, False)),
+            (("--overwrite",), (False, False)),
+            (("--repetitions", "4", "--extend"), (True, True)),
+        ):
+            settled, asked = self.settled(tmp_path, *flags)
+            assert settled == expected, flags
+            assert asked == [], flags
+
+    def test_the_difference_is_a_resume_when_this_matrix_holds_runs(self, tmp_path):
+        from trysquare.ask import DIFFERENCE
+        from trysquare.measure import EMPTY
+
+        output = a_measured_matrix(tmp_path, 10)
+        state = output.read_state()
+        state["runs"][next(iter(state["runs"]))]["state"] = EMPTY
+        output.write_state(state)
+
+        settled, asked = self.settled(tmp_path, answer=DIFFERENCE)
+        assert settled == (True, False)
+        assert "59 runs that produced a result and 1 that produced nothing" in asked[0][0][0]
+
+    def test_the_difference_is_an_extend_when_only_a_lower_matrix_exists(self, tmp_path):
+        from trysquare.ask import DIFFERENCE
+
+        a_measured_matrix(tmp_path, 2)
+        settled, asked = self.settled(tmp_path, "--repetitions", "4", answer=DIFFERENCE)
+        assert settled == (True, True)
+        assert "_n2" in " ".join(asked[0][0])
+
+    def test_this_matrix_s_own_ledger_comes_before_a_lower_one(self, tmp_path):
+        """The nearer fact, and `--resume` is its answer. Pulling a lower matrix into one
+        already under way is coherent, but it has to be typed."""
+        from trysquare.ask import DIFFERENCE
+
+        a_measured_matrix(tmp_path, 2)
+        a_measured_matrix(tmp_path, 4)
+        settled, asked = self.settled(tmp_path, "--repetitions", "4", answer=DIFFERENCE)
+        assert settled == (True, False)
+        assert "_n2" not in " ".join(asked[0][0])
+
+    def test_everything_is_what_the_command_always_did(self, tmp_path):
+        from trysquare.ask import EVERYTHING
+
+        a_measured_matrix(tmp_path, 10)
+        settled, _ = self.settled(tmp_path, answer=EVERYTHING)
+        assert settled == (False, False)
+
+    def test_a_lower_matrix_that_cannot_be_carried_is_not_a_question(self, tmp_path):
+        """No answer could make its runs carryable, and the launch says why on its own."""
+        a_measured_matrix(tmp_path, 2, thinking="high")
+        settled, asked = self.settled(tmp_path, "--repetitions", "4")
+        assert settled == (False, False)
+        assert asked == []
+
+    def test_aborting_writes_nothing_and_does_not_report_success(self, tmp_path):
+        """A launch that measured nothing must not read as one that did."""
+        from unittest.mock import patch
+
+        a_measured_matrix(tmp_path, 2)
+        argv = [
+            *("run", SCENARIO, "-o", str(tmp_path)),
+            *("--config", str(MACHINE), "--repetitions", "4"),
+        ]
+        with patch.object(cli, "settle_prior", return_value=None):
+            code, said = compared(argv)
+        assert code == 1
+        assert "nothing was spent" in said
+        assert not (tmp_path / "matrix_etalon-v1_test-provider_test-model_n4").exists()
+
+    def test_the_question_is_asked_once_whatever_until_complete_does(self, tmp_path):
+        """`resolve` runs once per pass, so a question inside it would be asked once per
+        pass - and would make a pure function block on a human."""
+        from unittest.mock import patch
+
+        a_measured_matrix(tmp_path, 2)
+        argv = [
+            *("run", SCENARIO, "-o", str(tmp_path), "--config", str(MACHINE)),
+            *("--repetitions", "2", "--resume", "--until-complete", "3"),
+        ]
+        with patch.object(cli, "settle_prior", return_value=(True, False)) as settle:
+            code, said = compared(argv)
+        assert code == 0 and "nothing to do" in said
+        assert settle.call_count == 1
 
 
 class TestPreRunHonesty:

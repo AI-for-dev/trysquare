@@ -54,6 +54,8 @@ trysquare run <scenario> --output <dir> [options]
 * - `--extend`
   - Carry the runs of this same experiment measured at fewer repetitions, and measure
     only the difference. Implies `--resume`.
+* - `--overwrite`
+  - Measure every run again, whatever is on disk. The default, made typeable.
 * - `--until-complete [N]`
   - After a pass, relaunch the runs that produced nothing, at most N passes in
     total (default 3). Never a re-measurement: a run that produced something is
@@ -111,6 +113,39 @@ conditions the retry count and therefore every cost column.
 **`--only`** leaves the matrix incomplete, so no synthesis is written and `--resume`
 completes it later. The two compose: a cell measured alone for debugging leaves a
 resumable matrix rather than a dead end.
+
+### When results already exist, it asks
+
+```text
+$ trysquare run scenario.toml -o out
+  rule-vs-ticket_..._n10 already holds 54 runs that produced a result and 6 that
+  produced nothing.
+    [d] difference  measure only those 6  (--resume)
+    [e] everything  measure them all again, resetting this ledger  (--overwrite)
+    [a] abort       nothing is spent
+  >
+```
+
+Asking for more repetitions than a matrix on disk asks the other flavour of the same
+question: carry the lower matrix's runs and measure the difference (`--extend`), measure
+everything from scratch, or stop.
+
+**The question is asked once**, before the plan is made. `--until-complete` resolves a
+plan per pass, so a question further in would be asked once per pass.
+
+**A flag is never second-guessed.** `--resume`, `--extend` and `--overwrite` are the three
+answers; give one and nothing is asked. They are mutually exclusive, because giving two
+says two things at once.
+
+**Off a terminal there is no question.** Piped, redirected, under `--dry-run`, with
+`TRYSQUARE_NO_PROMPT=1` or `TERM=dumb`, a launch does exactly what it did before the
+question existed: the announced overwrite. That is what keeps a scripted matrix
+reproducible - and a prompt written into a log file with nobody to answer it would hang a
+pipeline on an invisible question. Both streams have to be terminals for that reason.
+
+There is no default answer, and Enter is not one: the cheapest keystroke must not be the
+one that spends a matrix of tokens. Aborting exits **1** - a launch that measured nothing
+must not report success to whatever ran it.
 
 ### More repetitions, without paying twice
 

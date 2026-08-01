@@ -27,6 +27,7 @@ import textwrap
 from pathlib import Path
 
 from . import agent as agent_mod
+from . import ask as ask_mod
 from . import assay as assay_mod
 from . import scaffold as scaffold_mod
 from . import config as config_mod
@@ -49,6 +50,7 @@ from .outputs import (
     carried_note,
     incomplete_note,
     measures_in,
+    prior,
     unmeasured_note,
 )
 from .scenario import ScenarioError, load as load_scenario
@@ -122,12 +124,21 @@ def build_parser() -> argparse.ArgumentParser:
         "runs/<id> flat and opaque. The default is grouped, and blind when a form "
         "validator says a human scores by hand",
     )
-    run.add_argument("--resume", action="store_true", help="fill only what produced nothing")
-    run.add_argument(
+    # One group, because these are the three answers to the one question a launch asks when
+    # results already exist. Giving two of them says two things at once, and argparse
+    # refusing it for free beats a precedence rule nobody can see.
+    decided = run.add_mutually_exclusive_group()
+    decided.add_argument("--resume", action="store_true", help="fill only what produced nothing")
+    decided.add_argument(
         "--extend",
         action="store_true",
         help="carry the runs of this same experiment measured at fewer repetitions and "
         "measure only the difference; implies --resume",
+    )
+    decided.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="measure every run again, whatever is on disk; skips the question",
     )
     run.add_argument(
         "--until-complete",
@@ -246,9 +257,90 @@ def collect_overrides(args) -> dict:
     return out
 
 
+def settle_prior(
+    args, scenario, asker=ask_mod.ask, terminal=ask_mod.wanted
+) -> tuple[bool, bool] | None:
+    """What to do about results already on disk: `(resume, extend)`, or None to abort.
+
+    Asked **once**, here, before `resolve`. `resolve` is called again by every
+    `--until-complete` pass and by every test, so a question inside it would be asked once
+    per pass and would make a pure function block on a human.
+
+    A flag is never second-guessed, and off a terminal nothing is asked: that path returns
+    exactly what the command did before the question existed - a fresh ledger and the
+    `OVERWRITE` note - which is what leaves every scripted launch and every test unchanged.
+
+    Nor under `--dry-run`, whose whole promise is a free look at what a command would do. It
+    prints the notes that name `--resume` and `--extend` instead, and decides nothing.
+    """
+    if args.overwrite:
+        return False, False
+    if args.resume or args.extend:
+        # Extending means measuring only the difference, so it is a resume with a source.
+        # Without the implication a second `--extend` at the same count would reset the
+        # ledger and re-measure everything the first one carried.
+        return True, args.extend
+
+    output = Output(args.output, scenario, args.repetitions)
+    found = prior(output)
+    if args.dry_run or not found.offerable or not terminal():
+        return False, False
+
+    if found.kept or found.leftovers:
+        question = [
+            f"  {output.directory.name} already holds "
+            f"{counted(found.kept, 'run')} that produced a result and "
+            f"{found.leftovers} that produced nothing.",
+        ]
+        answers = [
+            ("d", ask_mod.DIFFERENCE, f"measure only those {found.leftovers}  (--resume)"),
+            (
+                "e",
+                ask_mod.EVERYTHING,
+                "measure them all again, resetting this ledger  (--overwrite)",
+            ),
+            ("a", ask_mod.ABORT, "nothing is spent"),
+        ]
+    else:
+        source = found.source
+        total = len(scenario.cells) * output.repetitions
+        question = [
+            f"  {output.directory.name} does not exist yet. {source.directory.name} does, and",
+            f"  its {counted(len(source), 'measured run')} are the runs this matrix asks for "
+            f"at its first {source.repetitions} repetitions.",
+        ]
+        answers = [
+            (
+                "d",
+                ask_mod.DIFFERENCE,
+                f"carry those {len(source)} and measure the {total - len(source)} new "
+                f"ones  (--extend)",
+            ),
+            (
+                "e",
+                ask_mod.EVERYTHING,
+                f"measure all {total} from scratch, leaving it alone  (--overwrite)",
+            ),
+            ("a", ask_mod.ABORT, "nothing is spent"),
+        ]
+
+    given = asker(question, answers)
+    if given == ask_mod.ABORT:
+        return None
+    if given == ask_mod.EVERYTHING:
+        return False, False
+    return True, not (found.kept or found.leftovers)
+
+
 def cmd_run(args) -> int:
     scenario, config = _load(args)
     overrides = collect_overrides(args)
+
+    settled = settle_prior(args, scenario)
+    if settled is None:
+        print("  aborted: nothing was measured and nothing was spent")
+        return 1
+    resume, extend = settled
 
     plan = runner_mod.resolve(
         scenario,
@@ -256,11 +348,8 @@ def cmd_run(args) -> int:
         args.output,
         overrides=overrides,
         only=tuple(args.only),
-        # Extending means measuring only the difference, so it is a resume with a source.
-        # Without the implication a second `--extend` at the same count would reset the
-        # ledger and re-measure everything the first one carried.
-        resume=args.resume or args.extend,
-        extend=args.extend,
+        resume=resume,
+        extend=extend,
         grouped=args.group_by_cell,
     )
 
