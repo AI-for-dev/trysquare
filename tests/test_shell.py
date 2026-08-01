@@ -1108,6 +1108,53 @@ class TestAgentModels:
         repo.check_agent_models({"explorer": meta})
 
 
+def cell_bricks(bricks: dict, delta: dict) -> dict:
+    """What `brick_paths` resolves for one cell of a minimal scenario."""
+    from trysquare.scenario import Cell
+
+    raw = MINIMAL | {
+        "harness": bricks,
+        "variants": {"none": {}, "c": delta or {"thinking": "high"}},
+        "verdict": {"criterion": "overflow", "reference": "none"},
+    }
+    return runner.brick_paths(
+        parse(raw), config.Config(path=Path("/x/trysquare.toml")), Cell("c", delta), Path("/x")
+    )
+
+
+class TestSkillBricks:
+    """Several skill bricks may coexist, each cited by name in a variant.
+
+    The routing used to hang on the brick being named exactly `skills`, so a
+    scenario could never compare skill A alone against skill B alone: one brick
+    held every path and a cell loaded all of it or none. `kind = "skills"`
+    declares the routing instead of encoding it in a name.
+    """
+
+    def test_kind_routes_paths_to_skills_and_loads_no_gate(self):
+        got = cell_bricks(
+            {"skill-tdd": {"kind": "skills", "paths": ["skills/tdd"]}},
+            {"harness": ["skill-tdd"]},
+        )
+        assert got["skills"] == [Path("/x/skills/tdd")]
+        assert got["agents"] == []
+        assert got["extensions"] == []
+
+    def test_the_brick_named_skills_still_needs_no_kind(self):
+        got = cell_bricks({"skills": {"paths": ["skills/tdd"]}}, {"harness": ["skills"]})
+        assert got["skills"] == [Path("/x/skills/tdd")]
+
+    def test_each_cell_loads_only_the_skills_it_cites(self):
+        bricks = {
+            "skill-tdd": {"kind": "skills", "paths": ["skills/tdd"]},
+            "skill-research": {"kind": "skills", "paths": ["skills/research"]},
+        }
+        one = cell_bricks(bricks, {"harness": ["skill-tdd"]})
+        other = cell_bricks(bricks, {"harness": ["skill-research"]})
+        assert one["skills"] == [Path("/x/skills/tdd")]
+        assert other["skills"] == [Path("/x/skills/research")]
+
+
 class TestTheSubagentGate:
     """The gate is loaded by the injection, not by the scenario.
 
@@ -1117,27 +1164,15 @@ class TestTheSubagentGate:
     forgot to declare the gate would measure those instead, and say nothing.
     """
 
-    def paths(self, bricks: dict, delta: dict) -> dict:
-        from trysquare.scenario import Cell
-
-        raw = MINIMAL | {
-            "harness": bricks,
-            "variants": {"none": {}, "c": delta or {"thinking": "high"}},
-            "verdict": {"criterion": "overflow", "reference": "none"},
-        }
-        return runner.brick_paths(
-            parse(raw), config.Config(path=Path("/x/trysquare.toml")), Cell("c", delta), Path("/x")
-        )
-
     def test_injecting_agents_loads_the_gate(self, tmp_path):
         d = tmp_path
         (d / "explorer.md").write_text("---\nname: explorer\nmodel: a/b\n---\n")
-        got = self.paths({"subagents": {"paths": ["explorer.md"]}}, {"harness": ["subagents"]})
+        got = cell_bricks({"subagents": {"paths": ["explorer.md"]}}, {"harness": ["subagents"]})
         assert got["extensions"] == [runner.AGENT_GATE]
 
     def test_a_cell_without_subagents_loads_nothing(self):
         """The baseline must not carry an extension the treatment introduced."""
-        assert self.paths({}, {})["extensions"] == []
+        assert cell_bricks({}, {})["extensions"] == []
 
     def test_the_gate_ships_inside_the_package(self):
         """An installed wheel has no repository around it to resolve against."""

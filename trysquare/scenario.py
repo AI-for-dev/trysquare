@@ -221,6 +221,7 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
     verdict = dict(raw["verdict"])
     _check_verdict(verdict, validators, cells, axes)
     _check_test_command(raw["task"], validators, where)
+    _check_bricks(raw.get("harness", {}), where)
 
     scenario = raw["scenario"]
     return Scenario(
@@ -376,6 +377,36 @@ def _check_artefacts(task: dict, where: str) -> None:
         if not isinstance(pattern, str) or not pattern.strip():
             raise ScenarioError(
                 f"{where}[task].artefacts holds {pattern!r}: every entry is a path pattern"
+            )
+
+
+BRICK_KINDS = ("skills", "agents")
+
+
+def _check_bricks(bricks: dict, where: str) -> None:
+    """Refuses a brick whose `kind` would route paths nobody can predict.
+
+    `kind` says whether a brick's `paths` are skills or agents. A misspelled
+    value would not raise downstream - the routing falls back to agents - so the
+    cell would silently measure subagents where the author declared skills.
+    Refused here, before any token is spent, like every other rule in this file.
+
+    `kind` on a brick without `paths` is refused for the same reason: it
+    declares a routing for nothing, which is always a leftover or a typo.
+    """
+    for name, brick in bricks.items():
+        kind = brick.get("kind")
+        if kind is None:
+            continue
+        if kind not in BRICK_KINDS:
+            raise ScenarioError(
+                f"{where}[harness.{name}].kind is {kind!r}"
+                f"{closest(kind, BRICK_KINDS)}. Kinds: {', '.join(BRICK_KINDS)}"
+            )
+        if not brick.get("paths"):
+            raise ScenarioError(
+                f"{where}[harness.{name}] declares kind = {kind!r} but no paths: "
+                f"kind only says what the paths are"
             )
 
 
