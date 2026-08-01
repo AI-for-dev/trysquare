@@ -110,10 +110,24 @@ which way:
   is how a variant is added to a matrix already published - see
   {doc}`../guide/writing-a-scenario`. The plan announces it as `ADDED:`.
 - a cell the ledger holds and the scenario no longer declares is **kept**. Its runs stay
-  counted and stay in every table, because a cell must never vanish from a synthesis
-  silently - and no launch can complete the ones that produced nothing, since the
-  scenario has no such cell to run. The plan announces it as `STALE:`, and the answer is
-  to delete the directory rather than resume onto it.
+  in every table, because a cell must never vanish from a synthesis silently. None of
+  them is launched or counted towards `complete`: the scenario has no such cell to run,
+  so an unfinished one would hold the matrix incomplete with nothing able to lift it.
+  The plan announces it as `STALE:`, and the answer is to delete the directory rather
+  than resume onto it.
+
+`cells` is what makes the third case catchable: a cell **rewritten** under its own name.
+The directory name guards the experiment; this guards each cell inside it. The digest
+covers what the cell declares - its own `prompt`, `context`, `system` and `thinking`, the
+`[task].prompt` and `[agent].thinking` it falls back to, and the `[harness]` entries it
+names. A cell that has produced nothing takes the new digest; one that has produced a
+result is frozen, and a `--resume` that no longer matches it is refused.
+
+It is a digest of the **declaration**, not of the bytes it points at: a context brick is
+covered by its path, and editing that file in place is not caught. Same choice as
+`etalon` - a tag up front, the commit it resolved to recorded per run in
+`configuration.json`. A ledger written before digests existed carries none, and an absent
+digest is not a changed one.
 
 `cells` is what makes the third case catchable: a cell **rewritten** under its own name.
 The directory name guards the experiment; this guards each cell inside it. The digest

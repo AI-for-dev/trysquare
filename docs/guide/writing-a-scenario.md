@@ -208,10 +208,10 @@ the same, so a resume onto it is **refused** rather than allowed to publish two
 configurations under one name - see
 [the refusal](troubleshooting.md#these-cells-changed-since-their-runs-were-measured).
 
-Renaming a variant is that edit in disguise. The old name stays in the ledger and its
-runs keep being rendered, and any of them that produced nothing can never complete,
-because the scenario no longer has that cell to run. The plan says so with a `STALE:`
-note, and the answer is to delete the directory rather than resume onto it.
+Renaming a variant sidesteps that refusal, and costs the whole cell: the new name is
+measured from scratch, and the old one stays in the ledger with its runs still rendered
+beside the new ones. The plan says so with a `STALE:` note. Delete the directory if you
+want the new matrix published alone.
 :::
 
 ### Never put the answer in a cell

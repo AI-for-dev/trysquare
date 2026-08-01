@@ -454,10 +454,18 @@ class Output:
 
         A valid run is never relaunched, whatever its result. That is the whole
         protection: a resume has no power over anything that produced a result.
+
+        A run of a cell the scenario no longer declares is not one to perform: there
+        is nothing to launch it as. Launching it anyway spent a clone to reach
+        `unknown cell`, recorded the run as empty, and left it resumable - so it came
+        back on the next pass, and every pass after that.
         """
+        declared = {cell.name for cell in self.scenario.cells}
         out = []
         for run_id_, meta in state["runs"].items():
             if only and meta["cell"] not in only:
+                continue
+            if meta["cell"] not in declared:
                 continue
             if meta["state"] in RESUMABLE:
                 out.append((run_id_, meta))
@@ -471,8 +479,18 @@ class Output:
             entry["detail"] = run.detail
 
     def summarise(self, state: dict) -> dict:
+        """What the ledger holds, and whether this scenario's matrix is finished.
+
+        Counted over the cells the scenario declares. A cell it no longer declares -
+        a variant renamed between two launches - keeps its runs and keeps them
+        rendered, but its unfinished ones say nothing about the matrix being planned,
+        and counting them held `complete` at false with no launch able to lift it.
+        """
+        declared = {cell.name for cell in self.scenario.cells}
         counts: dict[str, int] = {}
         for meta in state["runs"].values():
+            if meta["cell"] not in declared:
+                continue
             counts[meta["state"]] = counts.get(meta["state"], 0) + 1
         state["complete"] = counts.get(MISSING, 0) == 0 and counts.get(EMPTY, 0) == 0
         return counts
