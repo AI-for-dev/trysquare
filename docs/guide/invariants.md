@@ -86,6 +86,10 @@ happen to like, so the harness removes the opportunity:
   produce a result and re-measuring it would let a resume change it;
 - **attempts are counted** per run, so an abusive resume leaves a trace in
   `state.json`;
+- a resume may not change **what a cell is**: `state.json` records a digest of each
+  cell's declaration, and a cell that already produced a result and no longer matches
+  it is refused. Editing a delta under one name would publish two configurations as
+  one, which is what the directory name refuses a level up;
 - relaunching the same experiment **overwrites** it. A timestamped directory per
   launch would accumulate variants of one experiment to choose between, which is
   optional stopping through the back door.

@@ -208,6 +208,30 @@ def run_id(scenario_name: str, cell: str, repetition: int) -> str:
     return hashlib.blake2s(key, digest_size=4).hexdigest()
 
 
+def cell_fingerprint(scenario, cell) -> str:
+    """What one cell declares, as one short digest.
+
+    The directory name is the experiment's identity. This is a cell's, one level down.
+    Without it the ledger records that a run belongs to `rule / high` and nothing about
+    what `rule / high` *was*, so editing a delta and resuming keeps the runs measured
+    under the old declaration and completes the matrix with the new one: two
+    configurations published under one name.
+
+    Taken over `scenario.declared(cell)`, which is also what a run is built from, so
+    what the ledger promises and what the agent received cannot drift apart.
+
+    Over the **declaration**, not over the bytes it points at: a context brick is
+    fingerprinted by its path, and editing that file in place is not caught here. That
+    is the choice `etalon` already makes - a tag up front, the commit it resolved to
+    recorded per run in `configuration.json` - and it is what keeps `resolve` off the
+    disk, which is what keeps a dry run free.
+
+    `sort_keys`, because reordering two keys of a TOML block must not cost a matrix.
+    """
+    payload = json.dumps(scenario.declared(cell), sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.blake2s(payload.encode(), digest_size=8).hexdigest()
+
+
 def per_cell(runs: dict) -> dict[str, int]:
     """How many runs a mapping of run ids holds for each cell, in first-seen order."""
     counts: dict[str, int] = {}
@@ -318,6 +342,33 @@ class Output:
         stale = {name: n for name, n in known.items() if name not in wanted}
         return added, stale
 
+    def fingerprints(self) -> dict[str, str]:
+        """What every cell of this scenario declares, one digest each."""
+        return {cell.name: cell_fingerprint(self.scenario, cell) for cell in self.scenario.cells}
+
+    def measured_cells(self, state: dict) -> set[str]:
+        """Cells holding a run a resume can no longer relaunch."""
+        return {m["cell"] for m in state["runs"].values() if m["state"] not in RESUMABLE}
+
+    def changed_cells(self, state: dict) -> list[str]:
+        """Cells declaring something other than what their results were measured under.
+
+        Only cells that already produced one: while every run of a cell is still
+        missing or empty, nothing was measured under the old declaration and the new
+        one simply replaces it. The same line `to_do` draws, for the same reason.
+
+        A cell with no recorded fingerprint is not a changed cell. Ledgers written
+        before fingerprints existed carry none, and inventing one now would record
+        today's declaration as the one those runs were measured under.
+        """
+        measured = self.measured_cells(state)
+        recorded = state.get("cells", {})
+        return [
+            name
+            for name, fingerprint in self.fingerprints().items()
+            if name in measured and recorded.get(name, fingerprint) != fingerprint
+        ]
+
     def read_state(self) -> dict:
         path = self.directory / STATE
         if not path.is_file():
@@ -340,6 +391,10 @@ class Output:
         run by `runner.archive`, because this method is called from `resolve()` during a
         `--dry-run`, and a field derived from the disk or the network would stop a dry
         run from being free.
+
+        `cells` records what each cell declares, so a later launch can tell a cell that
+        was renamed from a cell that was rewritten. Pure computation over the parsed
+        scenario, like everything else here, so a dry run stays free.
         """
         return {
             "scenario": self.scenario.name,
@@ -354,6 +409,7 @@ class Output:
             "layout": self.layout,
             "overrides": overrides or {},
             "complete": False,
+            "cells": self.fingerprints(),
             "runs": {
                 run_id_: {**meta, "state": MISSING, "attempts": 0}
                 for run_id_, meta in self.plan().items()
@@ -382,6 +438,15 @@ class Output:
         state.setdefault("layout", self.layout)
         for run_id_, meta in self.plan().items():
             state["runs"].setdefault(run_id_, {**meta, "state": MISSING, "attempts": 0})
+
+        # A cell's fingerprint moves freely until the cell produces its first result and
+        # is frozen after: the line `to_do` draws. `changed_cells` is therefore still
+        # true once this loop has run, which is what lets a caller check afterwards.
+        measured = self.measured_cells(state)
+        cells = state.setdefault("cells", {})
+        for name, fingerprint in self.fingerprints().items():
+            if name not in measured:
+                cells[name] = fingerprint
         return state
 
     def to_do(self, state: dict, only: tuple[str, ...] = ()) -> list[tuple[str, dict]]:

@@ -204,8 +204,9 @@ afterwards. Use it to try a cell out, not to grow a matrix.
 :::{warning}
 Adding a cell is the one edit that is safe here. Changing an existing cell's delta, or
 the baseline prompt it inherits, changes what is measured while the directory name stays
-the same - see [the known gap in the naming
-scheme](../reference/outputs.md#a-known-gap-in-the-naming-scheme).
+the same, so a resume onto it is **refused** rather than allowed to publish two
+configurations under one name - see
+[the refusal](troubleshooting.md#these-cells-changed-since-their-runs-were-measured).
 
 Renaming a variant is that edit in disguise. The old name stays in the ledger and its
 runs keep being rendered, and any of them that produced nothing can never complete,

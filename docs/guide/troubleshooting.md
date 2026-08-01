@@ -274,6 +274,43 @@ A cell name that matches nothing used to be *filtered* rather than refused, so
 left to do. The refusal lists every cell, because a grid names its cells by joining
 axis values (`rule / high`) and the exact spelling is easier to copy than to guess.
 
+## "these cells changed since their runs were measured"
+
+```text
+refused: these cells changed since their runs were measured: careful ticket / off
+--resume keeps every run that produced a result, so completing this matrix would
+publish two configurations under one cell name.
+Rename the cell, so the new one is measured as itself and the old runs keep their own
+name; or relaunch without --resume, which overwrites
+rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10 and measures every cell again.
+```
+
+The directory name carries the scenario, the etalon, the agent and the repetition
+count - not the cells. So editing a cell and resuming used to keep the runs measured
+under the old declaration and complete the matrix with the new one, under one name.
+
+`state.json` records a digest of each cell's declaration: its own `prompt`, `context`,
+`system` and `thinking`, the `[task].prompt` and `[agent].thinking` it falls back to
+when it declares none, and the `[harness]` entries it names - a tag repointed there
+changes what a cell loads without changing a character of its delta.
+
+**A cell that has produced nothing is not refused.** Its digest simply takes the new
+value: nothing was measured under the old one, so there is nothing to protect. The
+freeze happens at the first result, which is the same line a resume already draws.
+
+Two things the digest does **not** cover, and both are deliberate:
+
+- **file contents.** `context = "AGENTS.md"` is fingerprinted by its path. Editing that
+  file in place is not caught. `resolve` must stay off the disk or a dry run stops being
+  free, and this is the choice `etalon` already makes - a tag up front, the commit it
+  resolved to recorded per run in `configuration.json`;
+- **validators and the verdict.** They are not per-cell, and a validator change is
+  repaired by `replay --rescore` at no token cost. Refusing paid runs over a re-scorable
+  edit would be backwards.
+
+A ledger written before digests existed carries none, and an absent digest is not a
+changed one: those matrices are guarded from their next full launch on.
+
 ## A harness clone failed
 
 ```text

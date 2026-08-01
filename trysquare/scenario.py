@@ -152,6 +152,27 @@ class Scenario:
                 return c
         raise ScenarioError(f"unknown cell {name!r}{closest(name, (c.name for c in self.cells))}")
 
+    def declared(self, cell: Cell) -> dict:
+        """Everything one cell declares, the values it falls back to included.
+
+        The single fallback rule, and the only one: `runner.one_run` builds a run
+        from this and `outputs.cell_fingerprint` writes it into the ledger. Two
+        implementations would let `state.json` promise one configuration while the
+        agent received another, which is the drift this module spends its whole
+        length refusing.
+
+        The bricks are resolved from their names, because `[harness]` is where a tag
+        lives: a cell whose delta never changed still loads something else once the
+        entry it names is repointed.
+        """
+        return {
+            "prompt": cell.delta.get("prompt") or self.task.get("prompt"),
+            "context": cell.delta.get("context"),
+            "system": cell.delta.get("system"),
+            "thinking": cell.delta.get("thinking") or self.agent["thinking"],
+            "harness": {n: self.bricks.get(n) for n in cell.delta.get("harness", ())},
+        }
+
     @property
     def reference(self) -> str:
         """The cell every gap is measured against, as a cell name."""

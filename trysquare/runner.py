@@ -113,6 +113,22 @@ def resolve(
             )
     notes.extend(drift_notes(output, previous))
     state = output.load_or_create_state(overrides) if resume else output.initial_state(overrides)
+
+    # A cell renamed is a new cell and measures itself. A cell rewritten under the same
+    # name is the defect the directory name refuses one level up, and only the ledger
+    # can catch it: nothing in the name changes when a delta does.
+    changed = output.changed_cells(state) if resume else []
+    if changed:
+        raise RuntimeError(
+            "these cells changed since their runs were measured: "
+            + ", ".join(changed)
+            + "\n--resume keeps every run that produced a result, so completing this "
+            "matrix would publish two configurations under one cell name.\n"
+            "Rename the cell, so the new one is measured as itself and the old runs "
+            "keep their own name; or relaunch without --resume, which overwrites "
+            f"{output.directory.name} and measures every cell again."
+        )
+
     todo = output.to_do(state, only)
 
     if only:
@@ -235,14 +251,12 @@ AGENT_GATE = Path(__file__).resolve().parent / "agent-gate.ts"
 
 def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> dict:
     """The bricks one cell loads, resolved to real paths."""
-    wanted = cell.delta.get("harness", [])
     extensions: list[Path] = []
     agents: list[Path] = []
     skills: list[Path] = []
     agent_model = None
 
-    for name in wanted:
-        brick = scenario.bricks.get(name)
+    for name, brick in scenario.declared(cell)["harness"].items():
         if brick is None:
             raise RuntimeError(f"cell {cell.name!r} wants brick {name!r}, which is not declared")
 
@@ -504,10 +518,11 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
     try:
         bricks = brick_paths(scenario, plan.config, cell, base)
 
-        prompt = read_brick(base, cell.delta.get("prompt") or scenario.task.get("prompt")) or ""
-        context = read_brick(base, cell.delta.get("context"))
-        system = read_brick(base, cell.delta.get("system"))
-        thinking = cell.delta.get("thinking") or scenario.agent["thinking"]
+        declared = scenario.declared(cell)
+        prompt = read_brick(base, declared["prompt"]) or ""
+        context = read_brick(base, declared["context"])
+        system = read_brick(base, declared["system"])
+        thinking = declared["thinking"]
 
         # Pinned here as well as in `execute`, so a clone cannot be reached without it.
         # Idempotent: on the hit path this is one lock and one `is_file()`.
