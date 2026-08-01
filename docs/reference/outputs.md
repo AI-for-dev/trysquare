@@ -110,10 +110,11 @@ which way:
   is how a variant is added to a matrix already published - see
   {doc}`../guide/writing-a-scenario`. The plan announces it as `ADDED:`.
 - a cell the ledger holds and the scenario no longer declares is **kept**. Its runs stay
-  counted and stay in every table, because a cell must never vanish from a synthesis
-  silently - and no launch can complete the ones that produced nothing, since the
-  scenario has no such cell to run. The plan announces it as `STALE:`, and the answer is
-  to delete the directory rather than resume onto it.
+  in every table, because a cell must never vanish from a synthesis silently. None of
+  them is launched or counted towards `complete`: the scenario has no such cell to run,
+  so an unfinished one would hold the matrix incomplete with nothing able to lift it.
+  The plan announces it as `STALE:`, and the answer is to delete the directory rather
+  than resume onto it.
 
 `cells` is what makes the third case catchable: a cell **rewritten** under its own name.
 The directory name guards the experiment; this guards each cell inside it. The digest

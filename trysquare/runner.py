@@ -185,9 +185,9 @@ def drift_notes(output: Output, previous: dict) -> list[str]:
         notes.append(
             f"STALE: {output.directory.name} holds {', '.join(stale)}, which the "
             f"scenario no longer declares. Those {counted(sum(stale.values()), 'run')} "
-            f"stay counted and stay in every table - a cell must never vanish silently "
-            f"- and no launch can complete any of them that produced nothing, since "
-            f"the scenario has no such cell to run"
+            f"stay in every table - a cell must never vanish silently - and none is "
+            f"launched or counted, since the scenario has no such cell. Delete the "
+            f"directory to publish the new matrix alone"
         )
     return notes
 

@@ -520,6 +520,42 @@ class TestACellTheLedgerDoesNotKnow:
         assert {meta["cell"] for _, meta in todo} == {"ticket / high"}
         assert len(todo) == 10
 
+    def with_a_dropped_cell(self, o: outputs.Output) -> dict:
+        """A ledger from before a variant was renamed: eight of its runs measured,
+        two that produced nothing."""
+        state = o.initial_state()
+        for meta in state["runs"].values():
+            meta["state"] = VALID
+        for i in range(10):
+            state["runs"][f"w{i:02d}"] = {
+                "cell": "witness",
+                "repetition": i,
+                "state": VALID if i < 8 else EMPTY,
+                "attempts": 1,
+            }
+        return state
+
+    def test_a_run_of_a_cell_the_scenario_dropped_is_never_launched(self):
+        """There is nothing to launch it as. Launching it anyway spent a clone to
+        reach `unknown cell`, recorded it empty, and brought it back next pass."""
+        o = self.output()
+        assert o.to_do(self.with_a_dropped_cell(o)) == []
+
+    def test_a_dropped_cell_does_not_hold_the_matrix_incomplete(self):
+        """No launch could ever lift it, so the matrix could never publish again."""
+        o = self.output()
+        state = self.with_a_dropped_cell(o)
+        o.summarise(state)
+        assert state["complete"]
+
+    def test_a_dropped_cell_keeps_its_runs_in_the_ledger(self):
+        """It is excluded from what runs and from what counts, never deleted: a cell
+        must not vanish from a synthesis silently."""
+        o = self.output()
+        state = self.with_a_dropped_cell(o)
+        o.summarise(state)
+        assert sum(1 for m in state["runs"].values() if m["cell"] == "witness") == 10
+
 
 class TestACellThatChangedUnderItsName:
     """`state.json` records what each cell declares, so a resume cannot complete a
