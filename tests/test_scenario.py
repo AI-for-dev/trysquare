@@ -239,6 +239,34 @@ class TestShape:
         assert set(s.declared_metrics) == {"overflow", "delivered", "usable"}
 
 
+class TestBrickKind:
+    """A `kind` nobody can route is refused before any token is spent.
+
+    A misspelled kind would not raise downstream: the routing falls back to
+    agents, so the cell would silently measure subagents where the author
+    declared skills.
+    """
+
+    def test_a_misspelled_kind_is_refused_with_a_suggestion(self):
+        d = MINIMAL | {"harness": {"skill-tdd": {"kind": "skill", "paths": ["skills/tdd"]}}}
+        with pytest.raises(ScenarioError, match=re.escape("did you mean 'skills'")):
+            parse(d)
+
+    def test_kind_without_paths_is_refused(self):
+        d = MINIMAL | {"harness": {"skill-tdd": {"kind": "skills"}}}
+        with pytest.raises(ScenarioError, match="no paths"):
+            parse(d)
+
+    def test_both_kinds_load(self):
+        d = MINIMAL | {
+            "harness": {
+                "skill-tdd": {"kind": "skills", "paths": ["skills/tdd"]},
+                "subagents": {"kind": "agents", "paths": ["agents/explorer.md"]},
+            }
+        }
+        assert set(parse(d).bricks) == {"skill-tdd", "subagents"}
+
+
 def scoring_tests(**task) -> dict:
     """A scenario that contracts for the `tests` metric, with `task` keys added."""
     return MINIMAL | {

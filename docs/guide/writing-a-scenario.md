@@ -157,6 +157,10 @@ declaring it. Injecting agent definitions does not by itself make them the only
 reachable ones, and the default reaches the agent library's own - see
 [`[harness.<name>]`](../reference/scenario-schema.md#harnessname).
 
+To compare skills one at a time, declare one brick per skill with `kind = "skills"`
+and let each variant cite the brick it measures - see
+[`[harness.<name>]`](../reference/scenario-schema.md#harnessname).
+
 They combine: a regular grid plus a couple of named witnesses in one scenario.
 
 ### Keep a witness

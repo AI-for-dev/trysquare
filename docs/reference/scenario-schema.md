@@ -329,6 +329,34 @@ A brick with `repo` is cloned at its `tag` **once per matrix**, its dependencies
 installed, and every cell loads the same pinned state. An experiment that pins the
 measured repository and lets the harness float is measuring the operator.
 
+`kind` declares what a brick's `paths` are - `"skills"` or `"agents"`. Absent, the
+brick named `skills` carries skills and every other brick carries agents. Declaring it
+lets several skill bricks coexist, so variants compare skills one at a time instead of
+loading one all-or-nothing brick:
+
+```toml
+[harness.skill-tdd]
+kind = "skills"
+paths = ["skills/tdd"]
+
+[harness.skill-research]
+kind = "skills"
+paths = ["skills/research"]
+
+[variants."+tdd"]
+harness = ["skill-tdd"]
+
+[variants."+research"]
+harness = ["skill-research"]
+
+[variants."+both"]
+harness = ["skill-tdd", "skill-research"]
+```
+
+A `kind` outside those two values, or on a brick without `paths`, is refused at load
+time: a misspelled kind would silently fall back to agents, and the cell would measure
+subagents where its author declared skills.
+
 :::{note}
 `[harness.agents].model` is an optional override. Absent, each agent file declares its
 own model, which keeps a cheap explorer alongside an expensive coder expressible.
@@ -351,7 +379,7 @@ each would inherit whatever the operator's machine defaults to. A cell injecting
 nothing in the output would have said so.
 
 `trysquare/agent-gate.ts` ships inside the package and is appended to the extensions
-of any cell with `paths` under a non-`skills` brick. It forces the scope and refuses
+of any cell whose `paths` carry agents. It forces the scope and refuses
 any agent name the scenario did not inject. It is not a `[harness]` entry, because
 forgetting it was one line away from measuring the wrong thing.
 :::

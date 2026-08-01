@@ -357,9 +357,14 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
         elif "load" in brick:
             extensions.append((base / brick["load"]).resolve())
 
+        # `kind` says what the paths are; the name only decides for the historical
+        # brick called `skills`, kept so existing scenarios keep meaning what they
+        # said. Several skill bricks can then coexist, each cited by name in a
+        # variant's `harness` list.
+        kind = brick.get("kind") or ("skills" if name == "skills" else "agents")
         for path in brick.get("paths", []):
             resolved = (base / path).resolve()
-            if name == "skills":
+            if kind == "skills":
                 skills.append(resolved)
             else:
                 agents.append(resolved)
