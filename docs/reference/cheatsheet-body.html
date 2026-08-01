@@ -125,6 +125,10 @@
               they are the very same runs - and measure only the difference. Implies
               <code>--resume</code>; the lower matrix is copied, not moved</dd>
 
+            <dt>--overwrite</dt>
+            <dd>measure every run again, whatever is on disk. What a launch has always
+              done, made typeable so the question below can be skipped</dd>
+
             <dt>--until-complete [N]</dt>
             <dd>after a pass, relaunch the runs that produced nothing, at most N passes
               total (<b>default 3</b>). Never a re-measurement</dd>
@@ -164,7 +168,9 @@
           <p style="font-size:13px">
             Estimate is throughput since launch, drawn on a terminal only. Relaunching the
             same experiment <strong>overwrites</strong> it - the archive of previous
-            versions is git.
+            versions is git. On a terminal it <strong>asks first</strong>: the difference,
+            everything, or abort. Piped, under <code>--dry-run</code> or with
+            <code>TRYSQUARE_NO_PROMPT=1</code> there is no question and nothing changes.
           </p>
         </div>
       </article>
