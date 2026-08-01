@@ -1,9 +1,489 @@
-/* The lockup is 207px wide and furo's sidebar offers about 203, so left to itself the
-   brand is scaled to the very edge of its container and reads as cropped rather than
-   placed. Hold it back to leave a margin on both sides.
+/* The documentation's own type and colour.
+ *
+ * The cheat sheet arrived with a type and colour system of its own - see
+ * `cheatsheet.css`, and `_static/logo/README.md` for where the palette is written down.
+ * This file lifts it out of that one page and gives it to the whole site: slate, brass
+ * and paper, a serif for prose, a mono for everything the tool says of itself.
+ *
+ * The font stacks are `cheatsheet.css`'s, verbatim and now declared here instead. They
+ * are system stacks - nothing is served, and a reader without Charter or Source Serif 4
+ * installed falls through to Georgia. That is the trade: no bytes, and no guarantee the
+ * page looks the same everywhere.
+ *
+ * The palette is declared here as `--ts-*` tokens; conf.py maps furo's own variables
+ * onto them. The split is not arbitrary - furo emits its map in an inline <style> after
+ * every stylesheet, on `body[data-theme=dark]`, and a rule here on plain `body` could
+ * not outrank that.
+ *
+ * `body` and not `:root`, for the same reason: furo declares its variables on `body`, and
+ * inheritance from <html> never beats a direct declaration on the element itself.
+ *
+ * These declarations are deliberately the *weakest* in the file, so the cheat sheet keeps
+ * its own: `cheatsheet.css` declares on `.ts-sheet` and `body:has(.ts-sheet)`, both of
+ * which outrank plain `body`.
+ */
 
-   Furo sets `max-width: 100%` on .sidebar-logo; this is the same specificity, so it wins
-   on source order - which is why the stylesheet is registered after the theme's own. */
+/* --- the palette --------------------------------------------------------------------
+ *
+ * Slate, brass and paper, from docs/_static/logo/README.md. Three declarations, mirroring
+ * furo's own: light on `body`, dark on the theme toggle and on the OS preference, both
+ * inside `@media not print`.
+ *
+ * That wrapper is load-bearing. Without it a reader who has dark selected prints light
+ * text on a dark slab, because furo's own print rules only reset furo's own variables.
+ *
+ * On contrast, which decides where each brass goes: `--ts-brass` is 3.75:1 on paper and
+ * `--ts-ink-3` is 3.60:1, both under AA for text. So brass *text* is always
+ * `--ts-brass-ink` (5.30:1) and plain `--ts-brass` is for rules, borders and markers;
+ * `--ts-ink-3` is decoration, and anything carrying information takes `--ts-ink-2`.
+ */
+body {
+  --ts-ink: #232b33;
+  --ts-ink-2: #5d6873;
+  --ts-ink-3: #7e8894;
+  --ts-ground: #eef1f3;
+  --ts-panel: #ffffff;
+  --ts-panel-2: #e4e9ed;
+  /* The same colour at zero alpha. `transparent` computes to transparent *black*, which
+   * greys the fade at the end of furo's hover gradients. */
+  --ts-panel-2-clear: #e4e9ed00;
+  --ts-rule: #c9d2d9;
+  --ts-rule-soft: #dce3e8;
+  --ts-rule-strong: #232b33;
+  --ts-brass: #a97c2a;
+  --ts-brass-ink: #8a6520;
+  --ts-brass-wash: #f3e9d6;
+  --ts-shadow: 0 1px 0 rgba(35, 43, 51, 0.04), 0 1px 3px rgba(35, 43, 51, 0.05);
+
+  --ts-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  --ts-serif: Charter, "Iowan Old Style", "Source Serif 4", Georgia, serif;
+}
+
+@media not print {
+  body[data-theme="dark"] {
+    --ts-ink: #c9d3db;
+    --ts-ink-2: #93a0ac;
+    --ts-ink-3: #74808c;
+    --ts-ground: #14181b;
+    --ts-panel: #1b2126;
+    --ts-panel-2: #232a30;
+    --ts-panel-2-clear: #232a3000;
+    --ts-rule: #333c44;
+    --ts-rule-soft: #262e34;
+    --ts-rule-strong: #4c5761;
+    /* Brass lifts a step on a dark ground; the darker tone goes muddy, exactly as it does
+     * in the mark. */
+    --ts-brass: #c79338;
+    --ts-brass-ink: #dbaa55;
+    --ts-brass-wash: #2a2419;
+    --ts-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) {
+      --ts-ink: #c9d3db;
+      --ts-ink-2: #93a0ac;
+      --ts-ink-3: #74808c;
+      --ts-ground: #14181b;
+      --ts-panel: #1b2126;
+      --ts-panel-2: #232a30;
+      --ts-panel-2-clear: #232a3000;
+      --ts-rule: #333c44;
+      --ts-rule-soft: #262e34;
+      --ts-rule-strong: #4c5761;
+      --ts-brass: #c79338;
+      --ts-brass-ink: #dbaa55;
+      --ts-brass-wash: #2a2419;
+      --ts-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.35);
+    }
+  }
+}
+
+/* --- the brand ----------------------------------------------------------------------
+ *
+ * The lockup is 207px wide and furo's sidebar offers about 203, so left to itself the
+ * brand is scaled to the very edge of its container and reads as cropped rather than
+ * placed. Hold it back to leave a margin on both sides.
+ *
+ * Furo sets `max-width: 100%` on .sidebar-logo; this is the same specificity, so it wins
+ * on source order - which is why the stylesheet is registered after the theme's own.
+ */
 .sidebar-logo {
   max-width: 84%;
+}
+/* ======================================================================================
+ * The devices
+ *
+ * Everything below is scoped to `article`: it keeps the rules clear of the sidebar and
+ * the search page, and buys a specificity point over furo's own selectors for free.
+ * ==================================================================================== */
+
+/* --- the blade ------------------------------------------------------------------------
+ *
+ * The mark's blade, carrying its graduations, trailing the heading the way it trails the
+ * stock. Sphinx gives a heading no sibling to make into a rule, so it has to be a
+ * pseudo-element on the heading itself.
+ *
+ * An inline-block 100% wide with a matching negative margin, clipped by `overflow: hidden`
+ * - and *not* a flex row, which is the obvious way and the wrong one. Eleven headings mix
+ * text with inline code (`Mode `script``, `Cells: `[axes]``); a flex container would make
+ * each of those an independent flex item, so the words would neither space nor wrap as
+ * words. This keeps the heading in normal inline flow, and lands the blade after the last
+ * line when a heading wraps.
+ */
+article h2 {
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ts-ink);
+}
+article h2::after {
+  content: "";
+  display: inline-block;
+  vertical-align: middle;
+  width: 100%;
+  margin-right: -100%;
+  margin-left: 0.75rem;
+  height: 9px;
+  border-bottom: 1px solid var(--ts-rule);
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--ts-rule) 0 1px,
+    transparent 1px 14px
+  );
+  background-size: 100% 5px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+}
+
+/* One level down, the same rule without graduations. A second graduated blade would turn
+ * a signature into a texture. */
+article h3 {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ts-ink-2);
+}
+article h3::after {
+  content: "";
+  display: inline-block;
+  vertical-align: middle;
+  width: 100%;
+  margin-right: -100%;
+  margin-left: 0.75rem;
+  border-bottom: 1px solid var(--ts-rule-soft);
+}
+
+/* The page's own head takes the masthead's rule: two points of slate, edge to edge. The
+ * word is lower case and set in the mono at size, which is the lockup's own treatment -
+ * the connection between the brand in the sidebar and the title beside it. */
+article h1 {
+  font-size: 2.1em;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--ts-rule-strong);
+  /* Furo rounds every heading by 8px for the `:target` highlight; on a bottom-only rule
+   * that curls both ends up and the masthead reads as a box someone left open. */
+  border-radius: 0;
+}
+
+article h4,
+article h5,
+article h6 {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--ts-ink);
+}
+article h5,
+article h6 {
+  font-size: 0.75rem;
+  color: var(--ts-ink-2);
+}
+
+/* An identifier is not a word. `trysquare.scenario` is every h3 on the API page, and
+ * `--dry-run` several on the CLI page; upper-casing them misstates what you would type. */
+/* `code.literal` and not bare `code`: furo fills inline code from a selector carrying a
+ * class, so an element-only selector here loses to it however deeply it nests. */
+article h2 code.literal,
+article h3 code.literal,
+article h4 code.literal {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 1em;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+/* --- the label ------------------------------------------------------------------------
+ *
+ * Mono, small, tracked, upper. One rule, five places, because it is one object wearing
+ * different sizes: the sizes stay on furo's variables so the chrome keeps its proportions.
+ */
+.sidebar-tree .caption,
+.toc-title,
+article .toctree-wrapper .caption,
+article .code-block-caption,
+article p.rubric {
+  font-family: var(--ts-mono);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ts-ink-2);
+}
+
+/* Brass appears once in the sidebar: on the page you are reading. */
+.sidebar-tree .current-page > .reference {
+  box-shadow: inset 2px 0 0 var(--ts-brass);
+}
+
+/* A serif field in a mono chrome reads as a text box someone forgot to style. */
+.sidebar-search {
+  font-family: var(--ts-mono);
+  font-size: 0.8125rem;
+}
+
+/* --- cards ------------------------------------------------------------------------------
+ *
+ * Most of a card is already the palette, through the `sd-color-*` map in conf.py. What a
+ * variable cannot reach is sphinx-design's radius and the second, harder shadow layer
+ * furo-extensions adds on top of it.
+ */
+article .sd-card {
+  border-radius: 3px;
+  box-shadow: var(--ts-shadow);
+}
+article .sd-card-body {
+  padding: 1rem 1.125rem 1.125rem;
+}
+/* Card titles are signatures - `run <scenario> -o <dir>` - so they are set like one: mono,
+ * bold, tight. Not upper-cased and not tracked; that treatment is for labels, and a
+ * command is not a label. */
+article .sd-card-title {
+  font-family: var(--ts-mono);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ts-ink);
+  margin-bottom: 0.75rem;
+}
+/* A title that is already code does not also need code's fill: that is a box inside a box. */
+article .sd-card-title code.literal {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 1em;
+  color: inherit;
+}
+
+/* --- the flag list ----------------------------------------------------------------------
+ *
+ * MyST tags its own definition lists `myst`, and that is the only thing this may target.
+ * A bare `dl` rule would also flatten autodoc's `dl.py`, napoleon's `dl.field-list` and
+ * the footnotes - which is why furo's own selector for the same job carries five `:not()`s.
+ */
+article dl.myst {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.3rem 1rem;
+  align-items: baseline;
+  margin-bottom: 0;
+}
+article dl.myst > dt {
+  font-family: var(--ts-mono);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--ts-ink);
+  white-space: nowrap;
+}
+/* The term is already the flag, set in the flag's letters. Filling it as well boxes every
+   entry in a list that is nothing but entries, and the column stops reading as a column. */
+article dl.myst > dt code.literal {
+  background: none;
+  padding: 0;
+  font-size: 1em;
+  color: inherit;
+}
+article dl.myst > dd {
+  margin: 0;
+  color: var(--ts-ink-2);
+}
+
+/* Stacked wherever two columns will not fit. A card in a two-up grid is about 23em wide,
+ * and `--until-complete [N]` plus its sentence do not both go in that. 67em is furo's own
+ * breakpoint, where the sidebar folds away. */
+article .sd-card-body dl.myst {
+  display: block;
+}
+article .sd-card-body dl.myst > dd {
+  margin: 0 0 0.5rem 0.9rem;
+}
+@media (max-width: 67em) {
+  article dl.myst {
+    display: block;
+  }
+  article dl.myst > dd {
+    margin: 0 0 0.5rem 0.9rem;
+  }
+}
+
+/* --- tables -----------------------------------------------------------------------------
+ *
+ * A hairline per row and nothing else: no box, no shadow, no zebra. The header is a label.
+ */
+article table.docutils {
+  box-shadow: none;
+  border-radius: 0;
+  border: 0;
+}
+article table.docutils td,
+article table.docutils th {
+  border: 0;
+  border-bottom: 1px solid var(--ts-rule-soft);
+  padding: 0.35rem 0.75rem 0.35rem 0;
+  vertical-align: baseline;
+}
+article table.docutils thead th {
+  border-bottom: 1px solid var(--ts-rule);
+  font-family: var(--ts-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ts-ink-2);
+}
+article table.docutils tbody tr:last-child td {
+  border-bottom: 0;
+}
+/* The exit-code table wants its digits to line up, and nothing else is harmed by it. */
+article table.docutils td:first-child {
+  font-variant-numeric: tabular-nums;
+}
+article table.docutils p {
+  margin: 0;
+}
+
+/* --- bullets ----------------------------------------------------------------------------
+ *
+ * The dash from the mark, in brass. Two layers rather than the absolutely-positioned
+ * `::before` this comes from: that needs `list-style: none`, which would also strip the
+ * toctrees rendered in the body - both of the ones on the landing page are visible - and
+ * the task lists. Colouring the marker is safe everywhere; replacing it is done only where
+ * the list is prose.
+ */
+article ul > li::marker {
+  color: var(--ts-brass);
+}
+@supports (list-style-type: "\2013") {
+  article ul.simple:not(.contains-task-list) > li,
+  article .sd-card-body ul > li {
+    list-style-type: "\2013\00a0";
+  }
+}
+
+/* --- code -------------------------------------------------------------------------------- */
+
+/* Furo outlines inline code only inside a `p`, so the same word is boxed in a paragraph and
+ * bare in a list. Fill it and never outline it, which is what the cards do. */
+article code.literal {
+  border: 0;
+  font-size: 0.86em;
+  padding: 0.06em 0.16em;
+  border-radius: 2px;
+}
+article .highlight {
+  border-radius: 2px;
+}
+/* The subset drops `calt`, but a reader with JetBrains Mono installed would still be shown
+ * `->` as a single arrow in a command they are about to retype. */
+article .highlight pre,
+article code {
+  font-variant-ligatures: none;
+}
+/* A GitHub green in a page with two hues. */
+article .highlight button.copybtn.success {
+  color: var(--ts-brass);
+}
+
+/* --- notes ------------------------------------------------------------------------------
+ *
+ * The shape of the cheat sheet's note: a rule at the left, a title in the label's letters,
+ * no fill and no shadow. The *colours* are furo's own and stay semantic - a brass "danger"
+ * would be decoration pretending to be meaning.
+ */
+article .admonition,
+article .topic {
+  box-shadow: none;
+  border-radius: 0;
+  border-left-width: 2px;
+}
+article .admonition > .admonition-title {
+  font-family: var(--ts-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+article .admonition > .admonition-title::before {
+  top: 0.45rem;
+}
+
+/* The creed at the top of the landing page is the masthead's, by another name. */
+article blockquote {
+  margin-left: 0;
+  border-left: 2px solid var(--ts-brass);
+  border-radius: 0;
+  padding-left: 0.875rem;
+  color: var(--ts-ink-2);
+  font-style: italic;
+  /* Furo fills a blockquote; the note it is standing in for does not. A rule is the
+   * whole device - a fill on top of it says the same thing twice. */
+  background: none;
+}
+
+/* --- the measure --------------------------------------------------------------------------
+ *
+ * Furo's column is 40em, which in a serif runs past ninety characters. The leading opens to
+ * carry it rather than the root size shrinking, because furo derives the sidebar, the TOC,
+ * the code and the admonitions from that size and the whole chrome would shrink with it.
+ */
+article {
+  line-height: 1.62;
+}
+
+/* --- print ---------------------------------------------------------------------------------
+ *
+ * Browsers drop background images when printing, so the blade would come out as a bare rule
+ * by accident. Make it deliberate: on paper it is a hairline, and the graduations go.
+ */
+@media print {
+  article h2::after {
+    background-image: none;
+  }
+}
+
+/* --- where this file stops -------------------------------------------------------------
+ *
+ * The cheat sheet is a poster, not a page of prose, and `cheatsheet.css` draws these same
+ * devices itself - band heads with their own blade, cards, chips, rules. That stylesheet
+ * already replaces furo's rhythm inside `.ts-sheet`, and its own selectors outrank the
+ * ones above wherever the two set the same property.
+ *
+ * Two do not collide that way. A pseudo-element cannot be unset by a stylesheet written
+ * before it existed, and a border nobody else declares has nothing to lose to. So the
+ * blade and the masthead rule are withdrawn here by name, at the sheet's edge.
+ */
+body:has(.ts-sheet) article h2::after,
+body:has(.ts-sheet) article h3::after {
+  content: none;
+}
+body:has(.ts-sheet) article h1 {
+  border-bottom: 0;
 }

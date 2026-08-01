@@ -37,11 +37,6 @@ body:has(.ts-sheet) .toc-drawer {
 
 /* The page's own heading is what the toctree links to, so it stays a real heading -
  * restyled as the sheet's masthead rather than repeated inside it. */
-body:has(.ts-sheet) {
-  --ts-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
-  --ts-serif: Charter, "Iowan Old Style", "Source Serif 4", Georgia, serif;
-}
-
 body:has(.ts-sheet) article h1 {
   margin: 0 0 1.4rem;
   padding: 0;
