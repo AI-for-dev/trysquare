@@ -23,7 +23,7 @@ from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
 from .measure import EMPTY, VALID, Run, counted, merge, models, one_line
-from .outputs import RESUMABLE, Output, slug
+from .outputs import RESUMABLE, Carried, Output, carryable, matrices, slug
 from .scenario import Cell, Scenario
 
 
@@ -50,6 +50,10 @@ class Plan:
     blindness: dict
     notes: list[str]
 
+    # The runs of a lower matrix of this same experiment that this launch is to carry.
+    # `resolve` decides it; `execute` is what copies anything.
+    carried: Carried | None = None
+
     @property
     def runs(self) -> int:
         return len(self.todo)
@@ -63,6 +67,7 @@ def resolve(
     only: tuple[str, ...] = (),
     resume: bool = False,
     grouped: bool | None = None,
+    extend: bool = False,
 ) -> Plan:
     """Turns a scenario into a concrete plan, refusing what cannot be measured."""
     overrides = overrides or {}
@@ -97,6 +102,20 @@ def resolve(
     # the ids of every cell the ledger does not know, so a comparison made against its
     # result would have nothing left to report.
     previous = output.read_state()
+
+    # Only into a matrix that holds nothing yet. A carry is how a matrix *begins* as the
+    # extension of a lower one; once it has a ledger of its own, `--resume` is what fills
+    # it, and looking again would let a second launch re-import what the first carried.
+    carried = (
+        None
+        if previous.get("runs")
+        else carryable(output_root, scenario, output.plan(), repetitions)
+    )
+    if extend and not previous.get("runs") and (carried is None or carried.mismatch):
+        raise RuntimeError(refuse_carry(carried, output_root, scenario, repetitions))
+    if not extend and carried:
+        notes.append(available_note(carried))
+
     if not resume and previous.get("runs"):
         leftovers = sum(1 for m in previous["runs"].values() if m["state"] in RESUMABLE)
         if leftovers:
@@ -113,6 +132,11 @@ def resolve(
             )
     notes.extend(drift_notes(output, previous))
     state = output.load_or_create_state(overrides) if resume else output.initial_state(overrides)
+    # Before the check below, deliberately: a carried run is a measured run, so a cell
+    # rewritten since the lower matrix measured it must condemn the carry exactly as it
+    # condemns a resume. Seeding first is what puts it in reach of that refusal.
+    if extend and carried:
+        state = output.seed(state, carried)
 
     # A cell renamed is a new cell and measures itself. A cell rewritten under the same
     # name is the defect the directory name refuses one level up, and only the ledger
@@ -131,6 +155,24 @@ def resolve(
 
     todo = output.to_do(state, only)
 
+    # From the ledger and not from the flag, so a matrix that was extended says so on the
+    # launch that extended it *and* on every launch after it. An overwrite carries nothing
+    # and `initial_state` has no such record, which is the right answer rather than a gap.
+    for record in state.get("carried", ()):
+        notes.append(
+            f"CARRIED: {counted(record['runs'], 'run')} measured in {record['from']} at "
+            f"{counted(record['repetitions'], 'repetition')} (concurrency "
+            f"{record['concurrency']}, "
+            f"timeout {record['timeout']}s) are this matrix's own runs, carried and never "
+            f"re-measured. The synthesis says so too"
+        )
+    if extend and carried and carried.stranded:
+        notes.append(
+            f"STRANDED: {counted(carried.stranded, 'run')} of {carried.directory.name} its "
+            f"ledger counts and its measures.json has no row for did not travel, and will "
+            f"be measured here instead"
+        )
+
     if only:
         notes.append(
             f"INCOMPLETE: only {', '.join(only)} will run "
@@ -147,6 +189,52 @@ def resolve(
         overrides=overrides,
         blindness=validation_mod.blindness(scenario),
         notes=notes,
+        carried=carried if extend else None,
+    )
+
+
+def available_note(carried: Carried) -> str:
+    """What a launch says about a lower matrix it is *not* carrying.
+
+    The only place `--extend` is discoverable at the moment it would be useful. An
+    operator who has just asked for twenty repetitions is about to pay for ten they
+    already own, and nothing else in the output would tell them.
+    """
+    if carried.mismatch:
+        return (
+            f"NOT CARRYABLE: {carried.directory.name} is this experiment's matrix at "
+            f"{carried.repetitions} repetitions, but it was measured with a different "
+            f"{', '.join(carried.mismatch)}, so its runs are not runs of this experiment"
+        )
+    return (
+        f"AVAILABLE: {carried.directory.name} holds {counted(len(carried), 'measured run')} "
+        f"this matrix asks for at its first {carried.repetitions} repetitions. --extend "
+        f"carries them over and measures only the difference; without it they are measured "
+        f"again"
+    )
+
+
+def refuse_carry(carried: Carried | None, root: Path, scenario: Scenario, repetitions: int) -> str:
+    """Why `--extend` has nothing to work with, naming what is actually on disk.
+
+    Refused rather than quietly measured from scratch, for the reason `--only` with a typo
+    is refused: a flag that silently does nothing looks like a flag that worked.
+    """
+    if carried is not None:
+        return (
+            f"--extend: {carried.directory.name} was measured with a different "
+            f"{', '.join(carried.mismatch)}. Neither is in a directory name - it carries "
+            f"the scenario, the etalon, the provider and the model - so two matrices can "
+            f"share a name without sharing what they measured, and carrying across that "
+            f"would publish measurements of something else"
+        )
+    found = sorted(matrices(root, scenario))
+    return (
+        f"--extend: no matrix of this experiment under "
+        f"{counted(repetitions, 'repetition')} in {root}"
+        + (f", only n{', n'.join(str(n) for n in found)}" if found else ", and none at all")
+        + ".\nExtending carries the runs of the same experiment measured fewer times; "
+        "there are none, and a plain run measures this matrix from scratch"
     )
 
 
@@ -773,6 +861,10 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     """
     prepare_source(plan.config, plan.scenario.task["repo"], plan.scenario.task["etalon"])
     plan.output.prepare()
+    # Before the ledger is loaded, because the carry writes one: from here on this matrix
+    # holds the carried runs as its own, and everything below reads them like any other.
+    if plan.carried:
+        plan.output.absorb(plan.carried, plan.overrides)
     state = plan.output.load_or_create_state(plan.overrides)
     plan.output.write_state(state)
     concurrency = plan.overrides.get("concurrency") or plan.scenario.protocol.get(

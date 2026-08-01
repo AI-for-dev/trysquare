@@ -132,6 +132,32 @@ digest is not a changed one.
 The load is recorded whatever its origin, because retries depend on it and every cost
 column depends on retries.
 
+### `carried`, when a matrix was extended
+
+Absent from every matrix measured in one launch. `run --extend` adds it, and a run that
+travelled is marked `"carried": true` beside its state:
+
+```json
+"carried": [
+  {
+    "from": "rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10",
+    "repetitions": 10,
+    "runs": 60,
+    "concurrency": 5,
+    "timeout": 900,
+    "etalon_commit": "a1b2c3d"
+  }
+]
+```
+
+A **list**, so an experiment extended twice can still be read back to the launch that
+first measured each run. `etalon_commit` comes from the carried runs' own
+`configuration.json`: the ledger records the repository by its logical name only, so a
+tag moved upstream between two launches would otherwise leave no trace anywhere.
+
+Nothing here is carried silently - the launch says so, and so does the synthesis, header
+line and `:warning:` paragraph both.
+
 :::{note}
 `state.json` also holds the **id-to-cell mapping**, which is deliberately *not* in the
 manual scoring form: the form is blind, and so is the tree it points into whenever a

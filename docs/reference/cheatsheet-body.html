@@ -120,6 +120,11 @@
               validator failure is re-scored instead, at no token cost. <b>Refuses</b> a
               cell whose declaration changed since it was measured</dd>
 
+            <dt>--extend</dt>
+            <dd>carry the runs of this same experiment measured at <b>fewer repetitions</b> -
+              they are the very same runs - and measure only the difference. Implies
+              <code>--resume</code>; the lower matrix is copied, not moved</dd>
+
             <dt>--until-complete [N]</dt>
             <dd>after a pass, relaunch the runs that produced nothing, at most N passes
               total (<b>default 3</b>). Never a re-measurement</dd>
@@ -455,7 +460,9 @@ reference = { context = <span class="ts-k">"nothing"</span> }</pre>
       <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
         <b>Repetitions are declared in advance</b>, and a matrix is never rerun "to see". A
         resume may only relaunch runs that produced <em>nothing</em>; attempts are counted,
-        so an abusive resume leaves a trace.
+        so an abusive resume leaves a trace. More repetitions are added rather than
+        substituted: <code>--extend</code> carries what a lower matrix measured, and says so
+        in <code>state.json</code> and in the synthesis.
       </span></div>
       <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
         <b>What the harness injects is excluded from scoring.</b> Otherwise scope scoring

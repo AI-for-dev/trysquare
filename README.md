@@ -240,7 +240,10 @@ These are not style preferences. Each one is a defect that was paid for.
   A resume may only relaunch runs that produced *nothing*; a validator failure is
   re-scored instead, at no token cost. Attempts are counted, so an abusive resume
   leaves a trace. `run --until-complete` is that same resume, bounded and automatic:
-  for the matrices that take hours and lose a few runs to a cut stream.
+  for the matrices that take hours and lose a few runs to a cut stream. More
+  repetitions are added rather than substituted: `run --repetitions 20 --extend`
+  carries the sixty runs measured at ten - the very same runs, by id - and measures only
+  the difference, saying so in `state.json` and in the synthesis.
 - **What the harness injects is excluded from scoring.** Without it, scope scoring
   counts our own configuration as the agent's work and every configured cell drops
   to zero: a measurement of our tooling rather than of the behaviour under test.

@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import re
 import statistics
 import sys
 import textwrap
@@ -41,7 +40,17 @@ from . import table as table_mod
 from . import validation as validation_mod
 from .measure import EMPTY, Run, VALID, counted
 from .verdict import plain
-from .outputs import DIFF, SESSION, Output, archived_run_dirs, incomplete_note, unmeasured_note
+from .outputs import (
+    DIFF,
+    SESSION,
+    STAMP,
+    Output,
+    archived_run_dirs,
+    carried_note,
+    incomplete_note,
+    measures_in,
+    unmeasured_note,
+)
 from .scenario import ScenarioError, load as load_scenario
 
 # Overrides that change what is measured. They enter the directory name, so they
@@ -114,6 +123,12 @@ def build_parser() -> argparse.ArgumentParser:
         "validator says a human scores by hand",
     )
     run.add_argument("--resume", action="store_true", help="fill only what produced nothing")
+    run.add_argument(
+        "--extend",
+        action="store_true",
+        help="carry the runs of this same experiment measured at fewer repetitions and "
+        "measure only the difference; implies --resume",
+    )
     run.add_argument(
         "--until-complete",
         type=int,
@@ -241,7 +256,11 @@ def cmd_run(args) -> int:
         args.output,
         overrides=overrides,
         only=tuple(args.only),
-        resume=args.resume,
+        # Extending means measuring only the difference, so it is a resume with a source.
+        # Without the implication a second `--extend` at the same count would reset the
+        # ledger and re-measure everything the first one carried.
+        resume=args.resume or args.extend,
+        extend=args.extend,
         grouped=args.group_by_cell,
     )
 
@@ -687,10 +706,18 @@ def _write_synthesis(
         f"- {output.repetitions} repetitions, concurrency "
         f"{state.get('concurrency')}, timeout {state.get('timeout')}s",
     ]
+    for record in state.get("carried", ()):
+        header.append(
+            f"- carried: {record['runs']} of {len(state['runs'])} runs measured in "
+            f"`{record['from']}` (concurrency {record['concurrency']}, timeout "
+            f"{record['timeout']}s"
+            + (f", etalon at `{record['etalon_commit']}`" if record.get("etalon_commit") else "")
+            + ")"
+        )
     if state.get("overrides"):
         header.append(f"- overrides: {json.dumps(state['overrides'])}")
     header.append("")
-    warning = table_mod.retry_warning(by_cell)
+    warning = table_mod.retry_warning(by_cell) + carried_note(state)
     path = output.write_synthesis("\n".join([*header, text, warning, ""]), suffix)
     print(f"\n  written {path}")
 
@@ -777,8 +804,6 @@ def cmd_replay(args) -> int:
 # nowhere to go but a reader's own script - which is a second scoring path, of the kind
 # this project refuses everywhere else.
 
-REPETITIONS = re.compile(r"_n(\d+)$")
-
 
 class Rescore:
     """The measures being rewritten, and what happened to each run.
@@ -819,7 +844,7 @@ def rescored_measures(directory: Path, scenario) -> Rescore | None:
     rewrite measures that were never that matrix's, and comparing the two names catches
     it before anything is written.
     """
-    found = REPETITIONS.search(directory.name)
+    found = STAMP.search(directory.name)
     output = Output(directory.parent, scenario, int(found.group(1)) if found else None)
     if output.directory.resolve() != directory.resolve():
         print(
@@ -1048,7 +1073,7 @@ def cmd_compare(args) -> int:
             f"    -> tokens and durations would reflect our own load"
         )
 
-    left_runs, right_runs = _measured(args.left), _measured(args.right)
+    left_runs, right_runs = measures_in(args.left), measures_in(args.right)
     if not left_runs or not right_runs:
         sides = [d.name for d, r in ((args.left, left_runs), (args.right, right_runs)) if not r]
         print(f"  no measures.json in {', '.join(sides)}: nothing to tabulate")
@@ -1084,14 +1109,6 @@ def _read_experiment(directory: Path) -> dict | None:
     data = json.loads(state.read_text())
     data["_dir"] = directory
     return data
-
-
-def _measured(directory: Path) -> list[Run]:
-    """The archived measures, or nothing - which the caller says out loud."""
-    path = directory / "measures.json"
-    if not path.is_file():
-        return []
-    return [Run(**row) for row in json.loads(path.read_text())]
 
 
 def _retries(experiment: dict) -> int:

@@ -51,6 +51,9 @@ trysquare run <scenario> --output <dir> [options]
     hand - see {ref}`the two layouts <runs-layout>`.
 * - `--resume`
   - Fill only what produced nothing.
+* - `--extend`
+  - Carry the runs of this same experiment measured at fewer repetitions, and measure
+    only the difference. Implies `--resume`.
 * - `--until-complete [N]`
   - After a pass, relaunch the runs that produced nothing, at most N passes in
     total (default 3). Never a re-measurement: a run that produced something is
@@ -108,6 +111,57 @@ conditions the retry count and therefore every cost column.
 **`--only`** leaves the matrix incomplete, so no synthesis is written and `--resume`
 completes it later. The two compose: a cell measured alone for debugging leaves a
 resumable matrix rather than a dead end.
+
+### More repetitions, without paying twice
+
+A run id is `blake2s(scenario/cell/repetition)` and ignores the repetition *count*, so
+the sixty runs of a matrix at ten repetitions carry the very ids a matrix at twenty asks
+for at its first ten. They are those runs, not analogues of them - which is what makes
+carrying them a copy rather than a claim.
+
+```text
+$ trysquare run scenario.toml -o out --repetitions 20
+  ! AVAILABLE: rule-vs-ticket_..._n10 holds 60 measured runs this matrix asks for at
+    its first 10 repetitions. --extend carries them over and measures only the
+    difference; without it they are measured again
+  120 runs to perform
+
+$ trysquare run scenario.toml -o out --repetitions 20 --extend
+  ! CARRIED: 60 runs measured in rule-vs-ticket_..._n10 at 10 repetitions (concurrency
+    5, timeout 900s) are this matrix's own runs, carried and never re-measured. The
+    synthesis says so too
+  60 runs to perform
+```
+
+**Nothing is carried silently.** The record goes into `state.json` as a list, so a
+matrix extended twice can be read back to the launch that first measured each run; the
+note above is derived from that ledger rather than from the flag, so it prints on every
+later launch too; and the synthesis carries both a header line and a `:warning:`
+paragraph, for a reader who never saw the terminal.
+
+Carried runs are filed under **this** matrix's layout, whichever one they came from: the
+two layouts do not merge, so a blind matrix's runs cannot arrive in a grouped one still
+flat. See {ref}`the two layouts <runs-layout>`.
+
+**The lower matrix is copied, never moved.** It stays publishable on its own, and
+`compare` puts the two readings side by side. A link would be worse than a copy:
+`replay --rescore` rewrites `validation/<mode>.json` in place, so re-scoring the
+extended matrix would silently rewrite the one it came from.
+
+**Refused rather than quietly useless.** `--extend` with no lower matrix names what is
+under `--output` instead of measuring from scratch, for the reason `--only` with a typo
+is refused. And a source that disagrees on `thinking` or on `repo` is refused by name:
+neither is in a directory name, so two matrices can share a name without sharing what
+they measured.
+
+**Only into a matrix that holds nothing yet.** A carry is how a matrix *begins* as the
+extension of a lower one. Once it has a ledger of its own, `--extend` is simply the
+`--resume` it implies, and nothing is re-imported.
+
+What it does not do is make the two halves comparable: runs are interleaved so that the
+durations of one matrix compare between its cells under one provider load, and an
+extended matrix holds two launches. That is written into the synthesis rather than
+argued away.
 
 ### `--dry-run` writes nothing
 
