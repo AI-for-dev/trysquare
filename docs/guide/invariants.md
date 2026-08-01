@@ -92,7 +92,15 @@ happen to like, so the harness removes the opportunity:
   one, which is what the directory name refuses a level up;
 - relaunching the same experiment **overwrites** it. A timestamped directory per
   launch would accumulate variants of one experiment to choose between, which is
-  optional stopping through the back door.
+  optional stopping through the back door;
+- more repetitions are **added, never substituted**. `run --repetitions 20 --extend`
+  carries the runs of the same experiment measured at ten - a run id ignores the
+  repetition count, so they are the very runs the larger matrix asks for - and measures
+  only the difference. Nothing is re-measured, the matrix at ten is copied rather than
+  moved and stays publishable beside it, and the carry is written into `state.json` and
+  into the synthesis. Deciding to measure more after a matrix could be read is a real
+  liberty taken with this rule: it is recorded where a reader will meet it rather than
+  forbidden, because the alternative is paying twice for runs one already owns.
 
 ## 6. What the harness injects is excluded from scoring
 

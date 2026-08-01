@@ -319,6 +319,285 @@ class TestRunPlan:
             config_mod.Config().repo("my-repo")
 
 
+def a_measured_matrix(root: Path, repetitions: int, grouped=None, **ledger) -> "Output":  # noqa: F821
+    """A matrix of the fixture, every run measured, without spending a token.
+
+    The whole point of carrying runs forward is that it needs nothing but two ledgers and
+    a copy, so the feature is testable exactly like this: on disk, offline, free.
+    """
+    from trysquare.measure import VALID, Run
+    from trysquare.outputs import Output
+    from trysquare.scenario import load
+
+    output = Output(root, load(SCENARIO), repetitions, grouped=grouped)
+    output.prepare()
+    state = {**output.initial_state(), **ledger}
+    rows = []
+    for run_id, meta in output.plan().items():
+        state["runs"][run_id] = {**meta, "state": VALID, "attempts": 1}
+        rows.append(
+            Run(
+                id=run_id,
+                cell=meta["cell"],
+                repetition=meta["repetition"],
+                usage={"input": 10, "output": 5},
+                duration=3,
+                metrics={"delivered": 1.0, "in_scope": 1.0, "tests": 1.0},
+            )
+        )
+        (output.run_dir(run_id) / "diff.patch").write_text(f"work of {run_id}\n")
+        output.write_configuration(run_id, {"cell": meta["cell"], "etalon_commit": "a1b2c3d"})
+    output.write_measures(rows)
+    output.write_state(state)
+    return output
+
+
+class TestCarryingRunsForward:
+    """Measuring more repetitions without paying twice for the ones already measured.
+
+    Everything here runs offline: a carry is two ledgers and a copy.
+    """
+
+    def resolved(self, root, repetitions, **kwargs):
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        return runner.resolve(
+            load(SCENARIO),
+            config_mod.load(MACHINE),
+            root,
+            overrides={"repetitions": repetitions},
+            **kwargs,
+        )
+
+    def test_a_carry_files_the_runs_under_this_matrix_s_own_layout(self, tmp_path):
+        """The two layouts do not merge, so a blind matrix's runs cannot arrive in a
+        grouped one still flat: the tree would hold half of each and no reader could tell
+        which half was which."""
+        from trysquare.outputs import cell_dir
+
+        source = a_measured_matrix(tmp_path, 2, grouped=False)
+        plan = self.resolved(tmp_path, 4, resume=True, extend=True, grouped=True)
+        plan.output.absorb(plan.carried, {})
+
+        target = plan.output
+        assert target.grouped and not source.grouped
+        for run_id, meta in source.read_state()["runs"].items():
+            landed = target.location(run_id)
+            assert landed.parent.name == cell_dir(meta["cell"])
+            assert (landed / "diff.patch").is_file()
+
+    def test_the_lower_matrix_holds_the_very_ids_the_higher_asks_for(self, tmp_path):
+        """The premise of the whole feature, asserted rather than assumed: a run id is
+        `blake2s(scenario/cell/repetition)` and ignores the repetition *count*, so these
+        are those runs and not analogues of them."""
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        scenario = load(SCENARIO)
+        low = Output(tmp_path, scenario, 2).plan()
+        high = Output(tmp_path, scenario, 4).plan()
+        assert set(low) < set(high)
+        assert all(high[run_id] == meta for run_id, meta in low.items())
+
+    def test_only_the_new_repetitions_are_left_to_measure(self, tmp_path):
+        a_measured_matrix(tmp_path, 2)
+        plan = self.resolved(tmp_path, 4, resume=True, extend=True)
+        assert plan.runs == 12, "6 cells x the 2 repetitions that are new"
+        assert all(meta["repetition"] >= 2 for _, meta in plan.todo)
+        assert any("CARRIED" in n and "_n2" in n for n in plan.notes)
+
+    def test_a_run_that_produced_nothing_is_not_an_acquired_result(self, tmp_path):
+        """`empty` is what a resume relaunches, and a carry may not turn it into a result
+        by moving it."""
+        from trysquare.measure import EMPTY
+
+        source = a_measured_matrix(tmp_path, 2)
+        state = source.read_state()
+        victim = next(iter(state["runs"]))
+        state["runs"][victim]["state"] = EMPTY
+        source.write_state(state)
+
+        plan = self.resolved(tmp_path, 4, resume=True, extend=True)
+        assert plan.runs == 13
+        assert victim in {run_id for run_id, _ in plan.todo}
+
+    def test_a_ledger_entry_whose_row_is_missing_does_not_travel(self, tmp_path):
+        """Carrying one would import `unmeasured_note`'s defect into a fresh matrix: a
+        ledger counting a run that no table can see, under a full-looking header."""
+        source = a_measured_matrix(tmp_path, 2)
+        rows = source.read_measures()
+        stranded = rows[0].id
+        source.write_measures(rows[1:])
+
+        plan = self.resolved(tmp_path, 4, resume=True, extend=True)
+        assert plan.runs == 13
+        assert stranded in {run_id for run_id, _ in plan.todo}
+        assert any("STRANDED" in n for n in plan.notes)
+
+    def test_a_source_that_disagrees_on_what_is_measured_is_refused(self, tmp_path):
+        """`thinking` is not in a directory name, so two matrices can share a name
+        without sharing what they measured. This is the only place that can catch it."""
+        a_measured_matrix(tmp_path, 2, thinking="high")
+        with pytest.raises(RuntimeError, match="thinking"):
+            self.resolved(tmp_path, 4, resume=True, extend=True)
+
+    def test_a_cell_rewritten_since_the_source_measured_it_condemns_the_carry(self, tmp_path):
+        """A carried run is a measured run, so the refusal that protects a resume has to
+        reach it too: completing this matrix would otherwise publish two configurations
+        under one cell name, which is what the fingerprint exists to catch."""
+        source = a_measured_matrix(tmp_path, 2)
+        state = source.read_state()
+        # What a rewritten delta looks like to the ledger: the cell declares something
+        # other than what its runs were measured under.
+        state["cells"]["rule / off"] = "0000000000000000"
+        source.write_state(state)
+
+        with pytest.raises(RuntimeError, match="rule / off"):
+            self.resolved(tmp_path, 4, resume=True, extend=True)
+
+    def test_the_largest_lower_matrix_is_the_source(self, tmp_path):
+        """The cheapest carry, and the one an operator would predict."""
+        a_measured_matrix(tmp_path, 2)
+        a_measured_matrix(tmp_path, 3)
+        plan = self.resolved(tmp_path, 4, resume=True, extend=True)
+        assert plan.runs == 6
+        assert any("_n3" in n for n in plan.notes if "CARRIED" in n)
+
+    def test_extend_with_nothing_to_carry_is_refused_by_name(self, tmp_path):
+        """Silently measuring from scratch would look like a flag that worked, which is
+        why `--only` with a typo is refused too."""
+        with pytest.raises(RuntimeError, match="--extend"):
+            self.resolved(tmp_path, 4, resume=True, extend=True)
+
+    def test_resolving_a_carry_writes_nothing(self, tmp_path):
+        """`--dry-run` must stay free, so the decision may not touch the disk."""
+        source = a_measured_matrix(tmp_path, 2)
+        before = sorted(p.name for p in tmp_path.iterdir())
+        plan = self.resolved(tmp_path, 4, resume=True, extend=True)
+        assert plan.carried is not None
+        assert before == sorted(p.name for p in tmp_path.iterdir())
+        assert not plan.output.directory.exists()
+        assert source.directory.exists()
+
+    def test_absorbing_copies_the_trees_and_leaves_the_source_alone(self, tmp_path):
+        """A carried matrix has to be readable on its own - `render`, `replay` and
+        `compare` each read one matrix's own tree."""
+        source = a_measured_matrix(tmp_path, 2)
+        plan = self.resolved(tmp_path, 4, resume=True, extend=True)
+        target = plan.output
+        target.absorb(plan.carried, {})
+
+        carried = source.read_state()["runs"]
+        assert len(target.read_measures()) == 12
+        for run_id in carried:
+            assert (target.location(run_id) / "diff.patch").read_text() == f"work of {run_id}\n"
+            assert (source.location(run_id) / "diff.patch").is_file()
+        state = target.read_state()
+        assert state["repetitions"] == 4
+        assert all(state["runs"][run_id]["carried"] for run_id in carried)
+        assert state["carried"][-1]["from"] == source.directory.name
+        assert state["carried"][-1]["etalon_commit"] == "a1b2c3d"
+        assert 12 == len(target.to_do(state)), "only the new repetitions are left"
+
+    def test_a_matrix_that_already_holds_runs_is_never_imported_into_twice(self, tmp_path):
+        """Once extended, `--extend` is the `--resume` it implies. Looking again would let
+        a second launch overwrite what the first one carried."""
+        a_measured_matrix(tmp_path, 2)
+        first = self.resolved(tmp_path, 4, resume=True, extend=True)
+        first.output.absorb(first.carried, {})
+
+        again = self.resolved(tmp_path, 4, resume=True, extend=True)
+        assert again.carried is None
+        assert again.runs == 12, "the carried runs are still out of reach"
+
+    def test_a_second_extension_keeps_the_whole_chain(self, tmp_path):
+        """A matrix extended twice must still be readable back to the launch that first
+        measured each run."""
+        a_measured_matrix(tmp_path, 2)
+        middle = self.resolved(tmp_path, 3, resume=True, extend=True)
+        middle.output.absorb(middle.carried, {})
+
+        top = self.resolved(tmp_path, 4, resume=True, extend=True)
+        top.output.absorb(top.carried, {})
+        chain = top.output.read_state()["carried"]
+        assert [record["repetitions"] for record in chain] == [2, 3]
+
+
+class TestAnExtensionIsNeverSilent:
+    """Repetitions are declared in advance. Extending bends that, so it is written down
+    everywhere a reader could meet the matrix without having seen the terminal."""
+
+    def carried_matrix(self, root):
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        a_measured_matrix(root, 2)
+        plan = runner.resolve(
+            load(SCENARIO),
+            config_mod.load(MACHINE),
+            root,
+            overrides={"repetitions": 4},
+            resume=True,
+            extend=True,
+        )
+        plan.output.absorb(plan.carried, {})
+        return plan.output
+
+    def test_the_note_is_read_from_the_ledger_so_every_later_launch_says_it_too(self, tmp_path):
+        """Derived from the flag, it would print once and the matrix would look like one
+        launch ever after."""
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        self.carried_matrix(tmp_path)
+        later = runner.resolve(
+            load(SCENARIO),
+            config_mod.load(MACHINE),
+            tmp_path,
+            overrides={"repetitions": 4},
+            resume=True,
+        )
+        assert any("CARRIED" in n for n in later.notes)
+
+    def test_the_synthesis_names_the_source_and_says_two_launches_are_mixed(self, tmp_path):
+        """Durations compare within one launch, and an extended matrix holds two."""
+        from trysquare.measure import VALID, Run
+        from trysquare.scenario import load
+
+        output = self.carried_matrix(tmp_path)
+        state = output.read_state()
+        rows = output.read_measures()
+        for run_id, meta in state["runs"].items():
+            if meta["state"] != VALID:
+                meta["state"] = VALID
+                rows.append(
+                    Run(
+                        id=run_id,
+                        cell=meta["cell"],
+                        repetition=meta["repetition"],
+                        usage={"input": 10, "output": 5},
+                        duration=3,
+                        metrics={"delivered": 1.0, "in_scope": 1.0, "tests": 1.0},
+                    )
+                )
+        output.write_measures(rows)
+        output.write_state(state)
+
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert 0 == cli._write_synthesis(output, load(SCENARIO))
+        published = (output.directory / "synthesis.md").read_text()
+        assert "carried: 12 of 24 runs" in published
+        assert "_n2" in published
+        assert "This matrix was extended" in published
+
+
 class TestPreRunHonesty:
     """What a launch says before anything is spent."""
 

@@ -45,11 +45,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .measure import EMPTY, VALIDATOR_FAILED, Run
+from .measure import EMPTY, VALIDATOR_FAILED, Run, counted
 
 STATE = "state.json"
 MEASURES = "measures.json"
@@ -73,6 +74,11 @@ MISSING = "missing"
 # re-scoring, which costs no tokens, and re-measuring it would let a resume
 # change a run that had already produced something.
 RESUMABLE = (MISSING, EMPTY)
+
+# The repetition count at the end of a directory name. It is what tells one matrix of an
+# experiment from another matrix of the same experiment, and therefore what lets a launch
+# at twenty repetitions find the ten a launch before it already paid for.
+STAMP = re.compile(r"_n(\d+)$")
 
 
 def write_json(path: Path, payload) -> None:
@@ -104,15 +110,19 @@ def slug(value) -> str:
     return str(value).replace("/", "-").replace(" ", "-")
 
 
-def experiment_name(scenario, repetitions: int | None = None) -> str:
-    """The directory name, which is the experiment's identity."""
-    n = repetitions if repetitions is not None else scenario.protocol["repetitions"]
+def identity(scenario) -> str:
+    """The directory name without its repetition count.
+
+    What the name says about *what* is measured, as opposed to how many times. Two
+    directories sharing it are the same experiment measured a different number of times,
+    and `run_id` ignores the count, so the shorter one's runs carry the very ids the
+    longer one asks for: they are those runs, not analogues of them.
+    """
     parts = [
         scenario.name,
         scenario.task["etalon"],
         scenario.agent["provider"],
         scenario.agent["model"],
-        f"n{n}",
     ]
     return "_".join(slug(p) for p in parts)
 
@@ -197,6 +207,12 @@ def archived_run_dirs(experiment: Path) -> list[Path]:
     return found
 
 
+def experiment_name(scenario, repetitions: int | None = None) -> str:
+    """The directory name, which is the experiment's identity."""
+    n = repetitions if repetitions is not None else scenario.protocol["repetitions"]
+    return f"{identity(scenario)}_n{n}"
+
+
 def run_id(scenario_name: str, cell: str, repetition: int) -> str:
     """A short opaque id, stable for a given (scenario, cell, repetition).
 
@@ -238,6 +254,155 @@ def per_cell(runs: dict) -> dict[str, int]:
     for meta in runs.values():
         counts[meta["cell"]] = counts.get(meta["cell"], 0) + 1
     return counts
+
+
+def measures_in(directory: Path) -> list[Run]:
+    """The rows a matrix directory holds, empty when it holds none.
+
+    A free function because three callers read a matrix that is not their own: an
+    experiment being carried from, and `compare`'s two sides.
+    """
+    path = Path(directory) / MEASURES
+    if not path.is_file():
+        return []
+    return [Run(**row) for row in json.loads(path.read_text())]
+
+
+def matrices(root: Path, scenario) -> dict[int, Path]:
+    """Every matrix of this experiment already under `root`, by repetition count.
+
+    Matched by reconstructing the name rather than by globbing it: a model name may
+    legitimately carry `[` or `*`, which a glob would read as syntax and silently fail to
+    match. A directory without a ledger is not a measurement, so it is not offered.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return {}
+    prefix = identity(scenario)
+    found = {}
+    for directory in sorted(root.iterdir()):
+        stamp = STAMP.search(directory.name)
+        if not stamp or directory.name != f"{prefix}_n{stamp.group(1)}":
+            continue
+        if (directory / STATE).is_file():
+            found[int(stamp.group(1))] = directory
+    return found
+
+
+@dataclass(frozen=True)
+class Carried:
+    """What one carry would move out of a lower matrix of the same experiment."""
+
+    directory: Path
+    repetitions: int
+    entries: dict  # run id -> its ledger entry, state and attempts preserved
+    rows: list  # their rows, in the source's own archived order
+    # Where each run's tree actually is in the source, resolved against *its* layout - a
+    # blind matrix and a grouped one file the same run in two places, and the target files
+    # it under its own layout again.
+    trees: dict
+    concurrency: int | None
+    timeout: int | None
+    # The commit the source's runs say they measured, read from their archive. The ledger
+    # records the repository by its logical name only, so a tag moved upstream between two
+    # launches leaves no trace there - and a carry across a moved tag would mix two
+    # baselines under one header.
+    etalon_commit: str
+    # What its cells declared when it measured them. Carried with the runs, so a cell
+    # rewritten since is caught by `changed_cells` exactly as it is on a resume - without
+    # them the new matrix would record today's declaration as the one those runs were
+    # measured under, which is the defect the fingerprint exists to refuse.
+    cells: dict
+    # Its own provenance, so a chain of extensions stays readable end to end.
+    chain: list
+    # Runs its ledger counts as measured and its measures.json has no row for. They do not
+    # travel: carrying one would import `unmeasured_note`'s defect into a fresh matrix.
+    stranded: int
+    # Fields of the source ledger that contradict this scenario. Named rather than raised,
+    # because the two callers need it differently: `--extend` refuses on it, and a launch
+    # without `--extend` uses it to say why it is not offering the carry.
+    mismatch: tuple[str, ...]
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
+
+def carryable(root: Path, scenario, plan: dict, repetitions: int) -> Carried | None:
+    """The runs a lower matrix of this experiment already holds, or None.
+
+    Reads, and never raises or writes: this is what a `--dry-run` announces, so it must
+    cost nothing and it must be the same answer a real launch acts on.
+
+    One source, never two. A matrix assembled out of three measurement sessions is not
+    something a reader could be expected to unpick, so the candidates are ranked and the
+    best one carries alone: a source that agrees on what is measured beats one that does
+    not, and then the largest count wins - which is both the cheapest carry and the one an
+    operator would predict.
+    """
+    lower = {n: d for n, d in matrices(root, scenario).items() if n < repetitions}
+    if not lower:
+        return None
+    ranked = sorted(
+        (_carried(d, n, scenario, plan) for n, d in lower.items()),
+        key=lambda c: (not c.mismatch, c.repetitions),
+    )
+    best = ranked[-1]
+    return best if len(best) or best.mismatch else None
+
+
+def _carried(directory: Path, repetitions: int, scenario, plan: dict) -> Carried:
+    """What carrying this one directory would move."""
+    state = json.loads((directory / STATE).read_text())
+    # Only what the target asks for, and only what produced something. A run absent from
+    # the plan belongs to a cell this scenario no longer declares, and a run that produced
+    # nothing is not an acquired result.
+    kept = {
+        run_id_: dict(meta)
+        for run_id_, meta in state.get("runs", {}).items()
+        if run_id_ in plan and meta.get("state") not in RESUMABLE
+    }
+    rows = [r for r in measures_in(directory) if r.id in kept]
+    measured = {r.id for r in rows}
+    stranded = sorted(set(kept) - measured)
+    entries = {k: v for k, v in kept.items() if k in measured}
+
+    carried_cells = {meta["cell"] for meta in entries.values()}
+    runs_dir = directory / RUNS
+    grouped = (state.get("layout") or sniff_layout(runs_dir)) == BY_CELL
+    trees = {
+        run_id_: run_location(runs_dir, run_id_, meta["cell"] if grouped else None)
+        for run_id_, meta in entries.items()
+    }
+
+    # What decides *what is measured* and is not already guaranteed by the directory name.
+    # The name carries the scenario, the etalon, the provider and the model; these two it
+    # does not, so these two are the ones that can disagree while the names match.
+    declared = {"thinking": scenario.agent["thinking"], "repo": scenario.task["repo"]}
+    return Carried(
+        directory=directory,
+        repetitions=repetitions,
+        entries=entries,
+        rows=rows,
+        trees=trees,
+        cells={name: f for name, f in state.get("cells", {}).items() if name in carried_cells},
+        concurrency=state.get("concurrency"),
+        timeout=state.get("timeout"),
+        etalon_commit=_archived_commit(trees),
+        chain=list(state.get("carried", ())),
+        stranded=len(stranded),
+        mismatch=tuple(f for f, value in sorted(declared.items()) if state.get(f) != value),
+    )
+
+
+def _archived_commit(trees: dict) -> str:
+    """The commit the carried runs say they measured, from the first that says anything."""
+    for tree in trees.values():
+        path = tree / CONFIGURATION
+        if path.is_file():
+            commit = json.loads(path.read_text()).get("etalon_commit")
+            if commit:
+                return commit
+    return ""
 
 
 class Output:
@@ -449,6 +614,56 @@ class Output:
                 cells[name] = fingerprint
         return state
 
+    def seed(self, state: dict, carried: Carried) -> dict:
+        """The ledger this matrix would have with a lower one's runs in it. Writes nothing.
+
+        Shared by `resolve`, which must leave the disk untouched, and by `absorb`, which is
+        the write. A carried run keeps its own state, usage and attempts: nothing is
+        re-measured, so nothing may be restated - and `to_do` then has nothing to relaunch
+        for it, which is the whole mechanism.
+
+        The record is a **list**, appended to the source's own, so an experiment extended
+        twice can still be read back to the launch that first measured each run.
+        """
+        for run_id_, entry in carried.entries.items():
+            state["runs"][run_id_] = {**entry, "carried": True}
+        state.setdefault("cells", {}).update(carried.cells)
+        state["carried"] = [
+            *carried.chain,
+            {
+                "from": carried.directory.name,
+                "repetitions": carried.repetitions,
+                "runs": len(carried),
+                "concurrency": carried.concurrency,
+                "timeout": carried.timeout,
+                "etalon_commit": carried.etalon_commit,
+            },
+        ]
+        return state
+
+    def absorb(self, carried: Carried, overrides: dict | None = None) -> None:
+        """Copies a lower matrix's runs in, and writes them down as this one's.
+
+        The trees are **copied**, not linked. `replay --rescore` rewrites
+        `validation/<mode>.json` in place, and a link would make a re-scoring of this
+        matrix silently rewrite the matrix it was carried from - which is the one that has
+        to stay intact for the two to be compared at all.
+
+        Over `load_or_create_state` and never `initial_state`: a run this matrix measured
+        itself must survive the carry. That is the same rule as everywhere else here - a
+        result already paid for is out of reach.
+        """
+        self.prepare()
+        for run_id_, tree in carried.trees.items():
+            if tree.is_dir():
+                # Into this matrix's own layout, which may not be the one it came from.
+                shutil.copytree(tree, self.location(run_id_), dirs_exist_ok=True)
+        archived = {r.id: r for r in self.read_measures()}
+        for row in carried.rows:
+            archived.setdefault(row.id, row)
+        self.write_measures(list(archived.values()))
+        self.write_state(self.seed(self.load_or_create_state(overrides), carried))
+
     def to_do(self, state: dict, only: tuple[str, ...] = ()) -> list[tuple[str, dict]]:
         """The runs a launch should perform.
 
@@ -508,10 +723,7 @@ class Output:
         return path
 
     def read_measures(self) -> list[Run]:
-        path = self.directory / MEASURES
-        if not path.is_file():
-            return []
-        return [Run(**row) for row in json.loads(path.read_text())]
+        return measures_in(self.directory)
 
     # --- sessions -------------------------------------------------------
 
@@ -595,6 +807,35 @@ def incomplete_note(counts: dict) -> str:
         + ", ".join(bits)
         + ". No synthesis is published; `--resume` completes it, and a failed "
         "validator is re-scored by `replay` at no token cost."
+    )
+
+
+def carried_note(state: dict) -> str:
+    """The paragraph that keeps an extended matrix from reading as one launch.
+
+    Runs are interleaved so that the durations of one matrix are comparable between its
+    cells, under one provider load (see `runner`). A carried run was measured under
+    another, so an extended matrix holds two sessions in its cost columns.
+
+    Which is a legitimate thing to publish and not a legitimate thing to leave unsaid, so
+    it is written where a reader who never saw the terminal will meet it - beside
+    `table.retry_warning`, which exists for exactly this class of reservation.
+    """
+    chain = state.get("carried") or []
+    if not chain:
+        return ""
+    last = chain[-1]
+    total = len(state.get("runs", {}))
+    commit = f", etalon at `{last['etalon_commit']}`" if last.get("etalon_commit") else ""
+    return (
+        f"\n:warning: **This matrix was extended.** {last['runs']} of its {total} runs were "
+        f"measured in `{last['from']}` at {counted(last['repetitions'], 'repetition')} "
+        f"(concurrency "
+        f"{last['concurrency']}, timeout {last['timeout']}s{commit}) and carried here, so "
+        f"the decision to measure more repetitions was taken after that matrix could be "
+        f"read. Nothing was re-measured and `{last['from']}` is untouched, on disk and in "
+        f"git, to compare against. Durations and costs compare within one launch, and this "
+        f"matrix holds two.\n"
     )
 
 
