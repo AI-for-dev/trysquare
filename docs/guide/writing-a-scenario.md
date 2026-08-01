@@ -167,6 +167,52 @@ definitions or merely from having a delegation tool at all.
 
 A scenario without a witness usually cannot attribute its own result.
 
+### Add a variant to a matrix already published
+
+A matrix that answered its question raises the next one, and the answer is usually one
+more cell. The directory name carries the scenario, the etalon, the agent and the
+repetition count - not the cells - so a new variant lands in the *same* experiment
+directory, beside the runs already paid for.
+
+Add it, then resume:
+
+```toml
+[variants."+skills"]
+harness = ["extension", "skills"]
+```
+
+```bash
+trysquare run mine.toml -o out --resume
+```
+
+```text
+  ! ADDED: the scenario declares +skills, which pile_etalon-v1_ilaas_gemma-4-31b_n10
+    does not know. --resume measures 10 runs and leaves the 40 runs that already produced
+    a result untouched; relaunching without it measures all 50
+  10 runs to perform
+```
+
+A cell the ledger has never heard of has produced nothing by definition, which is
+exactly what `--resume` relaunches. This is not an exception to "a resume may only
+relaunch runs that produced nothing" - it is that rule applied. The synthesis is then
+rewritten over the whole matrix, new cell included.
+
+`--only "+skills"` measures the same ten runs and is the worse answer: it declares the
+matrix incomplete on purpose, writes no synthesis, and leaves you to run `render`
+afterwards. Use it to try a cell out, not to grow a matrix.
+
+:::{warning}
+Adding a cell is the one edit that is safe here. Changing an existing cell's delta, or
+the baseline prompt it inherits, changes what is measured while the directory name stays
+the same - see [the known gap in the naming
+scheme](../reference/outputs.md#a-known-gap-in-the-naming-scheme).
+
+Renaming a variant is that edit in disguise. The old name stays in the ledger and its
+runs keep being rendered, and any of them that produced nothing can never complete,
+because the scenario no longer has that cell to run. The plan says so with a `STALE:`
+note, and the answer is to delete the directory rather than resume onto it.
+:::
+
 ### Never put the answer in a cell
 
 An earlier version of the careful ticket contained "do not address any other issue" -

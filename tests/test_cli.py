@@ -357,6 +357,60 @@ class TestPreRunHonesty:
         plan = self.resolved(tmp_path)
         assert any("OVERWRITE" in n and "finished" in n for n in plan.notes)
 
+    def measured_without(self, root, cell: str) -> None:
+        """A finished matrix from before the scenario declared `cell`."""
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        o = Output(root, load(SCENARIO))
+        o.prepare()
+        state = o.initial_state()
+        state["runs"] = {
+            rid: meta | {"state": "valid"}
+            for rid, meta in state["runs"].items()
+            if meta["cell"] != cell
+        }
+        o.write_state(state)
+
+    def test_resuming_a_scenario_that_grew_a_cell_measures_only_that_cell(self, tmp_path):
+        """Adding a variant to a published matrix costs the variant, not the matrix."""
+        self.measured_without(tmp_path, "careful ticket / high")
+        plan = self.resolved(tmp_path, resume=True)
+        assert {meta["cell"] for _, meta in plan.todo} == {"careful ticket / high"}
+        assert plan.runs == 10
+
+    def test_a_cell_the_ledger_does_not_know_is_announced(self, tmp_path):
+        """Sixty runs about to become ten is the kind of saving nobody takes on faith,
+        so the plan says it before anything is spent."""
+        self.measured_without(tmp_path, "careful ticket / high")
+        note = next(n for n in self.resolved(tmp_path, resume=True).notes if "ADDED" in n)
+        assert "careful ticket / high" in note
+        assert "10 runs" in note and "50 runs" in note
+
+    def test_an_unchanged_scenario_announces_no_drift(self, tmp_path):
+        """A note printed on every ordinary resume would train the eye to skip it."""
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        o = Output(tmp_path, load(SCENARIO))
+        o.prepare()
+        o.write_state(o.initial_state())
+        notes = self.resolved(tmp_path, resume=True).notes
+        assert not any("ADDED" in n or "STALE" in n for n in notes)
+
+    def test_a_cell_the_scenario_no_longer_declares_is_announced_as_stale(self, tmp_path):
+        """Its measured runs are still rendered, so their cell must be named somewhere."""
+        from trysquare.outputs import Output
+        from trysquare.scenario import load
+
+        o = Output(tmp_path, load(SCENARIO))
+        o.prepare()
+        state = o.initial_state()
+        state["runs"]["deadbeef"] = {"cell": "witness", "repetition": 0, "state": "valid"}
+        o.write_state(state)
+        note = next(n for n in self.resolved(tmp_path, resume=True).notes if "STALE" in n)
+        assert "witness" in note
+
     def test_the_duration_bound_is_declared_arithmetic(self, tmp_path):
         from trysquare.cli import _forecast
 

@@ -22,7 +22,7 @@ from . import agent as agent_mod
 from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
-from .measure import EMPTY, VALID, Run, merge, models, one_line
+from .measure import EMPTY, VALID, Run, counted, merge, models, one_line
 from .outputs import RESUMABLE, Output, slug
 from .scenario import Cell, Scenario
 
@@ -93,22 +93,25 @@ def resolve(
             + f"\nCells: {', '.join(names)}"
         )
 
-    if not resume:
-        previous = output.read_state()
-        if previous.get("runs"):
-            leftovers = sum(1 for m in previous["runs"].values() if m["state"] in RESUMABLE)
-            if leftovers:
-                notes.append(
-                    f"OVERWRITE: {output.directory.name} exists, {leftovers} of its runs "
-                    f"produced nothing. Relaunching resets the whole ledger; --resume "
-                    f"relaunches only those {leftovers}"
-                )
-            else:
-                notes.append(
-                    f"OVERWRITE: {output.directory.name} already holds a finished "
-                    f"experiment. Relaunching overwrites it - the archive of previous "
-                    f"versions is git"
-                )
+    # Read here, and once, before the state is loaded: `load_or_create_state` fills in
+    # the ids of every cell the ledger does not know, so a comparison made against its
+    # result would have nothing left to report.
+    previous = output.read_state()
+    if not resume and previous.get("runs"):
+        leftovers = sum(1 for m in previous["runs"].values() if m["state"] in RESUMABLE)
+        if leftovers:
+            notes.append(
+                f"OVERWRITE: {output.directory.name} exists, {leftovers} of its runs "
+                f"produced nothing. Relaunching resets the whole ledger; --resume "
+                f"relaunches only those {leftovers}"
+            )
+        else:
+            notes.append(
+                f"OVERWRITE: {output.directory.name} already holds a finished "
+                f"experiment. Relaunching overwrites it - the archive of previous "
+                f"versions is git"
+            )
+    notes.extend(drift_notes(output, previous))
     state = output.load_or_create_state(overrides) if resume else output.initial_state(overrides)
     todo = output.to_do(state, only)
 
@@ -129,6 +132,48 @@ def resolve(
         blindness=validation_mod.blindness(scenario),
         notes=notes,
     )
+
+
+def drift_notes(output: Output, previous: dict) -> list[str]:
+    """What an existing ledger and the scenario disagree about, before the first token.
+
+    Adding a cell to a published matrix already works: the ledger gains the new ids as
+    missing, and a resume relaunches only what produced nothing. Nothing said so, and a
+    saving nobody announced is a saving nobody takes - the safe-looking move was to
+    remeasure a matrix that was already paid for.
+
+    Neither note depends on `--resume`: both state what a resume would do, so they are
+    as true when the flag is absent as when it is there.
+    """
+    if not previous.get("runs"):
+        return []
+    added, stale = output.cell_drift(previous)
+    # Of the cells this scenario still declares, so the count reads against the matrix
+    # about to be planned. Counting the stale ones too made the two numbers in the note
+    # contradict each other whenever both notes fired.
+    measured = sum(
+        1
+        for m in previous["runs"].values()
+        if m["state"] not in RESUMABLE and m["cell"] not in stale
+    )
+    notes = []
+    if added:
+        notes.append(
+            f"ADDED: the scenario declares {', '.join(added)}, which "
+            f"{output.directory.name} does not know. --resume measures "
+            f"{counted(sum(added.values()), 'run')} and leaves the "
+            f"{counted(measured, 'run')} that already produced a result untouched; "
+            f"relaunching without it measures all {len(output.plan())}"
+        )
+    if stale:
+        notes.append(
+            f"STALE: {output.directory.name} holds {', '.join(stale)}, which the "
+            f"scenario no longer declares. Those {counted(sum(stale.values()), 'run')} "
+            f"stay counted and stay in every table - a cell must never vanish silently "
+            f"- and no launch can complete any of them that produced nothing, since "
+            f"the scenario has no such cell to run"
+        )
+    return notes
 
 
 def settle_repo(scenario: Scenario, config: Config) -> tuple[Path, str]:

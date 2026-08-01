@@ -182,6 +182,21 @@ says so before the first token:
     produced nothing. Relaunching resets the whole ledger; --resume relaunches only those 3
 ```
 
+The same comparison runs the other way, and that one saves a matrix. A cell the scenario
+declares and the ledger has never heard of - a value added to an axis, a variant added
+after publishing - is named, with what resuming costs:
+
+```text
+  ! ADDED: the scenario declares nothing / low, rule / low, careful ticket / low, which
+    rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10 does not know. --resume measures 30 runs
+    and leaves the 60 runs that already produced a result untouched; relaunching without it
+    measures all 90
+```
+
+A cell the ledger holds and the scenario no longer declares gets a `STALE:` note
+instead: its runs stay in the tables rather than disappearing quietly.
+{doc}`writing-a-scenario` has the workflow.
+
 **The runs are interleaved**: all six cells at repetition 0, then all six at
 repetition 1. That is not cosmetic. Interleaved runs see the same provider load,
 which is the only reason durations are comparable between cells of one matrix.

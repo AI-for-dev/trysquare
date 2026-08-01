@@ -115,8 +115,9 @@
               a <code>form</code> validator says a human scores by hand</dd>
 
             <dt>--resume</dt>
-            <dd>fill <b>only what produced nothing</b>; a validator failure is re-scored
-              instead, at no token cost</dd>
+            <dd>fill <b>only what produced nothing</b> - a cell added to the scenario since
+              the ledger was written counts, having produced nothing by definition; a
+              validator failure is re-scored instead, at no token cost</dd>
 
             <dt>--until-complete [N]</dt>
             <dd>after a pass, relaunch the runs that produced nothing, at most N passes
