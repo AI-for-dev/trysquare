@@ -166,7 +166,7 @@ a probe, a fixture, a specification the repository's own test command will run. 
 is how a scenario asks whether an agent given the failing test it needs corrects
 itself. Given files are committed on top of the etalon, so they cost nothing in
 `touched` and every later move the agent makes on them is recorded - see
-[`kind = "files"`](../reference/scenario-schema.md#kind-files).
+[the `files` kind](../reference/scenario-schema.md#the-files-kind).
 
 They combine: a regular grid plus a couple of named witnesses in one scenario.
 

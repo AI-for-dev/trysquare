@@ -357,7 +357,7 @@ A `kind` outside the known values, or on a brick without `paths`, is refused at 
 time: a misspelled kind would silently fall back to agents, and the cell would measure
 subagents where its author declared skills.
 
-### `kind = "files"`
+### The `files` kind
 
 The third kind, and the only one whose material lands in the **measured tree** rather
 than in the agent library. It is how a cell hands the task a file the tag does not

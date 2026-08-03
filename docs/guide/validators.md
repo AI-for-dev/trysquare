@@ -110,7 +110,7 @@ since bytecode is not a delivery.
 
 ### Tell what was given from what was written
 
-`given` is what a [`kind = "files"`](../reference/scenario-schema.md#kind-files) brick
+`given` is what a [`files` brick](../reference/scenario-schema.md#the-files-kind)
 put in the tree before the agent started, and it is empty in every cell that was handed
 nothing. Read it whenever a metric depends on that material still being there:
 
