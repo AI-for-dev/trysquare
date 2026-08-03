@@ -204,6 +204,46 @@ def _tool_calls(session: str):
     ]
 
 
+# A skill the agent never had to go and fetch, because the prompt arrived with its body
+# already in it. `pi` expands a `/skill:<name>` reference **client-side**: the name and
+# description it would otherwise put in the system prompt are replaced by the whole
+# `SKILL.md`, wrapped in this tag, inside the first user message.
+#
+# Matched on the tag and not on `/skill:` in the prompt file, for the same reason
+# `tool_calls` reads the session rather than the raw stream: the session is archived, so
+# a metric built on this stays replayable, while the prompt file lives in the work
+# directory the OS may purge (`UNREPLAYABLE`).
+EXPANDED_SKILL = re.compile(r"""<skill\s+name=["']([^"']+)["']""")
+
+
+def _skills_expanded(session: str):
+    """Every skill whose body the harness pasted into a message, in order, deduplicated.
+
+    Read from the user turns only. An assistant that *writes* the tag - quoting the
+    prompt back, or drafting a skill of its own - has not been handed anything, and
+    counting it would turn a fact about the harness into a fact about the model.
+    """
+    names: list[str] = []
+    for event in events(session):
+        if event.get("type") != "message":
+            continue
+        message = event.get("message") or {}
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        blocks = content if isinstance(content, list) else [{"type": "text", "text": content}]
+        for block in blocks:
+            if not isinstance(block, dict) or block.get("type") != "text":
+                continue
+            text = block.get("text")
+            if not isinstance(text, str):
+                continue
+            for name in EXPANDED_SKILL.findall(text):
+                if name not in names:
+                    names.append(name)
+    return names
+
+
 # What a replay cannot put back. The prompt and the agent's final prose lived in the work
 # directory, which the OS may purge; the raw stream is deliberately never archived
 # (`outputs.py:24-27`).
@@ -799,7 +839,35 @@ class Assay:
         return self._part("tool_calls")
 
     def _compute_tool_calls(self):
-        directory = Path(self._given("session", "the agent's tool calls"))
+        return tuple(_tool_calls(self._session("the agent's tool calls")))
+
+    @property
+    def skills_expanded(self) -> tuple[str, ...]:
+        """The skills whose body the harness pasted into the prompt, in order.
+
+        The companion of `tool_calls` for the other half of one question. A scenario can
+        load a skill two ways, and they leave opposite traces: loaded by name, the agent
+        must `read` the `SKILL.md` itself, which is a call; referenced as `/skill:<name>`
+        in the prompt, the body arrives already expanded and there is nothing left to
+        read. A validator that knows only the call scores the second way as "the skill
+        was never opened", which is the opposite of what happened.
+
+        Named `expanded` and not `loaded`: every skill a variant declares is loaded, and
+        this is the shorter list of those the agent did not have to ask for. Both are
+        read from the **archived session**, so a metric built on either replays.
+        """
+        return self._part("skills_expanded")
+
+    def _compute_skills_expanded(self):
+        return tuple(_skills_expanded(self._session("the skills the prompt carried")))
+
+    def _session(self, what: str) -> str:
+        """Every archived session line of the run, or a refusal naming what is missing.
+
+        One reader for both process accessors: the refusal below is about the harness and
+        not about the agent, and a second copy of it would eventually say otherwise.
+        """
+        directory = Path(self._given("session", what))
         files = sorted(directory.glob("*.jsonl")) if directory.is_dir() else []
         if not files:
             raise CannotJudge(
@@ -807,7 +875,7 @@ class Assay:
                 f"process can be read. The session comes from the harness, so its "
                 f"absence says nothing about the agent"
             )
-        return tuple(_tool_calls("\n".join(p.read_text(errors="replace") for p in files)))
+        return "\n".join(p.read_text(errors="replace") for p in files)
 
     def first_write(self, path: str) -> int | None:
         """The index of the first call that wrote to `path`, or None.
