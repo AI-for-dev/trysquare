@@ -31,7 +31,11 @@ from .scenario import Scenario, Validator
 CONTEXT_NAME = "context.json"
 
 # Keys withheld from a judge's context, so it cannot know what it is scoring.
-BLIND_KEYS = ("cell", "repetition", "configuration", "harness")
+#
+# `given` is among them because it names a `files` brick, and a brick is a
+# configuration: a judge told this tree was handed a probe knows it is looking at the
+# treatment rather than the baseline.
+BLIND_KEYS = ("cell", "repetition", "configuration", "harness", "given")
 
 
 @dataclass
@@ -85,6 +89,7 @@ def write_context(
     artefacts: list[str] | None = None,
     touched: list[str] | None = None,
     files: list[str] | None = None,
+    given: list[str] | None = None,
     declared: tuple[str, ...] = (),
 ) -> Path:
     """Writes the context file a validator is handed.
@@ -162,6 +167,12 @@ def write_context(
         context["touched"] = sorted(touched)
     if files is not None:
         context["files"] = list(files)
+    # What a `files` brick put in the tree before the agent started, so a validator can
+    # tell a path that was **never given** from one the agent deleted. Both read as an
+    # absent file, and scoring them the same way would let a run that removed the probe
+    # it was handed pass for a run that was handed nothing.
+    if given:
+        context["given"] = list(given)
     if declared:
         context["declared"] = list(declared)
     if response_file is not None:

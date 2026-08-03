@@ -152,6 +152,29 @@ class TestDeclaredArtefacts:
         assert run.artefacts == frozenset()
 
 
+class TestWhatTheCellWasGiven:
+    """A file the harness put in the tree, told apart from one the agent wrote.
+
+    Without it, a probe that is absent from the tree is one fact with two causes -
+    never given, or deleted along the way - and a run that removed the test it was
+    handed scores like a run that was handed nothing.
+    """
+
+    def test_the_paths_a_files_brick_put_in_the_tree(self):
+        run = Assay({"given": ["game/probe.test.js"]})
+        assert run.given == {"game/probe.test.js"}
+
+    def test_a_cell_handed_nothing_was_given_nothing(self):
+        """Most cells, and every scenario written before the key existed."""
+        assert Assay({"touched": ["game/neon.js"]}).given == frozenset()
+
+    def test_given_says_nothing_about_touched(self):
+        """The two answer different questions: what was handed, and what was changed."""
+        run = Assay({"given": ["game/probe.test.js"], "touched": ["game/neon.js"]})
+        assert run.given == {"game/probe.test.js"}
+        assert run.touched == {"game/neon.js"}
+
+
 class TestTheErrorContract:
     """ "Could not judge" is not "worked badly", and one validator in four got it right.
 

@@ -161,6 +161,13 @@ To compare skills one at a time, declare one brick per skill with `kind = "skill
 and let each variant cite the brick it measures - see
 [`[harness.<name>]`](../reference/scenario-schema.md#harnessname).
 
+A cell can also hand the *task* a file the tag does not hold, with `kind = "files"`:
+a probe, a fixture, a specification the repository's own test command will run. That
+is how a scenario asks whether an agent given the failing test it needs corrects
+itself. Given files are committed on top of the etalon, so they cost nothing in
+`touched` and every later move the agent makes on them is recorded - see
+[`kind = "files"`](../reference/scenario-schema.md#kind-files).
+
 They combine: a regular grid plus a couple of named witnesses in one scenario.
 
 ### Keep a witness

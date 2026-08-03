@@ -342,6 +342,7 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
     extensions: list[Path] = []
     agents: list[Path] = []
     skills: list[Path] = []
+    files: dict[str, Path] = {}
     agent_model = None
 
     for name, brick in scenario.declared(cell)["harness"].items():
@@ -362,6 +363,21 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
         # said. Several skill bricks can then coexist, each cited by name in a
         # variant's `harness` list.
         kind = brick.get("kind") or ("skills" if name == "skills" else "agents")
+
+        # A `files` brick puts its material in the measured tree, keyed by where it
+        # lands. Two bricks of one cell aiming at the same destination are refused
+        # rather than resolved by declaration order: which of the two files the agent
+        # would have read is a question no reader of the scenario could answer.
+        if kind == "files":
+            for destination, source in brick.get("files", {}).items():
+                if destination in files:
+                    raise RuntimeError(
+                        f"cell {cell.name!r} gives {destination!r} twice, from two "
+                        f"bricks - the second is {name!r}"
+                    )
+                files[destination] = (base / source).resolve()
+            continue
+
         for path in brick.get("paths", []):
             resolved = (base / path).resolve()
             if kind == "skills":
@@ -391,6 +407,7 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
         "extensions": extensions,
         "agents": agents,
         "skills": skills,
+        "files": files,
         "agent_model": agent_model,
     }
 
@@ -630,6 +647,7 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
             system=system,
             agents=bricks["agents"],
             skills=bricks["skills"],
+            files=bricks["files"],
             agent_model=bricks["agent_model"],
         )
         repo_mod.check_agent_models(prepared.agents)
@@ -718,6 +736,7 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
                 artefacts=list(scenario.task.get("artefacts", ())),
                 touched=touched,
                 files=at_etalon,
+                given=prepared.given,
                 declared=validator.metrics,
             )
             if validator.mode == "script":
@@ -842,6 +861,10 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
             "model_id": recorded_model(plan.output.sessions(run_id)),
             "thinking": thinking,
             "injected": prepared.injected,
+            # What the task was handed, as opposed to what the harness hid from git.
+            # A patch touching one of these paths is the agent editing material it was
+            # given, and a reader cannot tell that from the patch alone.
+            "given": prepared.given,
             # Two places may declare a subagent's model, so the trace settles
             # which one applied.
             "agents": prepared.agents,

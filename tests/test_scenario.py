@@ -267,6 +267,58 @@ class TestBrickKind:
         assert set(parse(d).bricks) == {"skill-tdd", "subagents"}
 
 
+def a_files_brick(**brick) -> dict:
+    return MINIMAL | {"harness": {"probe": {"kind": "files"} | brick}}
+
+
+class TestFilesBrick:
+    """A brick that puts material in the measured tree, keyed by where it lands.
+
+    The destination is declared and never derived from the source's basename: the
+    path a probe occupies decides whether the repository's own test command picks it
+    up, which is a decision of the experiment and not of whoever named the file.
+    """
+
+    def test_a_files_table_loads(self):
+        d = a_files_brick(files={"game/probe.test.js": "bricks/probe.test.js"})
+        assert parse(d).bricks["probe"]["files"] == {"game/probe.test.js": "bricks/probe.test.js"}
+
+    def test_the_kind_without_a_files_table_is_refused(self):
+        with pytest.raises(ScenarioError, match="no files"):
+            parse(a_files_brick())
+
+    def test_a_files_table_without_the_kind_is_refused(self):
+        """Dropping a file into the measured tree is never something a default does."""
+        d = MINIMAL | {"harness": {"probe": {"files": {"game/p.js": "p.js"}}}}
+        with pytest.raises(ScenarioError, match="no kind"):
+            parse(d)
+
+    def test_a_files_table_on_another_kind_is_refused(self):
+        """Nothing reads it there, so it would be dropped in silence."""
+        d = MINIMAL | {
+            "harness": {"probe": {"kind": "skills", "paths": ["s"], "files": {"a": "b"}}}
+        }
+        with pytest.raises(ScenarioError, match="files table"):
+            parse(d)
+
+    def test_a_list_where_a_table_belongs_is_refused(self):
+        with pytest.raises(ScenarioError, match="table of"):
+            parse(a_files_brick(files=["bricks/probe.test.js"]))
+
+    def test_an_absolute_destination_is_refused(self):
+        with pytest.raises(ScenarioError, match="cannot be absolute"):
+            parse(a_files_brick(files={"/etc/probe.js": "bricks/probe.test.js"}))
+
+    def test_a_destination_that_climbs_out_is_refused(self):
+        """The one thing a run must never do is write outside its clone."""
+        with pytest.raises(ScenarioError, match="climb out"):
+            parse(a_files_brick(files={"../probe.js": "bricks/probe.test.js"}))
+
+    def test_a_source_that_is_not_a_path_is_refused(self):
+        with pytest.raises(ScenarioError, match="path to a file"):
+            parse(a_files_brick(files={"game/probe.test.js": ""}))
+
+
 def scoring_tests(**task) -> dict:
     """A scenario that contracts for the `tests` metric, with `task` keys added."""
     return MINIMAL | {

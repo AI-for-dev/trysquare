@@ -353,9 +353,54 @@ harness = ["skill-research"]
 harness = ["skill-tdd", "skill-research"]
 ```
 
-A `kind` outside those two values, or on a brick without `paths`, is refused at load
+A `kind` outside the known values, or on a brick without `paths`, is refused at load
 time: a misspelled kind would silently fall back to agents, and the cell would measure
 subagents where its author declared skills.
+
+### `kind = "files"`
+
+The third kind, and the only one whose material lands in the **measured tree** rather
+than in the agent library. It is how a cell hands the task a file the tag does not
+hold - a probe, a fixture, a specification the repository's own test command will pick
+up:
+
+```toml
+[harness.probe]
+kind = "files"
+
+[harness.probe.files]
+"game/probe.test.js" = "bricks/probe.test.js"
+
+[variants."+probe given"]
+harness = ["probe"]
+```
+
+A table of **destination = source**, and not a list of `paths`, because a list gives
+the destination no name: the file would land under whatever basename it happens to
+carry in the scenario's directory, and the path a probe occupies decides whether
+`node --test 'game/**/*.test.js'` finds it. That is a decision of the experiment.
+Sources are relative to the scenario; destinations are relative to the clone and may
+neither be absolute nor climb out of it.
+
+:::{important}
+**Given files are committed, not hidden.**
+
+Every other brick is written into `.git/info/exclude`, because harness plumbing is not
+the agent's work and scope scoring must not count it. A `files` brick is the exception:
+its material is addressed to the *task*, and the agent may edit it or delete it.
+Excluded, that would leave no trace anywhere - git ignores an untracked path however it
+was left.
+
+So the harness commits them on top of the etalon before the agent starts. The injection
+still costs nothing in `touched` and nothing in `diff.patch`, since both are read
+against `HEAD`; the moment the agent weakens a probe or deletes it, that shows up like
+any other change. A replay puts the same files back, and commits them the same way,
+before applying the patch.
+
+**A `files` brick never replaces what the tag holds.** Overwriting a tracked file would
+change the measured code while looking like nothing at all - the diff would be taken
+against a HEAD that already contains the replacement. It is refused.
+:::
 
 :::{note}
 `[harness.agents].model` is an optional override. Absent, each agent file declares its

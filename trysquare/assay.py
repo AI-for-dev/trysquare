@@ -504,6 +504,21 @@ class Assay:
         return frozenset(p for p in self.touched if is_artefact(p, patterns))
 
     @property
+    def given(self) -> frozenset[str]:
+        """The paths a `files` brick put in the tree before the agent started.
+
+        Empty for every cell that was handed nothing, which is most of them, and that
+        emptiness is the fact a validator needs: a probe that is **not there** was either
+        never given or deleted along the way, and those two are not the same measurement.
+        Without this, a run that removed the test it was handed would score exactly like
+        a run that was handed no test at all.
+
+        A path in here is tracked in the clone, committed on top of the etalon, so any
+        edit the agent makes to it appears in `touched` like any other change.
+        """
+        return frozenset(self._context.get("given") or ())
+
+    @property
     def files_at_etalon(self) -> tuple[str, ...]:
         """Every path in the pinned tree, unfiltered.
 
