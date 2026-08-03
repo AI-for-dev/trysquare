@@ -65,6 +65,7 @@ score.py /path/to/run/validation/script/context.json
   "artefacts": ["node_modules"],
   "touched": ["src/basket.js"],
   "files": ["README.md", "src/basket.js", "src/theme.js"],
+  "given": ["src/probe.test.js"],
   "declared": ["in_scope", "delivered", "tests"]
 }
 ```
@@ -106,6 +107,25 @@ meant to reward.
 itself is never reduced - the filter decides what a verdict rests on, not what is
 recorded. Both metrics of the shipped example need the subtraction: `delivered` too,
 since bytecode is not a delivery.
+
+### Tell what was given from what was written
+
+`given` is what a [`files` brick](../reference/scenario-schema.md#the-files-kind)
+put in the tree before the agent started, and it is empty in every cell that was handed
+nothing. Read it whenever a metric depends on that material still being there:
+
+```python
+if FICHIER not in run.given:
+    return Metric.unjudged("no probe was given to this cell")
+```
+
+An absent file is one fact with two causes - never given, or deleted along the way -
+and without this key a run that removed the test it was handed scores exactly like a
+run that was handed no test at all. Given files are committed on top of the etalon, so
+an edit to one appears in `touched` like any other change, and comparing the tree's
+copy against the brick's says whether it was weakened.
+
+It is withheld from a judge's context: naming a brick names the configuration.
 
 A scenario that declares nothing gets an empty set, so this line is safe to write
 everywhere.

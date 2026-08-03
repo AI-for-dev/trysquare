@@ -18,7 +18,7 @@ import shlex
 import tomllib
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .config import CONFIG_SECTIONS, SCENARIO_SECTIONS, closest, which_file
 
@@ -380,7 +380,12 @@ def _check_artefacts(task: dict, where: str) -> None:
             )
 
 
-BRICK_KINDS = ("skills", "agents")
+BRICK_KINDS = ("skills", "agents", "files")
+
+# The one kind whose material is read by the *task* rather than by the agent library,
+# so it is declared as a mapping and not as a list of paths: the name a file takes in
+# the measured tree is a decision of the scenario, never of whoever named it on disk.
+FILES_KIND = "files"
 
 
 def _check_bricks(bricks: dict, where: str) -> None:
@@ -393,20 +398,74 @@ def _check_bricks(bricks: dict, where: str) -> None:
 
     `kind` on a brick without `paths` is refused for the same reason: it
     declares a routing for nothing, which is always a leftover or a typo.
+
+    A `files` brick is the exception, and carries `files` instead: see
+    `_check_files_brick`.
     """
     for name, brick in bricks.items():
         kind = brick.get("kind")
         if kind is None:
+            if brick.get(FILES_KIND):
+                raise ScenarioError(
+                    f"{where}[harness.{name}] declares files but no kind. Dropping a "
+                    f'file into the measured tree is never a default:\n  kind = "files"'
+                )
             continue
         if kind not in BRICK_KINDS:
             raise ScenarioError(
                 f"{where}[harness.{name}].kind is {kind!r}"
                 f"{closest(kind, BRICK_KINDS)}. Kinds: {', '.join(BRICK_KINDS)}"
             )
+        if kind == FILES_KIND:
+            _check_files_brick(name, brick, where)
+            continue
+        if brick.get(FILES_KIND):
+            raise ScenarioError(
+                f"{where}[harness.{name}] declares kind = {kind!r} and a files table. "
+                f'Only kind = "files" reads it, so this one would be dropped in silence'
+            )
         if not brick.get("paths"):
             raise ScenarioError(
                 f"{where}[harness.{name}] declares kind = {kind!r} but no paths: "
                 f"kind only says what the paths are"
+            )
+
+
+def _check_files_brick(name: str, brick: dict, where: str) -> None:
+    """A brick that puts material in the measured tree, keyed by where it lands.
+
+    `paths` would have been the consistent spelling and it is refused on purpose: a
+    list gives the destination no name, so the file would land under whatever basename
+    it happens to carry in the scenario's own directory. Every other value that decides
+    what is measured is declared in this file rather than derived, and the path a probe
+    occupies in the tree decides whether the repository's own test command picks it up.
+
+    Destinations are relative and cannot climb: an absolute path or a `..` would write
+    outside the clone, which is the one thing a run must never do.
+    """
+    declared = brick.get(FILES_KIND)
+    if not declared:
+        raise ScenarioError(
+            f'{where}[harness.{name}] declares kind = "files" but no files.\n'
+            f"  [harness.{name}.files]\n"
+            f'  "game/probe.test.js" = "bricks/probe.test.js"'
+        )
+    if not isinstance(declared, dict):
+        raise ScenarioError(
+            f"{where}[harness.{name}].files must be a table of "
+            f"destination = source - got {declared!r}"
+        )
+    for destination, source in declared.items():
+        if not isinstance(source, str) or not source.strip():
+            raise ScenarioError(
+                f"{where}[harness.{name}].files[{destination!r}] is {source!r}: every "
+                f"value is a path to a file, relative to the scenario"
+            )
+        place = PurePosixPath(destination)
+        if place.is_absolute() or ".." in place.parts:
+            raise ScenarioError(
+                f"{where}[harness.{name}].files holds {destination!r}: a destination is "
+                f"a path inside the measured tree, so it cannot be absolute or climb out"
             )
 
 

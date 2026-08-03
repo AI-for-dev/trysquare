@@ -710,11 +710,15 @@ class TestBlindness:
             cell="pile complete",
             repetition=3,
             blind=True,
+            given=["game/probe.test.js"],
         )
         context = json.loads(path.read_text())
         assert "cell" not in context
         assert "repetition" not in context
         assert "repo" in context
+        # A brick is a configuration: a judge told this tree was handed a probe knows
+        # it is looking at the treatment.
+        assert "given" not in context
 
     def test_a_script_context_keeps_the_cell(self, tmp_path):
         d = tmp_path
@@ -867,6 +871,22 @@ class TestWhatTheHarnessComputesOnce:
         d = a_repo({"a.js": "one\n"})
         (d / "a.js").write_text("two\n")
         assert repo.changed_files(d) == ["a.js"]
+
+    def test_changed_files_sees_a_deletion(self):
+        """`git add -A` stages a removal even under `--intent-to-add`, so the index and
+        the working tree then agree and a plain `git diff` reports nothing. An agent
+        deleting the repository's own test file to make the suite green scored
+        `touched = []` - not badly, but as having done nothing at all."""
+        d = a_repo({"a.js": "one\n", "b.js": "two\n"})
+        (d / "b.js").unlink()
+        assert repo.changed_files(d) == ["b.js"]
+
+    def test_the_patch_carries_a_deletion(self):
+        """And the archive agreed with the silence: an empty patch, so a replay rebuilt
+        a tree where the deleted file was still there."""
+        d = a_repo({"a.js": "one\n", "b.js": "two\n"})
+        (d / "b.js").unlink()
+        assert "deleted file" in repo.diff(d)
 
     def test_an_untouched_clone_changed_nothing(self):
         """An empty list is a measurement - the agent did not work - so it must not be
@@ -1153,6 +1173,124 @@ class TestSkillBricks:
         other = cell_bricks(bricks, {"harness": ["skill-research"]})
         assert one["skills"] == [Path("/x/skills/tdd")]
         assert other["skills"] == [Path("/x/skills/research")]
+
+
+PROBE = {"probe": {"kind": "files", "files": {"game/probe.test.js": "bricks/probe.test.js"}}}
+
+
+class TestFilesBricks:
+    """Material given to the *task*, resolved by where it lands in the tree."""
+
+    def test_a_files_brick_resolves_its_source_against_the_scenario(self):
+        got = cell_bricks(PROBE, {"harness": ["probe"]})
+        assert got["files"] == {"game/probe.test.js": Path("/x/bricks/probe.test.js")}
+
+    def test_a_files_brick_is_no_skill_and_no_agent(self):
+        """It loads nothing into the agent library, so it must load no gate either."""
+        got = cell_bricks(PROBE, {"harness": ["probe"]})
+        assert got["skills"] == []
+        assert got["agents"] == []
+        assert got["extensions"] == []
+
+    def test_a_cell_that_cites_nothing_is_given_nothing(self):
+        """The baseline must not receive the probe the treatment introduced."""
+        assert cell_bricks(PROBE, {}) == cell_bricks({}, {})
+
+    def test_two_bricks_aiming_at_one_destination_are_refused(self):
+        """Which of the two the agent read is a question the scenario cannot answer."""
+        bricks = PROBE | {
+            "other": {"kind": "files", "files": {"game/probe.test.js": "bricks/other.js"}}
+        }
+        with pytest.raises(RuntimeError, match="twice"):
+            cell_bricks(bricks, {"harness": ["probe", "other"]})
+
+
+class TestGivingFiles:
+    """What `repo.give` leaves behind, in a real clone.
+
+    Committed rather than excluded, which is the whole difference between material
+    given to the task and harness plumbing: the agent may edit or delete a probe it
+    was handed, and an untracked path records neither.
+    """
+
+    def clone(self, tmp_path, files=("game/neon.js",)):
+        source = a_repo({name: "// etalon\n" for name in files})
+        return repo.clone(source, "etalon-v1", tmp_path / "clone")
+
+    def given(self, tmp_path, text="// probe\n", destination="game/probe.test.js"):
+        probe = tmp_path / "probe.test.js"
+        probe.write_text(text)
+        clone = self.clone(tmp_path)
+        prepared = repo.Prepared(path=clone, etalon="etalon-v1")
+        repo.give(prepared, {destination: probe})
+        return clone, prepared
+
+    def test_the_file_lands_where_the_scenario_put_it(self, tmp_path):
+        clone, prepared = self.given(tmp_path)
+        assert (clone / "game/probe.test.js").read_text() == "// probe\n"
+        assert prepared.given == ["game/probe.test.js"]
+
+    def test_giving_costs_nothing_in_scope(self, tmp_path):
+        """The commit is what makes the injection free: the diff is taken against it."""
+        clone, _ = self.given(tmp_path)
+        assert repo.changed_files(clone) == []
+        assert repo.diff(clone) == ""
+
+    def test_editing_what_was_given_shows_up(self, tmp_path):
+        """A probe is exactly what an agent may be tempted to weaken until it passes."""
+        clone, _ = self.given(tmp_path)
+        (clone / "game/probe.test.js").write_text("// weakened\n")
+        assert repo.changed_files(clone) == ["game/probe.test.js"]
+        assert "weakened" in repo.diff(clone)
+
+    def test_deleting_what_was_given_shows_up(self, tmp_path):
+        clone, _ = self.given(tmp_path)
+        (clone / "game/probe.test.js").unlink()
+        assert repo.changed_files(clone) == ["game/probe.test.js"]
+
+    def test_it_is_not_hidden_from_git(self, tmp_path):
+        """`.git/info/exclude` is for harness plumbing, and would hide the tampering."""
+        clone, prepared = self.given(tmp_path)
+        assert prepared.injected == []
+        exclude = clone / ".git" / "info" / "exclude"
+        assert "probe" not in (exclude.read_text() if exclude.is_file() else "")
+
+    def test_replacing_a_file_the_tag_holds_is_refused(self, tmp_path):
+        """It would change the measured code where no diff could ever show it."""
+        probe = tmp_path / "probe.test.js"
+        probe.write_text("// probe\n")
+        clone = self.clone(tmp_path)
+        prepared = repo.Prepared(path=clone, etalon="etalon-v1")
+        with pytest.raises(repo.RepoError, match="already exists"):
+            repo.give(prepared, {"game/neon.js": probe})
+
+    def test_a_missing_source_is_refused(self, tmp_path):
+        clone = self.clone(tmp_path)
+        prepared = repo.Prepared(path=clone, etalon="etalon-v1")
+        with pytest.raises(repo.RepoError, match="not found"):
+            repo.give(prepared, {"game/probe.test.js": tmp_path / "nowhere.js"})
+
+    def test_the_patch_of_a_given_file_applies_to_a_rebuilt_tree(self, tmp_path):
+        """What a replay does: put the same file back, then apply what the agent did.
+
+        Excluded instead of committed, this patch would not exist at all - and the
+        run's tampering would be unscoreable from the archive.
+        """
+        clone, _ = self.given(tmp_path)
+        (clone / "game/probe.test.js").write_text("// weakened\n")
+        patch = repo.diff(clone)
+
+        again = self.clone(tmp_path / "second")
+        probe = tmp_path / "probe.test.js"
+        repo.give(repo.Prepared(path=again, etalon="etalon-v1"), {"game/probe.test.js": probe})
+        repo.apply_diff(again, patch)
+        assert (again / "game/probe.test.js").read_text() == "// weakened\n"
+
+    def test_nothing_given_leaves_no_commit(self, tmp_path):
+        clone = self.clone(tmp_path)
+        before = repo.git(["rev-parse", "HEAD"], cwd=clone)
+        repo.give(repo.Prepared(path=clone, etalon="etalon-v1"), {})
+        assert repo.git(["rev-parse", "HEAD"], cwd=clone) == before
 
 
 class TestTheSubagentGate:

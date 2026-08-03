@@ -847,9 +847,6 @@ def cmd_replay(args) -> int:
     enabled = progress_mod.wanted(no_progress=args.no_progress)
     with progress_mod.bar(len(runs), "replayed", enabled) as bar:
         for run_dir in runs:
-            patch = (
-                (run_dir / "diff.patch").read_text() if (run_dir / "diff.patch").is_file() else ""
-            )
             work = config.workdir() / "replay" / run_dir.name
             # Into `work/repo`, which is the run's own layout rather than tidiness. The
             # context is written beside the tree, in `clone.parent`, so cloning *into* `work`
@@ -862,8 +859,7 @@ def cmd_replay(args) -> int:
             # contexts" was executable for one run out of sixty, and a validator failure could
             # not be reproduced by hand. And it is a race waiting for the day this loop runs
             # concurrently, which is when it would start producing plausible wrong numbers.
-            clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
-            repo_mod.apply_diff(clone, patch, what=run_dir.name)
+            clone = reconstitute(run_dir, work, source, scenario, config, base)
             context = replay_context(run_dir, clone, source, scenario, at_etalon)
             bar.line(f"  {run_dir.name}: reconstituted at {clone}")
             bar.line(f"    context: {context}")
@@ -1081,6 +1077,47 @@ def archived_session_dir(run_dir: Path) -> Path:
     return nested if nested.is_dir() else run_dir
 
 
+def archived_configuration(run_dir: Path) -> dict:
+    """What a run wrote down about itself, or nothing if it wrote nothing.
+
+    Read rather than recomputed from the scenario: a scenario file moves on, and the
+    archive is the only record of what this run actually received.
+    """
+    configuration = run_dir / "configuration.json"
+    return json.loads(configuration.read_text()) if configuration.is_file() else {}
+
+
+def archived_cell(run_dir: Path) -> str:
+    """Which cell a run measured, from what the run itself wrote down."""
+    return archived_configuration(run_dir).get("cell", "")
+
+
+def reconstitute(run_dir: Path, work: Path, source: Path, scenario, config, base: Path) -> Path:
+    """A run's tree, rebuilt from the tag, what its cell was given, and its patch.
+
+    The one place this is done, because `replay` and layer 2 of `parity` must rebuild
+    the same tree or the second is not checking the first.
+
+    A cell's `files` bricks are put back **before** the patch, and committed exactly as
+    the run committed them. Without that, a patch that touches given material has no
+    context to apply against and the whole reconstitution fails; with it, an agent that
+    edited or deleted a probe it was handed is reproduced faithfully, which is the only
+    way a metric about that can be re-scored months later.
+
+    Skipped entirely for a scenario that declares no `files` brick - the overwhelming
+    majority - so nothing about an existing replay changes.
+    """
+    clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
+    if any(brick.get("kind") == "files" for brick in scenario.bricks.values()):
+        cell = archived_cell(run_dir)
+        if cell:
+            given = runner_mod.brick_paths(scenario, config, scenario.cell(cell), base)["files"]
+            repo_mod.give(repo_mod.Prepared(path=clone, etalon=scenario.task["etalon"]), given)
+    patch = (run_dir / DIFF).read_text() if (run_dir / DIFF).is_file() else ""
+    repo_mod.apply_diff(clone, patch, what=run_dir.name)
+    return clone
+
+
 def replay_context(run_dir: Path, clone: Path, source: Path, scenario, at_etalon: list) -> Path:
     """Writes the context a re-scoring needs, beside the tree just reconstituted.
 
@@ -1098,10 +1135,7 @@ def replay_context(run_dir: Path, clone: Path, source: Path, scenario, at_etalon
     makes a metric of process replayable at all, its tool calls being in the session and
     not only in the stream that is thrown away.
     """
-    configuration = run_dir / "configuration.json"
-    cell = ""
-    if configuration.is_file():
-        cell = json.loads(configuration.read_text()).get("cell", "")
+    configuration = archived_configuration(run_dir)
 
     return validation_mod.write_context(
         clone.parent / "validation",
@@ -1111,13 +1145,17 @@ def replay_context(run_dir: Path, clone: Path, source: Path, scenario, at_etalon
         prompt_file=None,
         session_dir=archived_session_dir(run_dir),
         trace=None,
-        cell=cell,
+        cell=configuration.get("cell", ""),
         repetition=0,
         test_command=scenario.task.get("test_command"),
         prepare=list(scenario.task.get("prepare", ())),
         artefacts=list(scenario.task.get("artefacts", ())),
         touched=repo_mod.changed_files(clone),
         files=at_etalon,
+        # From the archive and not from the scenario, like the cell above it: what this
+        # run was handed is a fact about the run, and a scenario that gained a brick
+        # since must not make an old run look as though it had received one.
+        given=configuration.get("given", []),
         declared=scenario.declared_metrics,
     )
 
@@ -1255,15 +1293,12 @@ def layer2_report(args) -> parity_mod.Report:
     source = runner_mod.prepare_source(config, scenario.task["repo"], scenario.task["etalon"])
     at_etalon = repo_mod.etalon_files(source, scenario.task["etalon"])
 
-    def reconstitute(run_dir: Path) -> Path:
+    def rebuild(run_dir: Path) -> Path:
         work = config.workdir() / "parity" / run_dir.name
-        clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
-        repo_mod.apply_diff(clone, (run_dir / "diff.patch").read_text(), what=run_dir.name)
+        clone = reconstitute(run_dir, work, source, scenario, config, base)
         return replay_context(run_dir, clone, source, scenario, at_etalon)
 
-    return parity_mod.layer2(
-        args.measures, args.archive, reconstitute, script_metrics(scenario, base)
-    )
+    return parity_mod.layer2(args.measures, args.archive, rebuild, script_metrics(scenario, base))
 
 
 def cmd_parity(args) -> int:
