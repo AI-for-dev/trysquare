@@ -440,6 +440,31 @@ def session(*calls) -> dict:
                 }
             )
         )
+    return _archive(lines)
+
+
+def turns(*messages) -> dict:
+    """A context whose archived session contains exactly `messages`.
+
+    Each message is `(role, text)`. The sibling of `session` for the accessors that read
+    what was *said* rather than what was called, and deliberately not folded into it:
+    a helper that took both would make every existing call site declare a turn list it
+    does not care about.
+    """
+    return _archive(
+        [
+            json.dumps(
+                {
+                    "type": "message",
+                    "message": {"role": role, "content": [{"type": "text", "text": text}]},
+                }
+            )
+            for role, text in messages
+        ]
+    )
+
+
+def _archive(lines) -> dict:
     d = Path(tempfile.mkdtemp(prefix="assay-session-"))
     (d / "attempt-1.jsonl").write_text("\n".join(lines) + "\n")
     return {"session": str(d)}
@@ -510,6 +535,60 @@ class TestToolCalls:
         run = Assay({"session": "/nowhere"})
         with pytest.raises(CannotJudge):
             run.tool_calls()
+
+
+SKILL_BODY = (
+    '<skill name="tie-cases" location="/briques/skills/tie-cases/SKILL.md">\n'
+    "# One case can hide another\n</skill>\n\nFix the bounce."
+)
+
+
+class TestSkillsExpanded:
+    """The other way a skill reaches the agent, and the one that leaves no call behind.
+
+    A scenario that references `/skill:<name>` in its prompt gets the whole `SKILL.md`
+    pasted into the first user turn by `pi`, so the agent never reads it - and a
+    validator counting only `read` calls scored those runs as "the skill was never
+    opened". That was measured: five of five runs of one cell carried the expanded body
+    and none of them read a `SKILL.md`.
+    """
+
+    def test_an_expanded_skill_is_named(self):
+        run = Assay(turns(("user", SKILL_BODY)))
+        assert run.skills_expanded == ("tie-cases",)
+
+    def test_a_prompt_that_carries_none_is_empty_rather_than_a_refusal(self):
+        """An empty tuple is a measurement here - the prompt carried no body - which is
+        exactly what a cell loading the skill by name should report."""
+        run = Assay(turns(("user", "Fix the bounce.")))
+        assert run.skills_expanded == ()
+
+    def test_the_same_skill_across_turns_is_named_once(self):
+        run = Assay(turns(("user", SKILL_BODY), ("user", SKILL_BODY)))
+        assert run.skills_expanded == ("tie-cases",)
+
+    def test_several_skills_come_back_in_order(self):
+        both = '<skill name="test-gaps">a</skill><skill name="tie-cases">b</skill>'
+        run = Assay(turns(("user", both)))
+        assert run.skills_expanded == ("test-gaps", "tie-cases")
+
+    def test_the_agent_quoting_the_tag_is_not_a_skill_it_was_handed(self):
+        """Read from the user turns only. An assistant that writes the tag back - or
+        drafts a skill of its own - has been handed nothing, and counting it would turn a
+        fact about the harness into a fact about the model."""
+        run = Assay(turns(("assistant", SKILL_BODY)))
+        assert run.skills_expanded == ()
+
+    def test_an_absent_session_refuses(self):
+        run = Assay({"session": "/nowhere"})
+        with pytest.raises(CannotJudge):
+            run.skills_expanded
+
+    def test_a_replayed_context_without_a_session_refuses(self):
+        run = Assay({})
+        with pytest.raises(CannotJudge) as raised:
+            run.skills_expanded
+        assert "session" in str(raised.value)
 
 
 def a_runner(directory: Path, code: int, out: str = "", err: str = "") -> str:
