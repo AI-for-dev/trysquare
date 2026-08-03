@@ -54,8 +54,9 @@ trysquare run <scenario> --output <dir> [options]
 * - `--extend`
   - Carry the runs of this same experiment measured at fewer repetitions, and measure
     only the difference. Implies `--resume`.
-* - `--overwrite`
-  - Measure every run again, whatever is on disk. The default, made typeable.
+* - `--overwrite [CELL]`
+  - Measure every run again, whatever is on disk. The default, made typeable. Given a cell
+    name, repeatable, **only those cells** are measured again and every other run is kept.
 * - `--until-complete [N]`
   - After a pass, relaunch the runs that produced nothing, at most N passes in
     total (default 3). Never a re-measurement: a run that produced something is
@@ -113,6 +114,34 @@ conditions the retry count and therefore every cost column.
 **`--only`** leaves the matrix incomplete, so no synthesis is written and `--resume`
 completes it later. The two compose: a cell measured alone for debugging leaves a
 resumable matrix rather than a dead end.
+
+### Measuring one variant again
+
+An author who edits one variant of a matrix that is already measured wants that variant
+re-measured, and not the other fifty runs re-bought. `--overwrite` takes the cells to
+measure again, repeatably:
+
+```text
+$ trysquare run scenario.toml -o out --overwrite "careful ticket / high"
+  ! REPLAY: 10 runs of careful ticket / high are measured again; the 50 runs of the
+    other cells of rule-vs-ticket_..._n10 are kept
+  10 runs to perform
+```
+
+Kept means kept whole: the ledger entry, the row in `measures.json` and the run tree of
+every other cell are left exactly as they were found. A replay **restricts** the launch
+the way `--only` does - runs of other cells that produced nothing are left alone too, and
+a note says so - but it does not declare the matrix partial. Once the replayed runs land
+and nothing else is missing, the matrix is whole and the synthesis is written, which is
+the point of measuring one variant again.
+
+The two lists cannot both be given: `--overwrite CELL` already says which cells a launch
+restricts itself to, so `--only` beside it would say it twice and is refused.
+
+A cell that changed under its own name is still refused - for the cells a replay
+**keeps**, since publishing their old results beside the new ones is the defect the
+fingerprint exists to catch. The refusal names the replay that resolves it. The cells
+being measured again are free to declare something new: that is what they are for.
 
 ### When results already exist, it asks
 

@@ -668,6 +668,69 @@ class TestACellThatChangedUnderItsName:
         assert "none / off" not in state["cells"]
 
 
+class TestDiscardingOneCellSResults:
+    """`Output.replayed`: what `--overwrite CELL` does to a ledger, and to nothing else.
+
+    A resume protects every result on disk. This is the one operation that gives some of
+    them up, so what it reaches has to be exactly what it was told to reach.
+    """
+
+    def measured(self, raw: dict, cell: str, **extra):
+        """A ledger holding one measured run of `cell`, and the digest it was measured
+        under."""
+        o = outputs.Output(Path(tempfile.mkdtemp()), parse(raw))
+        state = o.initial_state()
+        rid = outputs.run_id("t", cell, 0)
+        o.record(state, rid, Run(rid, cell, 0, state=VALID, detail="a validator said so"))
+        state["runs"][rid].update(extra)
+        return o, state, rid
+
+    def test_a_run_of_a_named_cell_is_missing_again(self):
+        o, state, rid = self.measured(GRID, "none / off")
+        o.replayed(state, ("none / off",))
+        assert state["runs"][rid]["state"] == outputs.MISSING
+        assert rid in {run_id for run_id, _ in o.to_do(state, ("none / off",))}
+
+    def test_what_described_the_discarded_measurement_goes_with_it(self):
+        """`attempts` and `detail` both describe a result this launch gives up, and a
+        detail left behind would outlive the run that explained it."""
+        o, state, rid = self.measured(GRID, "none / off")
+        o.replayed(state, ("none / off",))
+        assert state["runs"][rid]["attempts"] == 0
+        assert "detail" not in state["runs"][rid]
+
+    def test_a_carried_run_measured_here_is_this_matrix_s_own(self):
+        """The flag says the run was measured elsewhere and never re-measured, which is
+        exactly what stops being true."""
+        o, state, rid = self.measured(GRID, "none / off", carried=True)
+        o.replayed(state, ("none / off",))
+        assert "carried" not in state["runs"][rid]
+
+    def test_no_other_cell_is_touched(self):
+        o, state, rid = self.measured(GRID, "none / off")
+        other = outputs.run_id("t", "rule / high", 0)
+        o.record(state, other, Run(other, "rule / high", 0, state=VALID))
+        o.replayed(state, ("none / off",))
+        assert state["runs"][other]["state"] == VALID
+
+    def test_the_named_cell_takes_today_s_declaration(self):
+        """The half `load_or_create_state` cannot do: it freezes the digest of every cell
+        that produced a result, and this cell's result is being given up."""
+        o, state, _ = self.measured(GRID, "none / off")
+        state["cells"]["none / off"] = "0000000000000000"
+        o.replayed(state, ("none / off",))
+        assert state["cells"]["none / off"] == o.fingerprints()["none / off"]
+        assert o.changed_cells(state) == []
+
+    def test_a_cell_it_keeps_stays_frozen(self):
+        """Its result is kept, so the declaration it was measured under is what the
+        ledger has to go on saying it was measured under."""
+        o, state, _ = self.measured(GRID, "none / off")
+        state["cells"]["rule / high"] = "0000000000000000"
+        o.replayed(state, ("none / off",))
+        assert state["cells"]["rule / high"] == "0000000000000000"
+
+
 class TestBlindness:
     def scenario_with_judge(self, pieces):
         return parse(

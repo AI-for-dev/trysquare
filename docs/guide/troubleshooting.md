@@ -281,13 +281,18 @@ refused: these cells changed since their runs were measured: careful ticket / of
 --resume keeps every run that produced a result, so completing this matrix would
 publish two configurations under one cell name.
 Rename the cell, so the new one is measured as itself and the old runs keep their own
-name; or relaunch without --resume, which overwrites
-rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10 and measures every cell again.
+name; or measure them again and keep the rest of
+rule-vs-ticket_etalon-v1_ilaas_gemma-4-31b_n10:
+  --overwrite "careful ticket / off"
 ```
 
 The directory name carries the scenario, the etalon, the agent and the repetition
 count - not the cells. So editing a cell and resuming used to keep the runs measured
 under the old declaration and complete the matrix with the new one, under one name.
+
+The command the refusal ends on is the cheap way out: the edited cell is measured again
+under its new declaration, and every other run of the matrix is kept. A replay of a cell
+the same refusal names is what it is for.
 
 `state.json` records a digest of each cell's declaration: its own `prompt`, `context`,
 `system` and `thinking`, the `[task].prompt` and `[agent].thinking` it falls back to

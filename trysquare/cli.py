@@ -61,6 +61,14 @@ STAMPED = ("repetitions",)
 # Overrides that change the load. Same directory, recorded in the state and header.
 RECORDED = ("concurrency", "timeout")
 
+# What a bare `--overwrite` appends, against the cell names a scoped one appends. An object
+# rather than a string, because a string is a cell name somebody may declare - and rather
+# than `None`, because argparse before 3.13 counts an option as given only when its value
+# is not the option's default: a bare flag holding the default slipped out of the mutually
+# exclusive group, and `--resume --overwrite` said two things at once with nothing refusing
+# it.
+EVERY = object()
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
@@ -135,10 +143,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="carry the runs of this same experiment measured at fewer repetitions and "
         "measure only the difference; implies --resume",
     )
+    # Bare it is the whole matrix, as it has always been - `EVERY` is what says so.
     decided.add_argument(
         "--overwrite",
-        action="store_true",
-        help="measure every run again, whatever is on disk; skips the question",
+        action="append",
+        nargs="?",
+        const=EVERY,
+        default=None,
+        metavar="CELL",
+        help="measure every run again, whatever is on disk; skips the question. Given a "
+        "cell name, repeatable, only those cells are measured again and every other run "
+        "is kept",
     )
     run.add_argument(
         "--until-complete",
@@ -257,6 +272,19 @@ def collect_overrides(args) -> dict:
     return out
 
 
+def replayed_cells(args) -> tuple[str, ...]:
+    """The cells `--overwrite` names, empty when it names none and the whole matrix runs.
+
+    A bare one appends `EVERY`, and it wins over any name given beside it: the broader
+    answer is the one that cannot surprise, since nothing is kept that the operator asked
+    to measure again.
+    """
+    given = args.overwrite or []
+    if any(cell is EVERY for cell in given):
+        return ()
+    return tuple(given)
+
+
 def settle_prior(
     args, scenario, asker=ask_mod.ask, terminal=ask_mod.wanted
 ) -> tuple[bool, bool] | None:
@@ -273,7 +301,7 @@ def settle_prior(
     Nor under `--dry-run`, whose whole promise is a free look at what a command would do. It
     prints the notes that name `--resume` and `--extend` instead, and decides nothing.
     """
-    if args.overwrite:
+    if args.overwrite is not None:
         return False, False
     if args.resume or args.extend:
         # Extending means measuring only the difference, so it is a resume with a source.
@@ -341,6 +369,7 @@ def cmd_run(args) -> int:
         print("  aborted: nothing was measured and nothing was spent")
         return 1
     resume, extend = settled
+    replay = replayed_cells(args)
 
     plan = runner_mod.resolve(
         scenario,
@@ -351,6 +380,7 @@ def cmd_run(args) -> int:
         resume=resume,
         extend=extend,
         grouped=args.group_by_cell,
+        replay=replay,
     )
 
     print(f"{scenario.title or scenario.name}")
@@ -421,13 +451,15 @@ def cmd_run(args) -> int:
     # `--resume` makes by hand. What "never rerun to see" forbids is re-measuring a
     # run that produced a result - and no pass here can reach one. Attempts are
     # counted per run in state.json, so the passes leave a trace.
+    # Under the replay's own filter: a later pass filling cells the replay was told to
+    # leave alone would spend on exactly what it was asked not to touch.
     def resumed():
         return runner_mod.resolve(
             scenario,
             config,
             args.output,
             overrides=overrides,
-            only=tuple(args.only),
+            only=tuple(args.only) or replay,
             resume=True,
         )
 
