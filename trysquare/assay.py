@@ -515,8 +515,21 @@ class Assay:
 
         A path in here is tracked in the clone, committed on top of the etalon, so any
         edit the agent makes to it appears in `touched` like any other change.
+
+        A part rather than a plain read of the context, so a fake has to declare it:
+        `Assay.fake()` answering "nothing was given" to a validator that never said it
+        cared would put the absence of a fact into the shape of a fact.
         """
-        return frozenset(self._context.get("given") or ())
+        return frozenset(self._part("given"))
+
+    def _compute_given(self):
+        """Empty is the honest answer here, and it is not a failure to look.
+
+        Unlike `touched`, an absent key is the normal case: most cells are handed
+        nothing, and every context written before `files` bricks existed says nothing
+        about them. So this is one of the few parts that never raises.
+        """
+        return self._context.get("given") or ()
 
     @property
     def files_at_etalon(self) -> tuple[str, ...]:

@@ -174,6 +174,13 @@ class TestWhatTheCellWasGiven:
         assert run.given == {"game/probe.test.js"}
         assert run.touched == {"game/neon.js"}
 
+    def test_a_fake_has_to_declare_it(self):
+        """Answering "nothing was given" to a validator that never said it read this
+        would put the absence of a fact into the shape of a fact."""
+        with pytest.raises(CannotJudge):
+            Assay.fake(touched=frozenset()).given
+        assert Assay.fake(given=["game/probe.test.js"]).given == {"game/probe.test.js"}
+
 
 class TestTheErrorContract:
     """ "Could not judge" is not "worked badly", and one validator in four got it right.
