@@ -130,6 +130,35 @@ It is withheld from a judge's context: naming a brick names the configuration.
 A scenario that declares nothing gets an empty set, so this line is safe to write
 everywhere.
 
+### Score a skill on both ways it arrives
+
+A metric of *process* reads the archived session, so it replays: `run.tool_calls()` is
+every call the agent made, and `run.first_write(path)` the index of the first one that
+wrote a given file.
+
+A skill needs **both** halves, because the two ways of loading one leave opposite traces.
+Loaded by name with a [`skills` brick](../reference/scenario-schema.md#harnessname),
+only its name and description enter the system prompt, so the agent has to `read` the
+`SKILL.md` itself - and may not. Referenced as `/skill:<name>` in the prompt, the agent
+expands it before the first turn and the whole body arrives in the message, so there is
+nothing left to read and no call to count. `run.skills_expanded` names the ones that
+arrived that way:
+
+```python
+opened = {c for c in run.tool_calls() if not c.failed and reads_a_skill(c)}
+return Metric(bool(opened or run.skills_expanded), ...)
+```
+
+:::{warning}
+Counting only the call scored "the skill was never opened" for **five of five runs** of a
+cell whose prompt carried the body from end to end - while the cell next to it, loading
+the same skill by name, scored three of five. Read as written, that column said forcing a
+skill into the prompt stopped the agent using it.
+
+The two are worth separating in a scenario, and not in the metric: "did the agent go and
+fetch it" has no answer in a cell where the operator answered on its behalf.
+:::
+
 :::{important}
 The context is handed as **one file, and it is archived with the run.** That is why
 this form was chosen over environment variables or named options: a validation replays
