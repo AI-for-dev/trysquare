@@ -75,7 +75,13 @@ class TestParser:
 
     def test_the_three_answers_cannot_be_given_at_once(self):
         """They are the three answers to one question, so two of them says two things -
-        refused by argparse rather than by a precedence rule nobody can see."""
+        refused by argparse rather than by a precedence rule nobody can see.
+
+        The bare `--overwrite` is the delicate one, and only on the Pythons the CI runs
+        that this repository still supports: before 3.13 argparse counts an option as
+        given only when its value is not that option's own default, so what a bare flag
+        appends may not be the default - see `cli.EVERY`.
+        """
         for pair in (
             ("--resume", "--overwrite"),
             ("--extend", "--overwrite"),

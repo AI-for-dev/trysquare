@@ -61,6 +61,14 @@ STAMPED = ("repetitions",)
 # Overrides that change the load. Same directory, recorded in the state and header.
 RECORDED = ("concurrency", "timeout")
 
+# What a bare `--overwrite` appends, against the cell names a scoped one appends. An object
+# rather than a string, because a string is a cell name somebody may declare - and rather
+# than `None`, because argparse before 3.13 counts an option as given only when its value
+# is not the option's default: a bare flag holding the default slipped out of the mutually
+# exclusive group, and `--resume --overwrite` said two things at once with nothing refusing
+# it.
+EVERY = object()
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
@@ -135,13 +143,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="carry the runs of this same experiment measured at fewer repetitions and "
         "measure only the difference; implies --resume",
     )
-    # Bare it is the whole matrix, as it has always been. `const=None` is what a bare one
-    # appends, and no cell can be named `None` - a sentinel string could collide with one.
+    # Bare it is the whole matrix, as it has always been - `EVERY` is what says so.
     decided.add_argument(
         "--overwrite",
         action="append",
         nargs="?",
-        const=None,
+        const=EVERY,
         default=None,
         metavar="CELL",
         help="measure every run again, whatever is on disk; skips the question. Given a "
@@ -268,11 +275,12 @@ def collect_overrides(args) -> dict:
 def replayed_cells(args) -> tuple[str, ...]:
     """The cells `--overwrite` names, empty when it names none and the whole matrix runs.
 
-    A bare `--overwrite` appends `None`, so it is what says "every cell" - and it wins over
-    any name given beside it, because the broader answer is the one that cannot surprise.
+    A bare one appends `EVERY`, and it wins over any name given beside it: the broader
+    answer is the one that cannot surprise, since nothing is kept that the operator asked
+    to measure again.
     """
     given = args.overwrite or []
-    if None in given:
+    if any(cell is EVERY for cell in given):
         return ()
     return tuple(given)
 
