@@ -54,6 +54,11 @@ class Plan:
     # `resolve` decides it; `execute` is what copies anything.
     carried: Carried | None = None
 
+    # The cells whose results this launch discards and measures again, as `--overwrite
+    # CELL` named them. `execute` needs them too: the ledger it writes is loaded from
+    # disk, so it is the one that has to record those cells as measured afresh.
+    replay: tuple[str, ...] = ()
+
     @property
     def runs(self) -> int:
         return len(self.todo)
@@ -68,6 +73,7 @@ def resolve(
     resume: bool = False,
     grouped: bool | None = None,
     extend: bool = False,
+    replay: tuple[str, ...] = (),
 ) -> Plan:
     """Turns a scenario into a concrete plan, refusing what cannot be measured."""
     overrides = overrides or {}
@@ -90,12 +96,15 @@ def resolve(
     # `--only` with a typo in it ran zero runs and looked like an experiment with
     # nothing left to do.
     names = [cell.name for cell in scenario.cells]
-    unknown = [c for c in only if c not in names]
-    if unknown:
+    refuse_unknown_cells("--only", only, names)
+    refuse_unknown_cells("--overwrite", replay, names)
+    # Both restrict the launch to the cells they name, so giving each of them a list says
+    # it twice - and a precedence rule between two lists is the kind nobody can see.
+    if only and replay:
         raise RuntimeError(
-            "--only names no cell of this scenario: "
-            + ", ".join(repr(c) + closest(c, names) for c in unknown)
-            + f"\nCells: {', '.join(names)}"
+            "--overwrite already names the cells to measure: "
+            + ", ".join(repr(c) for c in replay)
+            + "\n--only would name them a second time. Drop one of the two."
         )
 
     # Read here, and once, before the state is loaded: `load_or_create_state` fills in
@@ -116,7 +125,18 @@ def resolve(
     if not extend and carried:
         notes.append(available_note(carried))
 
-    if not resume and previous.get("runs"):
+    # What a replay gives up, said before it is spent. Only when there is something to
+    # give up: on a matrix that holds nothing, nothing is measured *again* and nothing is
+    # kept - the note below, which counts what this launch leaves alone, is the true one.
+    if replay and previous.get("runs"):
+        measured_again = [m for m in previous["runs"].values() if m["cell"] in replay]
+        kept = len(previous["runs"]) - len(measured_again)
+        notes.append(
+            f"REPLAY: {counted(len(measured_again), 'run')} of {', '.join(replay)} are "
+            f"measured again; the {counted(kept, 'run')} of the other cells of "
+            f"{output.directory.name} are kept"
+        )
+    elif not resume and previous.get("runs"):
         leftovers = sum(1 for m in previous["runs"].values() if m["state"] in RESUMABLE)
         if leftovers:
             notes.append(
@@ -131,7 +151,14 @@ def resolve(
                 f"versions is git"
             )
     notes.extend(drift_notes(output, previous))
-    state = output.load_or_create_state(overrides) if resume else output.initial_state(overrides)
+    # A replay keeps the ledger and discards the named cells from it. `initial_state` stays
+    # the whole-matrix answer: it is what makes an overwrite carry nothing.
+    if replay:
+        state = output.replayed(output.load_or_create_state(overrides), replay)
+    elif resume:
+        state = output.load_or_create_state(overrides)
+    else:
+        state = output.initial_state(overrides)
     # Before the check below, deliberately: a carried run is a measured run, so a cell
     # rewritten since the lower matrix measured it must condemn the carry exactly as it
     # condemns a resume. Seeding first is what puts it in reach of that refusal.
@@ -141,19 +168,14 @@ def resolve(
     # A cell renamed is a new cell and measures itself. A cell rewritten under the same
     # name is the defect the directory name refuses one level up, and only the ledger
     # can catch it: nothing in the name changes when a delta does.
-    changed = output.changed_cells(state) if resume else []
+    # A replay is in reach of it too: `output.replayed` has already freed the cells it
+    # names, so what is left are the cells this launch *keeps* - whose old results would
+    # be published beside the new ones.
+    changed = output.changed_cells(state) if resume or replay else []
     if changed:
-        raise RuntimeError(
-            "these cells changed since their runs were measured: "
-            + ", ".join(changed)
-            + "\n--resume keeps every run that produced a result, so completing this "
-            "matrix would publish two configurations under one cell name.\n"
-            "Rename the cell, so the new one is measured as itself and the old runs "
-            "keep their own name; or relaunch without --resume, which overwrites "
-            f"{output.directory.name} and measures every cell again."
-        )
+        raise RuntimeError(refuse_changed(output, changed, replay))
 
-    todo = output.to_do(state, only)
+    todo = output.to_do(state, only or replay)
 
     # From the ledger and not from the flag, so a matrix that was extended says so on the
     # launch that extended it *and* on every launch after it. An overwrite carries nothing
@@ -179,6 +201,24 @@ def resolve(
             f"({len(todo)} of {len(output.plan())}); no synthesis is written"
         )
 
+    # Read from the state and not from what was on disk, so it also covers the replay of a
+    # cell of a matrix that holds nothing yet: five sixths of it never launched is the same
+    # incompleteness whether or not a previous launch is what left it that way. Over the
+    # cells the scenario declares, like every other count - a cell it dropped keeps its
+    # runs and holds nothing incomplete.
+    if replay:
+        outstanding = sum(
+            1
+            for m in state["runs"].values()
+            if m["cell"] in names and m["cell"] not in replay and m["state"] in RESUMABLE
+        )
+        if outstanding:
+            notes.append(
+                f"INCOMPLETE: the cells this launch keeps still hold "
+                f"{counted(outstanding, 'run')} with no result, and a replay leaves them "
+                f"alone; --resume measures them and the synthesis follows"
+            )
+
     return Plan(
         scenario=scenario,
         config=config,
@@ -190,6 +230,49 @@ def resolve(
         blindness=validation_mod.blindness(scenario),
         notes=notes,
         carried=carried if extend else None,
+        replay=replay,
+    )
+
+
+def refuse_unknown_cells(flag: str, given: tuple[str, ...], names: list[str]) -> None:
+    """Refuses a cell name no cell of the scenario answers to, whichever flag gave it.
+
+    The refusal lists every cell, because a grid names its cells by joining axis values
+    and the exact spelling is easier to copy than to guess.
+    """
+    unknown = [c for c in given if c not in names]
+    if unknown:
+        raise RuntimeError(
+            f"{flag} names no cell of this scenario: "
+            + ", ".join(repr(c) + closest(c, names) for c in unknown)
+            + f"\nCells: {', '.join(names)}"
+        )
+
+
+def refuse_changed(output: Output, changed: list[str], replay: tuple[str, ...]) -> str:
+    """Why a launch that keeps results cannot keep these ones.
+
+    Two wordings for one defect, because the way out differs: a resume keeps every cell,
+    so any of them may be the one rewritten; a replay already discards the cells it names,
+    so a cell reported here is one it was told to keep. Both end on the same offer -
+    measure those cells again, and keep the rest of the matrix - which is what
+    `--overwrite CELL` is for.
+    """
+    kept = (
+        "a replay keeps every cell it does not name"
+        if replay
+        else "--resume keeps every run that produced a result"
+    )
+    return (
+        "these cells changed since their runs were measured: "
+        + ", ".join(changed)
+        + f"\n{kept}, so completing this matrix would publish two configurations under "
+        "one cell name.\n"
+        "Rename the cell, so the new one is measured as itself and the old runs keep "
+        "their own name; or measure them again and keep the rest of "
+        f"{output.directory.name}:\n"
+        + "  --overwrite "
+        + " --overwrite ".join(f'"{name}"' for name in changed)
     )
 
 
@@ -894,6 +977,11 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     if plan.carried:
         plan.output.absorb(plan.carried, plan.overrides)
     state = plan.output.load_or_create_state(plan.overrides)
+    # The ledger comes off the disk, so this is where a replay is written down: the cells
+    # being measured again lose the results they had and take today's declaration, or the
+    # next `--resume` would refuse the runs this launch is about to measure.
+    if plan.replay:
+        state = plan.output.replayed(state, plan.replay)
     plan.output.write_state(state)
     concurrency = plan.overrides.get("concurrency") or plan.scenario.protocol.get(
         "concurrency", plan.config.fallback("concurrency")

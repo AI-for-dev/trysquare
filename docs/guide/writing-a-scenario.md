@@ -219,8 +219,13 @@ the same, so a resume onto it is **refused** rather than allowed to publish two
 configurations under one name - see
 [the refusal](troubleshooting.md#these-cells-changed-since-their-runs-were-measured).
 
-Renaming a variant sidesteps that refusal, and costs the whole cell: the new name is
-measured from scratch, and the old one stays in the ledger with its runs still rendered
+`--overwrite "+skills"` is the answer when the edited variant is the one you want
+measured again: its ten runs are re-measured under the new declaration, the forty runs of
+the other cells are kept, and the synthesis is rewritten over the matrix that results.
+The refusal ends on that command, spelled out over the cells it found.
+
+Renaming a variant sidesteps the refusal instead, and costs the whole cell: the new name
+is measured from scratch, and the old one stays in the ledger with its runs still rendered
 beside the new ones. The plan says so with a `STALE:` note. Delete the directory if you
 want the new matrix published alone.
 :::

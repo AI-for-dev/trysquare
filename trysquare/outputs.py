@@ -656,6 +656,37 @@ class Output:
                 cells[name] = fingerprint
         return state
 
+    def replayed(self, state: dict, cells: tuple[str, ...]) -> dict:
+        """The ledger these cells' results are discarded from. Writes nothing.
+
+        What `--overwrite CELL` means, one cell at a time instead of the whole matrix: a
+        run of a named cell returns to `MISSING` and is measured again, and every other
+        run of the ledger is left exactly as it was found.
+
+        `attempts` returns to zero and `detail` goes, because both describe the
+        measurement being discarded. So does the per-run `carried` flag: a run this launch
+        measures itself is this matrix's own run, whatever matrix first paid for it.
+
+        Their fingerprints are re-recorded, and that is the half `load_or_create_state`
+        cannot do: it freezes the declaration of every cell that produced a result, so a
+        cell re-measured under a new declaration would keep the digest of the old one and
+        the next `--resume` would refuse the very runs this launch just measured. Only the
+        named cells - a digest written for a cell nobody re-measures would claim today's
+        declaration is the one its results were measured under.
+        """
+        named = set(cells)
+        for meta in state["runs"].values():
+            if meta["cell"] not in named:
+                continue
+            meta.update(state=MISSING, attempts=0)
+            meta.pop("detail", None)
+            meta.pop("carried", None)
+        recorded = state.setdefault("cells", {})
+        for name, fingerprint in self.fingerprints().items():
+            if name in named:
+                recorded[name] = fingerprint
+        return state
+
     def seed(self, state: dict, carried: Carried) -> dict:
         """The ledger this matrix would have with a lower one's runs in it. Writes nothing.
 

@@ -80,9 +80,35 @@ class TestParser:
             ("--resume", "--overwrite"),
             ("--extend", "--overwrite"),
             ("--resume", "--extend"),
+            ("--resume", "--overwrite", "rule / off"),
         ):
             with pytest.raises(SystemExit):
                 build_parser().parse_args(["run", SCENARIO, "-o", "x", *pair])
+
+    def test_overwrite_reads_bare_and_by_cell(self):
+        """Absence, the whole matrix, and a list of cells are three different answers, and
+        `None` is what tells the first two apart - no cell can be named it."""
+        from trysquare.cli import replayed_cells
+
+        def parsed(*extra):
+            return build_parser().parse_args(["run", SCENARIO, "-o", "x", *extra])
+
+        assert parsed().overwrite is None
+        assert replayed_cells(parsed("--overwrite")) == ()
+        assert replayed_cells(parsed("--overwrite", "rule / off")) == ("rule / off",)
+        assert replayed_cells(
+            parsed("--overwrite", "rule / off", "--overwrite", "rule / high")
+        ) == ("rule / off", "rule / high")
+
+    def test_a_bare_overwrite_beside_a_named_one_is_the_whole_matrix(self):
+        """The broader answer wins, because it is the one that cannot surprise: nothing
+        is kept that the operator asked to measure again."""
+        from trysquare.cli import replayed_cells
+
+        args = build_parser().parse_args(
+            ["run", SCENARIO, "-o", "x", "--overwrite", "rule / off", "--overwrite"]
+        )
+        assert replayed_cells(args) == ()
 
     def test_the_bar_can_be_refused_on_every_command_that_draws_one(self):
         parser = build_parser()
@@ -609,6 +635,176 @@ class TestAnExtensionIsNeverSilent:
         assert "This matrix was extended" in published
 
 
+class TestMeasuringOneVariantAgain:
+    """`--overwrite CELL`: one variant measured again, the rest of the matrix kept.
+
+    Offline like every other plan test here, and the last two go through `execute` with
+    `one_run` patched, because what a replay writes to the ledger is the half a resolved
+    plan cannot show.
+    """
+
+    CELL = "careful ticket / high"
+
+    def resolved(self, root, **kwargs):
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        return runner.resolve(
+            load(SCENARIO),
+            config_mod.load(MACHINE),
+            root,
+            overrides={"repetitions": 2},
+            **kwargs,
+        )
+
+    def rewritten(self, output, cell: str) -> None:
+        """What a rewritten delta looks like to the ledger: the cell declares something
+        other than what its runs were measured under."""
+        state = output.read_state()
+        state["cells"][cell] = "0000000000000000"
+        output.write_state(state)
+
+    def measured(self, plan):
+        """`execute` with the measurement replaced by a row nothing else could have
+        written, so a re-measured run is told from a kept one by reading it."""
+        import unittest.mock
+
+        from trysquare import runner
+        from trysquare.measure import VALID, Run
+
+        def one(_plan, run_id, meta):
+            return Run(
+                id=run_id,
+                cell=meta["cell"],
+                repetition=meta["repetition"],
+                usage={"input": 99, "output": 99},
+                duration=7,
+                metrics={"delivered": 1.0, "in_scope": 1.0, "tests": 1.0},
+                state=VALID,
+            )
+
+        with (
+            unittest.mock.patch.object(runner, "prepare_source"),
+            unittest.mock.patch.object(runner, "one_run", side_effect=one),
+        ):
+            return runner.execute(plan)
+
+    def test_only_the_named_cell_is_measured_again(self, tmp_path):
+        """Every run of it, whatever its result - that is what makes it an overwrite -
+        and no run of any other cell."""
+        a_measured_matrix(tmp_path, 2)
+        plan = self.resolved(tmp_path, replay=(self.CELL,))
+        assert {meta["cell"] for _, meta in plan.todo} == {self.CELL}
+        assert plan.runs == 2
+
+    def test_two_cells_can_be_named(self, tmp_path):
+        a_measured_matrix(tmp_path, 2)
+        plan = self.resolved(tmp_path, replay=(self.CELL, "rule / off"))
+        assert {meta["cell"] for _, meta in plan.todo} == {self.CELL, "rule / off"}
+
+    def test_the_note_counts_what_is_measured_against_what_is_kept(self, tmp_path):
+        """An operator about to spend reads the plan, so the plan says how much of the
+        matrix is out of reach of this launch."""
+        a_measured_matrix(tmp_path, 2)
+        plan = self.resolved(tmp_path, replay=(self.CELL,))
+        note = next(n for n in plan.notes if n.startswith("REPLAY"))
+        assert "2 runs of careful ticket / high" in note
+        assert "10 runs" in note
+
+    def test_a_replay_says_nothing_about_overwriting_the_whole_ledger(self, tmp_path):
+        """The OVERWRITE note names a launch that resets every cell, which is the one
+        thing a replay does not do."""
+        a_measured_matrix(tmp_path, 2)
+        plan = self.resolved(tmp_path, replay=(self.CELL,))
+        assert not [n for n in plan.notes if n.startswith("OVERWRITE")]
+
+    def test_runs_of_the_cells_it_keeps_are_left_alone(self, tmp_path):
+        """Even the ones that produced nothing: a replay restricts the launch, so
+        finishing the matrix stays `--resume`'s job and the plan says so."""
+        from trysquare.measure import EMPTY
+
+        output = a_measured_matrix(tmp_path, 2)
+        state = output.read_state()
+        empty = next(rid for rid, m in state["runs"].items() if m["cell"] == "rule / off")
+        state["runs"][empty]["state"] = EMPTY
+        output.write_state(state)
+
+        plan = self.resolved(tmp_path, replay=(self.CELL,))
+        assert empty not in {run_id for run_id, _ in plan.todo}
+        assert any("INCOMPLETE" in n and "--resume" in n for n in plan.notes)
+
+    def test_a_matrix_that_holds_nothing_is_measured_partially_and_says_so(self, tmp_path):
+        """Nothing is measured *again* and nothing is kept, so there is no replay to
+        announce - but five sixths of the matrix will never have launched, which is the
+        same incompleteness however it came about."""
+        plan = self.resolved(tmp_path, replay=(self.CELL,))
+        assert plan.runs == 2
+        assert not [n for n in plan.notes if n.startswith("REPLAY")]
+        assert any("INCOMPLETE" in n and "10 runs" in n for n in plan.notes)
+
+    def test_an_unknown_cell_is_refused_with_the_closest_match(self, tmp_path):
+        """Filtered instead of refused, a typo would measure nothing and read as a matrix
+        with nothing left to do - the reason `--only` refuses one too."""
+        a_measured_matrix(tmp_path, 2)
+        with pytest.raises(RuntimeError, match="did you mean 'rule / off'"):
+            self.resolved(tmp_path, replay=("rulle / off",))
+
+    def test_naming_the_cells_twice_is_refused(self, tmp_path):
+        """Both flags restrict the launch to the cells they name, and a precedence rule
+        between two lists is the kind nobody can see."""
+        a_measured_matrix(tmp_path, 2)
+        with pytest.raises(RuntimeError, match="--only would name them a second time"):
+            self.resolved(tmp_path, replay=(self.CELL,), only=("rule / off",))
+
+    def test_a_cell_it_keeps_that_changed_under_its_name_is_refused(self, tmp_path):
+        """It is kept, so publishing would put its old results beside the new ones under
+        one cell name - the defect the fingerprint exists to catch."""
+        output = a_measured_matrix(tmp_path, 2)
+        self.rewritten(output, "rule / off")
+        with pytest.raises(RuntimeError, match="rule / off"):
+            self.resolved(tmp_path, replay=(self.CELL,))
+
+    def test_the_refusal_names_the_replay_that_resolves_it(self, tmp_path):
+        output = a_measured_matrix(tmp_path, 2)
+        self.rewritten(output, "rule / off")
+        with pytest.raises(RuntimeError, match='--overwrite "rule / off"'):
+            self.resolved(tmp_path, resume=True)
+
+    def test_the_cell_being_replayed_may_declare_something_new(self, tmp_path):
+        """The whole point: an edited variant is measured again under its new
+        declaration, and nothing about it is left to protect."""
+        output = a_measured_matrix(tmp_path, 2)
+        self.rewritten(output, self.CELL)
+        plan = self.resolved(tmp_path, replay=(self.CELL,))
+        assert plan.runs == 2
+
+    def test_a_replay_leaves_a_ledger_a_resume_does_not_refuse(self, tmp_path):
+        """`execute` loads the ledger off the disk, so it is the one that has to record
+        the new declaration. Kept there, the old digest would have the next `--resume`
+        refuse the very runs this launch just measured."""
+        output = a_measured_matrix(tmp_path, 2)
+        self.rewritten(output, self.CELL)
+        self.measured(self.resolved(tmp_path, replay=(self.CELL,)))
+
+        state = output.read_state()
+        assert state["cells"][self.CELL] == output.fingerprints()[self.CELL]
+        assert output.changed_cells(state) == []
+
+    def test_the_rows_of_the_cells_it_keeps_are_untouched(self, tmp_path):
+        """Kept means kept whole: the row in measures.json as much as the ledger entry."""
+        output = a_measured_matrix(tmp_path, 2)
+        before = {r.id: r for r in output.read_measures()}
+        self.measured(self.resolved(tmp_path, replay=(self.CELL,)))
+
+        after = {r.id: r for r in output.read_measures()}
+        assert set(after) == set(before)
+        kept = [rid for rid, r in after.items() if r.cell != self.CELL]
+        assert len(kept) == 10
+        assert all(after[rid] == before[rid] for rid in kept)
+        assert all(r.duration == 7 for r in after.values() if r.cell == self.CELL)
+
+
 class TestAskingBeforeSpending:
     """The question a launch asks when results already exist, and everything that has to
     keep working without one."""
@@ -652,6 +848,9 @@ class TestAskingBeforeSpending:
         for flags, expected in (
             (("--resume",), (True, False)),
             (("--overwrite",), (False, False)),
+            # A named overwrite is a flag too: the cells it names are the answer, so
+            # there is nothing left to ask.
+            (("--overwrite", "rule / off"), (False, False)),
             (("--repetitions", "4", "--extend"), (True, True)),
         ):
             settled, asked = self.settled(tmp_path, *flags)
@@ -816,14 +1015,15 @@ class TestPreRunHonesty:
         return runner.resolve(edited, config_mod.load(MACHINE), root, **kwargs)
 
     def test_a_cell_that_changed_under_its_name_is_refused_by_a_resume(self, tmp_path):
-        """The operator's next move is a rename or a full relaunch, so the refusal
-        names the cell and both ways out."""
+        """The operator's next move is a rename or measuring those cells again, so the
+        refusal names the cell and both ways out - the second one as a command, since it
+        is one the operator can only assemble by reading the list back."""
         self.a_finished_matrix(tmp_path)
         with pytest.raises(RuntimeError) as refusal:
             self.rewritten(tmp_path, resume=True)
         said = str(refusal.value)
         assert "nothing / off" in said
-        assert "Rename the cell" in said and "without --resume" in said
+        assert "Rename the cell" in said and '--overwrite "nothing / off"' in said
 
     def test_relaunching_without_resume_is_not_refused_when_a_cell_changed(self, tmp_path):
         """Nothing is kept, so nothing can be published twice; OVERWRITE already says

@@ -125,9 +125,11 @@
               they are the very same runs - and measure only the difference. Implies
               <code>--resume</code>; the lower matrix is copied, not moved</dd>
 
-            <dt>--overwrite</dt>
+            <dt>--overwrite [CELL]</dt>
             <dd>measure every run again, whatever is on disk. What a launch has always
-              done, made typeable so the question below can be skipped</dd>
+              done, made typeable so the question below can be skipped. Given a cell name,
+              repeatable, <b>only those cells</b> are measured again and every other run is
+              kept - one variant edited and re-measured, not the matrix re-bought</dd>
 
             <dt>--until-complete [N]</dt>
             <dd>after a pass, relaunch the runs that produced nothing, at most N passes
