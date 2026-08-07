@@ -24,7 +24,7 @@ from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
 from .measure import EMPTY, VALID, Run, counted, merge, models, one_line
-from .outputs import RESUMABLE, Carried, Output, carryable, matrices, slug
+from .outputs import RESUMABLE, Carried, Output, carryable, matrices, slug, write_text
 from .scenario import Cell, Scenario
 
 
@@ -941,7 +941,7 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
     fallback to the machine's `defaultModel` indistinguishable from a resolution.
     """
     directory = plan.output.run_dir(run_id)
-    (directory / "diff.patch").write_text(repo_mod.diff(clone))
+    write_text(directory / "diff.patch", repo_mod.diff(clone))
     plan.output.write_configuration(
         run_id,
         {
@@ -965,15 +965,41 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
     )
 
 
+def unconsumed(futures: dict, already: set[str]) -> list[Run]:
+    """The runs that had finished while the loop was not looking.
+
+    `as_completed` hands runs over one at a time, so an interrupt in the loop body
+    abandons every run that finished behind the one being written down. They were paid
+    for at the same price as the one that got recorded.
+
+    The order of the tests is not free. `exception()` raises on a cancelled future, so
+    cancellation is checked first; and a future carrying a `Stopped` is a run that was
+    cut short, which is the one thing that must never be written down.
+    """
+    out = []
+    for future, run_id in futures.items():
+        if future.cancelled() or not future.done() or run_id in already:
+            continue
+        if future.exception() is not None:
+            continue
+        out.append(future.result())
+    return out
+
+
 def execute(plan: Plan, on_run=None) -> list[Run]:
     """Runs the plan, writing state and measures as it goes so an interruption is resumable.
 
-    The two are written **together**, run by run. Writing the ledger alone was enough to
-    resume and not enough to keep what had been paid for: a Ctrl-C left runs marked
-    `valid` in `state.json` with no row in `measures.json`, and those runs were then
-    out of reach - `--resume` relaunches only what produced nothing, and `replay` has no
-    row to re-score. The matrix went on to publish as complete over fewer runs than were
+    The two are written **together**, run by run - see `keep`, which is also where the
+    order of the two writes is argued. Writing the ledger alone was enough to resume and
+    not enough to keep what had been paid for: a Ctrl-C left runs marked `valid` in
+    `state.json` with no row in `measures.json`, and those runs were then out of reach -
+    `--resume` relaunches only what produced nothing, and `replay` has no row to
+    re-score. The matrix went on to publish as complete over fewer runs than were
     measured, and nothing in the output said so.
+
+    An interrupt keeps everything that was finished and records nothing that was not:
+    what had completed unseen is harvested on the way out, what was still running is
+    left `missing` for the next `--resume`.
 
     The repository is pinned **first**, before a single directory is created. After
     `output.prepare()` an unreachable URL would leave behind an experiment directory
@@ -1015,28 +1041,57 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     for run_id, _ in plan.todo:
         place.setdefault(run_id, len(place))
 
+    recorded: set[str] = set()
+
+    def keep(run: Run) -> None:
+        """Writes one run down, in both files, once.
+
+        The measures first and the ledger second, because an interrupt can land between
+        them and the two leftovers are not equally bad. A row with the ledger still
+        saying `missing` is relaunched by the next `--resume` and overwritten in place,
+        which costs one run. A ledger saying `valid` with no row is a run nobody can
+        reach at all: `--resume` skips what produced something and `replay` has no row
+        to re-score. Both files are written to a neighbour and renamed, so neither is
+        ever half of a new one.
+
+        Once, because `record` accumulates attempts across launches: a run written down
+        twice would say it had been measured twice.
+        """
+        if run.id in recorded:
+            return
+        recorded.add(run.id)
+        archived[run.id] = run
+        plan.output.record(state, run.id, run)
+        plan.output.write_measures(sorted(archived.values(), key=lambda r: place[r.id]))
+        plan.output.write_state(state)
+
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = {pool.submit(one_run, plan, rid, meta): rid for rid, meta in plan.todo}
         try:
             for future in as_completed(futures):
                 run = future.result()
                 done.append(run)
-                archived[run.id] = run
-                plan.output.record(state, run.id, run)
-                plan.output.write_state(state)
-                plan.output.write_measures(sorted(archived.values(), key=lambda r: place[r.id]))
+                keep(run)
                 if on_run:
                     on_run(run)
         except BaseException:
-            # Both halves are needed, and neither replaces the other. `cancel_futures`
-            # drops what has not started, because leaving the `with` otherwise **runs
-            # the whole queue**: the shutdown sentinel goes in behind every pending work
+            # Three things, and none of them replaces another. `cancel_futures` drops
+            # what has not started, because leaving the `with` otherwise **runs the
+            # whole queue**: the shutdown sentinel goes in behind every pending work
             # item, so a matrix stopped at its fifth run went on spending for another
             # hour with nothing printed. `stop` is for the runs already in flight, which
-            # no cancellation can reach: their children die, and their next child is
-            # refused. Without it the wait below is the longest run's full timeout.
+            # no cancellation can reach: their children die and their next child is
+            # refused, and without it the wait below is the longest run's full timeout.
+            # The harvest is for the runs that were already finished, which cost exactly
+            # what the recorded one cost.
             interrupt.stop()
             pool.shutdown(wait=False, cancel_futures=True)
+            for run in unconsumed(futures, recorded):
+                keep(run)
+            # So an interrupted ledger describes itself rather than keeping whatever a
+            # previous launch left in `complete`.
+            plan.output.summarise(state)
+            plan.output.write_state(state)
             raise
 
     done.sort(key=lambda r: order.get(r.id, len(order)))

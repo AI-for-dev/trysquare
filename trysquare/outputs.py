@@ -96,8 +96,18 @@ def write_json(path: Path, payload) -> None:
     in half is worse than a ledger one run out of date, since nothing downstream
     can tell it is not the whole story.
     """
+    write_text(path, json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+
+
+def write_text(path: Path, text: str) -> None:
+    """The same neighbour-and-rename, for what is not JSON.
+
+    `diff.patch` is the one large plain write an archive makes, and a truncated patch
+    is indistinguishable from a complete one: `replay` would reconstitute half of an
+    agent's work and say nothing about it.
+    """
     temporary = path.with_name(path.name + ".writing")
-    temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+    temporary.write_text(text)
     os.replace(temporary, path)
 
 

@@ -171,9 +171,16 @@ exception. `runner.one_run` catches `Exception` around a whole measurement, so o
 frozen run cannot cost the matrix, and every path through it ends in a run with a
 state. A cancellation must not be able to reach that handler.
 
-What is on disk when a matrix is stopped stays readable: state and measures are
-written run by run, and each is written to a neighbour and renamed, so an interrupt
-during a write leaves the previous complete file rather than half of a new one.
+The other half of the rule is that everything which *did* finish is kept, including the
+runs that finished while the loop was busy writing down another one. They cost exactly
+what the recorded one cost, and losing them means paying for them twice.
+
+What is on disk when a matrix is stopped stays readable: state and measures are written
+run by run, each to a neighbour renamed over the target, so an interrupt during a write
+leaves the previous complete file rather than half of a new one. The measures are
+written before the ledger, because an interrupt between the two has to leave the
+recoverable half: a row the ledger still calls `missing` is relaunched and overwritten
+in place, whereas a ledger entry with no row is a run nothing can reach.
 
 ## And one that is not a rule but a habit
 
