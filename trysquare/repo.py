@@ -35,14 +35,23 @@ recorded. It is also what makes a replay exact - see `inject`.
 
 from __future__ import annotations
 
+import os
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import interrupt
 from .config import is_remote
 
 GIT_TIMEOUT = 180
+
+# Git is the one child here that would rather ask than fail. It has no terminal to ask
+# on - every child the harness starts is a session leader, so that it can be stopped as
+# a group - and without this a missing credential is a device error rather than git's
+# own sentence naming the repository it could not read. It was never usable anyway: a
+# clone runs in a worker thread under `capture_output`, so any prompt it wrote was
+# invisible behind the progress bar and waited for an answer nobody could see to give.
+GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
 
 
 class RepoError(Exception):
@@ -69,9 +78,10 @@ class Prepared:
 
 
 def git(args: list[str], cwd: Path | None = None, check: bool = True) -> str:
-    proc = subprocess.run(
+    proc = interrupt.run(
         ["git", *args],
         cwd=cwd,
+        env=GIT_ENV,
         capture_output=True,
         text=True,
         timeout=GIT_TIMEOUT,
@@ -389,9 +399,10 @@ def apply_diff(d: Path, patch: str, what: str = "") -> None:
     """
     if not patch.strip():
         return
-    proc = subprocess.run(
+    proc = interrupt.run(
         ["git", "apply", "--whitespace=nowarn", "-"],
         cwd=d,
+        env=GIT_ENV,
         input=patch,
         capture_output=True,
         text=True,

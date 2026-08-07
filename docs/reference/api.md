@@ -121,6 +121,14 @@ harness; this is what the thing being run is written with.
    :undoc-members:
 ```
 
+### `trysquare.interrupt`
+
+```{eval-rst}
+.. automodule:: trysquare.interrupt
+   :members:
+   :undoc-members:
+```
+
 ### `trysquare.cli`
 
 ```{eval-rst}

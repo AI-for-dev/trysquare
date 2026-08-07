@@ -1356,6 +1356,108 @@ class TestCompletionOrder:
             assert rows == [rid for rid in planned if rid in set(rows)]
 
 
+class TestInterruptedMatrix:
+    """What a matrix does when the operator stops wanting it.
+
+    An interrupt used to be a request the pool ignored. `Executor.__exit__` shuts down
+    with `wait=True` and `cancel_futures=False`, and CPython appends the shutdown
+    sentinel *behind* every pending work item - so the whole queue still ran. A matrix
+    of thirty-two runs stopped at the fifth went on spending for another hour, with the
+    bar frozen at five and not one line printed, because the callback that prints them
+    lives in the loop the interrupt abandoned.
+
+    The interrupt is raised from `on_run` rather than by a signal. That is main-thread
+    code inside the pool's `with`, which is exactly where a Ctrl-C lands, and it gets
+    there without a timing assumption a test machine could lose.
+    """
+
+    def interrupted(self, concurrency: int = 2, repetitions: int = 4):
+        """A matrix stopped at its first completed run. Returns the plan and what ran."""
+        import threading
+        import unittest.mock
+
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.measure import VALID, Run
+        from trysquare.scenario import load
+
+        plan = runner.resolve(
+            load(SCENARIO),
+            config_mod.load(MACHINE),
+            out(),
+            overrides={"repetitions": repetitions, "concurrency": concurrency},
+        )
+        first = plan.todo[0][0]
+        started: list[str] = []
+        guard = threading.Lock()
+
+        def launch(_plan, run_id, meta):
+            with guard:
+                started.append(run_id)
+            if run_id != first:
+                # Long enough to still be in flight when the interrupt lands, short
+                # enough that the unfixed drain of twenty-four runs costs seconds.
+                threading.Event().wait(0.2)
+            return Run(
+                id=run_id,
+                cell=meta["cell"],
+                repetition=meta["repetition"],
+                usage={"input": 1, "output": 1, "turns": 1, "retries": 0},
+                duration=1,
+                metrics={},
+                state=VALID,
+            )
+
+        def report(_run):
+            raise KeyboardInterrupt
+
+        with (
+            unittest.mock.patch.object(runner, "prepare_source"),
+            unittest.mock.patch.object(runner, "one_run", side_effect=launch),
+        ):
+            with pytest.raises(KeyboardInterrupt):
+                runner.execute(plan, on_run=report)
+        return plan, started, first
+
+    def test_a_queued_run_is_cancelled_rather_than_drained(self):
+        plan, started, _ = self.interrupted()
+        assert len(plan.todo) == 24, "the fixture must queue far more than it runs at once"
+        assert len(started) <= 4, (
+            f"{len(started)} of {len(plan.todo)} runs were launched after the interrupt: "
+            f"the pool drained its queue instead of dropping it"
+        )
+
+    def test_a_run_never_launched_stays_missing(self):
+        plan, started, _ = self.interrupted()
+        state = plan.output.read_state()
+        measured = {r.id for r in plan.output.read_measures()}
+        for run_id, _ in plan.todo:
+            if run_id in started:
+                continue
+            assert state["runs"][run_id]["state"] == "missing"
+            assert run_id not in measured
+
+    def test_a_run_still_in_flight_is_not_recorded(self):
+        """A run cut short produced no result, whatever its thread went on to return.
+
+        Recording one is not a cosmetic error: `outputs.RESUMABLE` holds `missing` and
+        `empty` only, so a cut-short run written down as `valid` is out of reach of
+        every later `--resume` - a run with no metrics and no diff, kept forever.
+        """
+        plan, started, first = self.interrupted()
+        state = plan.output.read_state()
+        measured = {r.id for r in plan.output.read_measures()}
+        for run_id in started:
+            if run_id == first:
+                continue
+            assert state["runs"][run_id]["state"] == "missing"
+            assert run_id not in measured
+
+    def test_the_ledger_never_says_complete(self):
+        plan, _, _ = self.interrupted()
+        assert plan.output.read_state().get("complete") is not True
+
+
 class TestInstalledCommand:
     """The `trysquare` name, as a shell gets it.
 
@@ -1411,6 +1513,28 @@ class TestInstalledCommand:
             with contextlib.redirect_stderr(err):
                 code = cli_trysquare.main(["run", SCENARIO, "-o", str(out())])
         assert code == 130
+        assert "--resume" in err.getvalue()
+
+    def test_a_kill_says_the_same_thing_with_its_own_code(self):
+        """A SIGTERM is the same decision, arriving from a CI cancellation, a
+        `docker stop` or a `timeout` instead of a keyboard. Under its default
+        disposition it killed the harness where it stood and left every agent
+        running. The shell tells the two apart by the code, so this does too."""
+        import contextlib
+        import io
+        import signal
+        import unittest.mock
+
+        from trysquare import interrupt
+        from trysquare.scripts import cli_trysquare
+
+        err = io.StringIO()
+        with unittest.mock.patch.object(
+            cli_trysquare, "run_command", side_effect=interrupt.Stopped(signal.SIGTERM)
+        ):
+            with contextlib.redirect_stderr(err):
+                code = cli_trysquare.main(["run", SCENARIO, "-o", str(out())])
+        assert code == 128 + signal.SIGTERM
         assert "--resume" in err.getvalue()
 
 

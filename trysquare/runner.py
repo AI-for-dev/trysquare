@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import agent as agent_mod
+from . import interrupt
 from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
@@ -610,11 +611,9 @@ def install_dependencies(clone_dir: Path, timeout: int = 300) -> None:
 
     A missing `package.json` is not an error: a brick may be a single file.
     """
-    import subprocess
-
     if not (clone_dir / "package.json").is_file():
         return
-    proc = subprocess.run(
+    proc = interrupt.run(
         ["npm", "install", "--silent", "--omit=dev"],
         cwd=clone_dir,
         capture_output=True,
@@ -701,8 +700,15 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
     """Measures one cell once, and writes down everything about it.
 
     Every failure path here ends in a `Run` with a state, never in an exception:
-    one frozen run must not take the matrix with it.
+    one frozen run must not take the matrix with it. A stop is the exception to that,
+    and `interrupt.Stopped` is shaped so it cannot be caught here - see below.
     """
+    # The only flag test outside `interrupt`, and it earns its place: a worker released
+    # from `_HARNESS_LOCK` at the wrong moment would otherwise get as far as clearing a
+    # directory and cloning into it before its first child refused.
+    if interrupt.stopping():
+        raise interrupt.Stopped(interrupt.signalled())
+
     scenario = plan.scenario
     base = scenario.path.parent if scenario.path else Path.cwd()
     cell = scenario.cell(meta["cell"])
@@ -843,6 +849,10 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
             run.state, run.detail = state, detail or run.detail
 
         archive(plan, run_id, clone, prepared, cell, thinking)
+    # Deliberately unable to reach `interrupt.Stopped`, which is a `KeyboardInterrupt`.
+    # A cancelled run recorded here would be recorded as a *result*: with tokens already
+    # consumed it stays `valid`, and `valid` is not resumable, so the run would be out of
+    # reach of every later `--resume`. A stop leaves no row at all, and stays `missing`.
     except Exception as e:  # noqa: BLE001 - one run must not cost the matrix
         run.state = EMPTY if run.state == VALID and not run.usage else run.state
         run.detail = one_line(f"{type(e).__name__}: {e}")
@@ -1007,15 +1017,27 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = {pool.submit(one_run, plan, rid, meta): rid for rid, meta in plan.todo}
-        for future in as_completed(futures):
-            run = future.result()
-            done.append(run)
-            archived[run.id] = run
-            plan.output.record(state, run.id, run)
-            plan.output.write_state(state)
-            plan.output.write_measures(sorted(archived.values(), key=lambda r: place[r.id]))
-            if on_run:
-                on_run(run)
+        try:
+            for future in as_completed(futures):
+                run = future.result()
+                done.append(run)
+                archived[run.id] = run
+                plan.output.record(state, run.id, run)
+                plan.output.write_state(state)
+                plan.output.write_measures(sorted(archived.values(), key=lambda r: place[r.id]))
+                if on_run:
+                    on_run(run)
+        except BaseException:
+            # Both halves are needed, and neither replaces the other. `cancel_futures`
+            # drops what has not started, because leaving the `with` otherwise **runs
+            # the whole queue**: the shutdown sentinel goes in behind every pending work
+            # item, so a matrix stopped at its fifth run went on spending for another
+            # hour with nothing printed. `stop` is for the runs already in flight, which
+            # no cancellation can reach: their children die, and their next child is
+            # refused. Without it the wait below is the longest run's full timeout.
+            interrupt.stop()
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
 
     done.sort(key=lambda r: order.get(r.id, len(order)))
     plan.output.summarise(state)

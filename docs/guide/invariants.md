@@ -154,6 +154,27 @@ the provider. The synthesis now says so itself when retries are present, includi
 for columns marked established.
 :::
 
+## 9. A run that was cut short is not recorded at all
+
+Stopping a matrix is normal - they run for hours - so the interrupt has to be a
+measurement rule and not just a convenience. The rule is that a run interrupted part
+way leaves **no row**: it stays `missing` in the ledger, and the next `--resume`
+relaunches it like any other run that produced nothing.
+
+The alternative is worse than it looks. Only `missing` and `empty` may be relaunched
+(invariant 1), so a run written down as `valid` because its tokens had already been
+consumed would be out of reach of every later resume: no metrics, no diff, and
+permanently counted as measured.
+
+This is why `interrupt.Stopped` is a `KeyboardInterrupt` rather than an ordinary
+exception. `runner.one_run` catches `Exception` around a whole measurement, so one
+frozen run cannot cost the matrix, and every path through it ends in a run with a
+state. A cancellation must not be able to reach that handler.
+
+What is on disk when a matrix is stopped stays readable: state and measures are
+written run by run, and each is written to a neighbour and renamed, so an interrupt
+during a write leaves the previous complete file rather than half of a new one.
+
 ## And one that is not a rule but a habit
 
 **A validity condition must match the task.** `delivered` means "a file changed",

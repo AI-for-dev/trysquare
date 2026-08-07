@@ -424,9 +424,25 @@ so off a terminal the output is exactly the bytes it has always been.
 
 ## The cursor is gone after a hard kill
 
-`Ctrl-C` is handled - the bar restores the cursor on its way out - but a `SIGKILL` or a
-closed terminal window leaves the live display no chance to. Any terminal recovers with:
+`Ctrl-C` is handled, and so is the forced exit behind it: the bar restores the cursor on
+both ways out. Only a `SIGKILL` or a closed terminal window leaves the live display no
+chance at all. Any terminal recovers with:
 
 ```bash
 tput cnorm
 ```
+
+## Stopping a matrix
+
+One `Ctrl-C`. The queued runs are dropped, the agents already running are stopped along
+with everything they started, and the command returns in about a second saying what
+survived. `kill` does the same thing, which is what a CI cancellation, a `docker stop`
+and a `timeout` all send.
+
+Nothing that was measured is lost, and nothing that was cut short is written down: the
+ledger is kept run by run, so the same command with `--resume` measures only the runs
+that produced nothing. It is safe to stop a matrix at any point and pick it up later.
+
+If an agent will not answer, its group is killed two seconds later and the process
+leaves at five whatever happens. A second `Ctrl-C` takes that exit immediately. The runs
+in flight when you press it are the only thing you lose, and `--resume` reaches them.
