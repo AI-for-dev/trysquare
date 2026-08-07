@@ -39,6 +39,8 @@ from rich.progress import (
     TextColumn,
 )
 
+from . import interrupt
+
 #: Turns the bar off without a command line. For wrappers and CI, which cannot
 #: always reach the arguments of the command they run.
 OFF = "TRYSQUARE_NO_PROGRESS"
@@ -165,6 +167,11 @@ def bar(total: int, label: str, enabled: bool = True) -> Iterator[Bar]:
     Nothing at all is a `Bar` too. And it is a context manager because an interrupt
     during a matrix is normal: `Progress` restores the cursor on the way out, before
     the entry point catches the interrupt and prints what survived.
+
+    One exit skips every `finally` there is, and it is the one the terminal cannot
+    afford: `interrupt` leaves with `os._exit` when a child will not answer a signal.
+    `on_hard_exit` is how the live region is given back on that path too. Registered
+    inside the `with`, because before it there is no region to give back.
     """
     if not enabled or total <= 0:
         yield Bar()
@@ -184,4 +191,5 @@ def bar(total: int, label: str, enabled: bool = True) -> Iterator[Bar]:
         refresh_per_second=4,
     )
     with progress:
+        interrupt.on_hard_exit(progress.stop)
         yield Bar(progress, progress.add_task(label, total=total))

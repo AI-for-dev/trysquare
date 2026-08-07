@@ -21,6 +21,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import interrupt
 from .measure import counted
 from .scenario import Scenario, Validator
 
@@ -229,7 +230,7 @@ def run_script(
         argv.insert(0, sys.executable)
 
     try:
-        proc = subprocess.run(
+        proc = interrupt.run(
             argv,
             cwd=context.parent,
             capture_output=True,

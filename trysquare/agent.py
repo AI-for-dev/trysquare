@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import interrupt
 from .measure import consumed_tokens, events, one_line, strip
 
 PI = "pi"
@@ -60,6 +61,18 @@ class Outcome:
     @property
     def produced_something(self) -> bool:
         return consumed_tokens(self.usage)
+
+    @property
+    def signalled(self) -> bool:
+        """Whether something outside the run ended it.
+
+        A negative status is the signal that killed the child. It is not a result the
+        agent produced, and it is not the agent's silence either - which matters
+        because those two are told apart by the same emptiness. The OOM killer is the
+        case that shows the difference: it used to buy three agent runs in a row, each
+        one killed for the same reason as the last.
+        """
+        return self.code is not None and self.code < 0
 
 
 def argv(
@@ -123,7 +136,7 @@ def run(cwd: Path, args: list[str], timeout: int) -> Outcome:
     """
     start = time.monotonic()
     try:
-        proc = subprocess.run(
+        proc = interrupt.run(
             [PI, *args],
             cwd=cwd,
             stdin=subprocess.DEVNULL,
@@ -161,11 +174,15 @@ def run_until_productive(
     A run that consumed no tokens produced no result, so there is nothing to
     select between: retrying it is not optional stopping. A run that *did* produce
     something is never retried, whatever its result.
+
+    A run something else ended is not retried either. It looks identical to silence
+    from here - no tokens, nothing to select between - and the loop used to answer it
+    by launching a fresh agent, which is how one Ctrl-C bought three more.
     """
     outcome = None
     for attempt in range(1, attempts + 1):
         outcome = run(cwd, args, timeout)
-        if outcome.produced_something:
+        if outcome.produced_something or outcome.signalled:
             return outcome, attempt
     return outcome, attempts
 
@@ -207,7 +224,7 @@ def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
     """
     target.mkdir(parents=True, exist_ok=True)
     try:
-        proc = subprocess.run(
+        proc = interrupt.run(
             [PI, "--offline", "--export", str(session.resolve())],
             cwd=target,
             stdin=subprocess.DEVNULL,

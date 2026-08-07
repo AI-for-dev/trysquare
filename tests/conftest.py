@@ -33,3 +33,19 @@ def temporary_directories_are_swept(tmp_path, monkeypatch):
         return real(suffix=suffix, prefix=prefix, dir=dir if dir is not None else tmp_path)
 
     monkeypatch.setattr(tempfile, "mkdtemp", under_tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def no_test_inherits_a_stop():
+    """A stopped process does not resume, so a test that stops one must not leave it so.
+
+    The same backstop as above and for the same reason: enforced in one place because a
+    rule that has to be remembered in each of a hundred tests is a rule that will be
+    forgotten in one of them, and the failure it causes lands in whichever test happens
+    to run next.
+    """
+    from trysquare import interrupt
+
+    interrupt.reset()
+    yield
+    interrupt.reset()
