@@ -1458,6 +1458,160 @@ class TestInterruptedMatrix:
         assert plan.output.read_state().get("complete") is not True
 
 
+class TestWhatTheInterruptKeeps:
+    """A run that was finished when the interrupt landed is a run that was paid for.
+
+    `as_completed` hands them over one at a time, so an interrupt in the loop body
+    abandons every run that had finished behind the one being written down. Those cost
+    exactly what the recorded one cost, and dropping them means paying twice.
+
+    Six runs are made to finish at the same instant by a barrier rather than a sleep:
+    whichever of them `as_completed` yields first, the other five are done and
+    unconsumed at the moment the interrupt lands, on any machine.
+    """
+
+    def interrupted(self, concurrency: int = 6):
+        import threading
+        import unittest.mock
+
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.measure import VALID, Run
+        from trysquare.scenario import load
+
+        plan = runner.resolve(
+            load(SCENARIO),
+            config_mod.load(MACHINE),
+            out(),
+            overrides={"repetitions": 4, "concurrency": concurrency},
+        )
+        together = {rid for rid, _ in plan.todo[:concurrency]}
+        gate = threading.Barrier(concurrency, timeout=10)
+
+        def launch(_plan, run_id, meta):
+            if run_id in together:
+                gate.wait()
+            else:
+                # Still running when the interrupt lands, so never recorded.
+                threading.Event().wait(0.3)
+            return Run(
+                id=run_id,
+                cell=meta["cell"],
+                repetition=meta["repetition"],
+                usage={"input": 1, "output": 1, "turns": 1, "retries": 0},
+                duration=1,
+                metrics={},
+                state=VALID,
+            )
+
+        def report(_run):
+            raise KeyboardInterrupt
+
+        with (
+            unittest.mock.patch.object(runner, "prepare_source"),
+            unittest.mock.patch.object(runner, "one_run", side_effect=launch),
+        ):
+            with pytest.raises(KeyboardInterrupt):
+                runner.execute(plan, on_run=report)
+        return plan, together
+
+    def test_a_run_that_finished_is_kept(self):
+        plan, together = self.interrupted()
+        measured = {r.id for r in plan.output.read_measures()}
+        assert together <= measured, (
+            f"{len(together - measured)} of {len(together)} finished runs were dropped: "
+            f"they were paid for, and a resume will pay for them again"
+        )
+
+    def test_a_kept_run_is_in_both_files(self):
+        """The ledger and the measures are one record written in two places. A run in
+        `state.json` with no row in `measures.json` is out of reach of `--resume`, which
+        skips what produced something, and of `replay`, which has no row to re-score."""
+        plan, _ = self.interrupted()
+        state = plan.output.read_state()
+        for run in plan.output.read_measures():
+            assert state["runs"][run.id]["state"] == run.state
+
+    def test_a_kept_run_is_counted_once(self):
+        """`record` accumulates attempts across launches, so harvesting a run the loop
+        had already written down would say it had been measured twice."""
+        plan, _ = self.interrupted()
+        state = plan.output.read_state()
+        for run in plan.output.read_measures():
+            assert state["runs"][run.id]["attempts"] == 1
+
+    def test_the_rows_still_follow_the_plan(self):
+        """`verdict.gap_interval` draws by index, so a harvest must not append in
+        completion order what the plan ordered."""
+        plan, _ = self.interrupted()
+        planned = [rid for rid, _ in plan.todo]
+        rows = [r.id for r in plan.output.read_measures()]
+        assert rows == [rid for rid in planned if rid in set(rows)]
+
+
+class TestHarvest:
+    """`unconsumed`, on futures built by hand.
+
+    The states it has to tell apart cannot all be produced in one race, and two of them
+    are only ever reached at the worst moment: `exception()` raises on a cancelled
+    future, and a future carrying a `Stopped` is a run that was cut short.
+    """
+
+    def outcome(self, run_id: str):
+        from trysquare.measure import VALID, Run
+
+        return Run(id=run_id, cell="c", repetition=0, state=VALID)
+
+    def harvested(self, already=("already-written",)) -> list[str]:
+        from concurrent.futures import Future
+
+        from trysquare import interrupt, runner
+
+        futures = {}
+
+        finished = Future()
+        finished.set_result(self.outcome("finished"))
+        futures[finished] = "finished"
+
+        cancelled = Future()
+        cancelled.cancel()
+        futures[cancelled] = "cancelled"
+
+        cut_short = Future()
+        cut_short.set_exception(interrupt.Stopped())
+        futures[cut_short] = "cut-short"
+
+        failed = Future()
+        failed.set_exception(RuntimeError("boom"))
+        futures[failed] = "failed"
+
+        futures[Future()] = "still-running"
+
+        seen = Future()
+        seen.set_result(self.outcome("already-written"))
+        futures[seen] = "already-written"
+
+        return [r.id for r in runner.unconsumed(futures, set(already))]
+
+    def test_a_finished_run_is_taken(self):
+        assert "finished" in self.harvested()
+
+    def test_a_cancelled_future_is_not_asked_for_its_exception(self):
+        """`Future.exception()` raises `CancelledError`, so the cancellation test has
+        to come first. Getting the order wrong loses the whole harvest, not one run."""
+        assert self.harvested() == ["finished"]
+
+    def test_a_run_that_was_cut_short_is_not_taken(self):
+        assert "cut-short" not in self.harvested()
+
+    def test_a_run_already_written_down_is_not_taken_again(self):
+        """`record` accumulates attempts, so a second write says a second measurement."""
+        assert "already-written" not in self.harvested()
+        assert "already-written" in self.harvested(already=()), (
+            "the guard is doing nothing: this future would not have been taken anyway"
+        )
+
+
 class TestInstalledCommand:
     """The `trysquare` name, as a shell gets it.
 
