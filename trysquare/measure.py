@@ -22,10 +22,16 @@ from __future__ import annotations
 import json
 import statistics
 from dataclasses import dataclass, field
+from pathlib import Path
 
 VALID = "valid"
 EMPTY = "empty"
 VALIDATOR_FAILED = "validator_failed"
+
+#: The longest a line may be and still be read as an event. The agent's stream is the
+#: one input here with no size anyone controls, and a reader that holds a whole line
+#: is only bounded if the writer emits newlines - which nothing promises.
+LINE_LIMIT = 8 * 1024 * 1024
 
 
 @dataclass
@@ -52,15 +58,15 @@ class Run:
         return self.usage.get("retries", 0)
 
 
-def events(text: str):
-    """Every JSON object in a stream or session, one per line.
+def decoded(lines):
+    """Every JSON object among these lines.
 
     The one tolerance shared by every reader of these files. A line is decoded if
     it looks like JSON, whatever whitespace surrounds it, and anything else is
     skipped rather than fatal: a cut stream ends mid-line, and the lines before
     the cut are still evidence.
     """
-    for line in text.split("\n"):
+    for line in lines:
         line = line.strip()
         if not line.startswith("{"):
             continue
@@ -68,6 +74,15 @@ def events(text: str):
             yield json.loads(line)
         except json.JSONDecodeError:
             continue
+
+
+def events(text: str):
+    """Every JSON object in a text held in memory.
+
+    For what is small enough to hold: an archived session, a fixture in a test. The
+    agent's own stream is not, and is read by `read_file`.
+    """
+    return decoded(text.split("\n"))
 
 
 def one_line(text: str) -> str:
@@ -93,31 +108,58 @@ def counted(n: int, noun: str, plural: str | None = None) -> str:
     return f"{n} {noun}" if n == 1 else f"{n} {plural or noun + 's'}"
 
 
-def _usage_sum(evts, event_type: str, usage_of) -> dict:
-    """The accumulation a stream and a session share: one billed turn per usage.
+def _blank_usage() -> dict:
+    return {"input": 0, "output": 0, "cacheRead": 0, "cost": 0.0, "turns": 0}
 
-    What still differs between the two - the event type that carries a message,
-    and where the usage sits inside it - is exactly what the caller passes in.
-    Those two arguments *are* the shape difference, so comparing the two paths
-    still tests the extraction, while the arithmetic can no longer drift apart.
+
+def _add_usage(u: dict, usage: dict | None) -> None:
+    """One billed turn, added. The arithmetic a stream and a session share.
+
+    Written once so it cannot drift apart between the two paths, which is what
+    `parity` layer 1 compares. What still differs between them - the event type
+    that carries a message, and where the usage sits inside it - is decided by the
+    caller, so the comparison still tests the extraction.
     """
-    u = {"input": 0, "output": 0, "cacheRead": 0, "cost": 0.0, "turns": 0}
+    if not usage:
+        return
+    u["turns"] += 1
+    u["input"] += usage.get("input", 0)
+    u["output"] += usage.get("output", 0)
+    u["cacheRead"] += usage.get("cacheRead", 0)
+    u["cost"] += (usage.get("cost") or {}).get("total", 0.0)
+
+
+def _usage_sum(evts, event_type: str, usage_of) -> dict:
+    """`_add_usage` over the events of one type."""
+    u = _blank_usage()
     for event in evts:
-        if event.get("type") != event_type:
-            continue
-        usage = usage_of(event)
-        if not usage:
-            continue
-        u["turns"] += 1
-        u["input"] += usage.get("input", 0)
-        u["output"] += usage.get("output", 0)
-        u["cacheRead"] += usage.get("cacheRead", 0)
-        u["cost"] += (usage.get("cost") or {}).get("total", 0.0)
+        if event.get("type") == event_type:
+            _add_usage(u, usage_of(event))
     return u
 
 
-def strip(stream: str) -> dict:
-    """Reduces a `pi --mode json` stream to the numbers a measurement needs.
+@dataclass
+class Reading:
+    """What one run's stream is worth: the numbers, the answer, the first failure.
+
+    Everything anybody derived from a `pi --mode json` stream, and the reason the
+    stream itself never has to be held: these three are bounded where it is not.
+    `response` is one assistant message, so its ceiling is the provider's output
+    limit rather than the length of the run.
+    """
+
+    usage: dict
+    response: str
+    error: str
+
+
+def read(evts) -> Reading:
+    """Everything a stream says, in one forward pass over it.
+
+    One pass because the stream is the one thing here with no bound: it was walked
+    four times, and each walk needed it whole. The three rules are independent -
+    a sum, a last, a first - so folding them together answers what the separate
+    walks answered.
 
     Turns are counted on `message_end` events **carrying a usage**, not on
     `turn_end`. The `usage` filter is what makes a counted turn a billed turn:
@@ -130,9 +172,59 @@ def strip(stream: str) -> dict:
     thirteen retries gives 24 turns and 79.4k. Publishing those columns without
     looking at retries means publishing our own load on the provider.
     """
-    u = _usage_sum(events(stream), "message_end", lambda e: (e.get("message") or {}).get("usage"))
-    u["retries"] = sum(1 for e in events(stream) if e.get("type") == "auto_retry_start")
-    return u
+    usage = _blank_usage()
+    usage["retries"] = 0
+    response, error = "", ""
+    for event in evts:
+        kind_ = event.get("type")
+        if kind_ == "auto_retry_start":
+            usage["retries"] += 1
+        elif kind_ == "message_end":
+            message = event.get("message") or {}
+            _add_usage(usage, message.get("usage"))
+            response = _assistant_text(message) or response
+        if not error:
+            error = _error_of(event)
+    return Reading(usage=usage, response=response, error=error)
+
+
+def read_file(path: Path) -> Reading:
+    """The same, over a trace on disk, holding one line at a time.
+
+    Read in binary and cut on `b"\\n"` alone, because text mode applies universal
+    newlines and would cut on a bare `\\r` too - which a provider writes inside an
+    error message, turning one decodable event into two fragments that decode as
+    nothing. `errors="replace"` for the same reason the session readers use it: one
+    bad byte must not cost the whole file.
+
+    `readline` is bounded, and that bound is the point rather than a precaution.
+    Nothing in the format promises a newline, and iterating a file whose writer
+    emitted none rebuilds in memory exactly the object this reading exists to avoid.
+    A line longer than the limit is not an event, whatever else it is, so it and
+    what trails it up to the next newline are dropped.
+
+    An absent file reads as an empty stream: a spawn that failed wrote nothing, and
+    that is silence rather than an error to raise here.
+    """
+    if not path.is_file():
+        return read(())
+    with path.open("rb") as handle:
+        return read(decoded(_lines(handle)))
+
+
+def _lines(handle):
+    """Every line of at most `LINE_LIMIT` bytes, decoded, longer ones dropped whole.
+
+    A chunk that neither ends in a newline nor stopped short of the limit is the head
+    of a line too long to be an event; it and everything up to the next newline go.
+    """
+    dropping = False
+    while chunk := handle.readline(LINE_LIMIT):
+        ended = chunk.endswith(b"\n")
+        over = not ended and len(chunk) >= LINE_LIMIT
+        if not dropping and not over:
+            yield chunk.decode("utf-8", "replace")
+        dropping = over or (dropping and not ended)
 
 
 def strip_session(session: str) -> dict:
@@ -187,37 +279,51 @@ def models(session: str) -> list[str]:
     return seen
 
 
-def final_text(stream: str) -> str:
-    """The agent's last piece of prose, which is what a judge scores.
+def strip(stream: str) -> dict:
+    """The numbers alone, from a stream held in memory."""
+    return read(events(stream)).usage
 
-    Read from the stream rather than reconstructed: the last assistant message
-    carrying text is the answer the agent stood behind. Tool calls and reasoning
-    are deliberately excluded - a judge asked "is this impact note usable" must
-    score the note, not the work that produced it.
+
+def final_text(stream: str) -> str:
+    """The agent's last piece of prose, from a stream held in memory."""
+    return read(events(stream)).response
+
+
+def _assistant_text(message: dict) -> str:
+    """The prose one assistant message stood behind, empty when it carried none.
+
+    Tool calls and reasoning are deliberately excluded - a judge asked "is this
+    impact note usable" must score the note, not the work that produced it.
     """
-    last = ""
-    for event in events(stream):
-        if event.get("type") != "message_end":
-            continue
-        message = event.get("message") or {}
-        if message.get("role") != "assistant":
-            continue
-        content = message.get("content")
-        if isinstance(content, str):
-            if content.strip():
-                last = content
-            continue
-        if not isinstance(content, list):
-            continue
-        pieces = [
-            part.get("text", "")
-            for part in content
-            if isinstance(part, dict) and part.get("type") == "text"
-        ]
-        joined = "\n".join(p for p in pieces if p.strip())
-        if joined.strip():
-            last = joined
-    return last
+    if message.get("role") != "assistant":
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content if content.strip() else ""
+    if not isinstance(content, list):
+        return ""
+    pieces = [
+        part.get("text", "")
+        for part in content
+        if isinstance(part, dict) and part.get("type") == "text"
+    ]
+    joined = "\n".join(p for p in pieces if p.strip())
+    return joined if joined.strip() else ""
+
+
+def _error_of(event: dict) -> str:
+    """The failure one event reports, as one readable line, empty when it reports none.
+
+    Collapsed here rather than at the call sites: a provider writes its message with
+    whatever newline it likes, and this exists to be printed beside a run.
+    """
+    for key in ("errorMessage", "error", "finalError"):
+        if event.get(key):
+            return one_line(str(event[key]))
+    message = event.get("message") or {}
+    if isinstance(message, dict) and message.get("errorMessage"):
+        return one_line(str(message["errorMessage"]))
+    return ""
 
 
 def consumed_tokens(usage: dict) -> bool:

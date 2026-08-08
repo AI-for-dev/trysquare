@@ -14,11 +14,13 @@ from trysquare.measure import (
     counted,
     events,
     fill_manual,
+    final_text,
     kind,
     merge,
     models,
     one_line,
     rate,
+    read,
     scorable,
     series,
     strip,
@@ -66,6 +68,57 @@ class TestStrip:
     def test_garbage_lines_are_skipped_not_fatal(self):
         s = "not json\n" + stream(message_end()) + "\n{broken"
         assert strip(s)["turns"] == 1
+
+
+class TestReading:
+    """One pass says what four passes said.
+
+    The stream used to be walked four times, and each walk needed it whole. Folding
+    them together is what lets the stream stay on disk, so what has to hold is that
+    the fold answers what the walks answered.
+    """
+
+    def spoken(self, text: str) -> dict:
+        return {
+            "type": "message_end",
+            "message": {"role": "assistant", "content": text, "usage": {"input": 1, "output": 1}},
+        }
+
+    def test_the_fold_agrees_with_the_walks_it_replaces(self):
+        s = stream(
+            message_end(100, 10),
+            {"type": "auto_retry_start"},
+            self.spoken("first"),
+            {"type": "tool_end"},
+            self.spoken("last"),
+        )
+        found = read(events(s))
+        assert found.usage == strip(s)
+        assert found.response == final_text(s)
+
+    def test_one_forward_pass_and_no_more(self):
+        """A generator, so a second walk over it would report nothing."""
+        s = stream(message_end(100, 10), self.spoken("said"))
+        found = read(events(s))
+        assert found.usage["turns"] == 2
+        assert found.response == "said"
+
+    def test_the_first_error_wins_and_arrives_on_one_line(self):
+        s = stream(
+            {"type": "agent_start"},
+            {"type": "error", "errorMessage": "upstream\n  is unavailable"},
+            {"type": "error", "errorMessage": "and then something else"},
+        )
+        assert read(events(s)).error == "upstream is unavailable"
+
+    def test_every_key_a_provider_reports_a_failure_under(self):
+        for key in ("errorMessage", "error", "finalError"):
+            assert read(events(stream({"type": "x", key: "boom"}))).error == "boom"
+        nested = stream({"type": "message_end", "message": {"errorMessage": "boom"}})
+        assert read(events(nested)).error == "boom"
+
+    def test_a_stream_that_failed_nowhere_reports_no_error(self):
+        assert read(events(stream(message_end()))).error == ""
 
 
 class TestEvents:

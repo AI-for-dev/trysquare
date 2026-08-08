@@ -166,6 +166,7 @@ def run(
     capture_output: bool = False,
     text: bool = False,
     stdin=None,
+    stdout=None,
 ) -> subprocess.CompletedProcess:
     """`subprocess.run`, for a process the harness can still stop.
 
@@ -179,15 +180,25 @@ def run(
     `validator exited -15`, a `could not install dependencies`. An exit status we caused
     is not evidence about anything.
 
-    The timeout branch does what `subprocess.run` does and nothing more. The exception
-    was built by `Popen._check_timeout` before `_communicate` reached its text-mode
-    translation, so its partial output is bytes even under `text=True`, and `agent.run`
-    decodes it itself. Collecting the streams again here would quietly break that.
+    `stdout` is a file the caller opened, and it overrides the pipe `capture_output`
+    would have given: `communicate` accumulates a pipe **in the parent**, and the
+    agent's stream has no size anyone controls. Handing the child a file is the only
+    way a caller can bound its own memory. `capture_output` then still means stderr,
+    which is small and which the caller needs as a value. `CompletedProcess.stdout` is
+    None: the file is the output, on a timeout too, where the exception carries nothing
+    because there was no pipe to carry it from.
+
+    The timeout branch does what `subprocess.run` does and nothing more. For a piped
+    caller the exception was built by `Popen._check_timeout` before `_communicate`
+    reached its text-mode translation, so its partial output is bytes even under
+    `text=True`. Collecting the streams again here would quietly break that.
     """
     if stopping():
         raise Stopped(signalled(), f"not started, the run was stopped: {argv[0]}")
 
     streams = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE} if capture_output else {}
+    if stdout is not None:
+        streams["stdout"] = stdout
     if input is not None:
         stdin = subprocess.PIPE
 

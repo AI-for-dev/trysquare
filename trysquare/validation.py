@@ -322,6 +322,7 @@ def run_judge(
     prompt: str,
     brick: Path,
     timeout: int,
+    trace: Path,
     attempts: int = 1,
 ) -> Result:
     """Runs the judge, and reads back the verdict its tool call recorded.
@@ -329,6 +330,11 @@ def run_judge(
     Retried only while there is **no** usable answer, which is not optional
     stopping: an absent verdict is not a verdict one could have preferred. Once a
     verdict exists it is kept, whatever it says.
+
+    `trace` is where the judge's own stream goes, and it is given rather than derived
+    from `directory`: `directory` sits inside the published archive, which deliberately
+    never carries a raw stream. Nor is it discarded - the judge's first error is the
+    only diagnosis a silent judge leaves behind.
     """
     from . import agent as agent_mod
 
@@ -344,7 +350,7 @@ def run_judge(
             session_dir=directory / "session",
             extensions=[brick],
         )
-        outcome = agent_mod.run(directory, args, timeout)
+        outcome = agent_mod.run(directory, args, timeout, trace)
 
         if verdict_path.is_file():
             try:
@@ -358,7 +364,7 @@ def run_judge(
             f"judge did not call the verdict tool (attempt {attempt}/{attempts})"
             if outcome.produced_something
             else f"judge produced nothing (attempt {attempt}/{attempts}): "
-            f"{agent_mod.first_error(outcome.stream) or outcome.stderr[:200]}"
+            f"{outcome.error or outcome.stderr[:200]}"
         )
 
     return Result(validator.mode, None, detail=detail)
