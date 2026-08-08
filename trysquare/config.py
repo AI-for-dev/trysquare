@@ -52,6 +52,11 @@ BUILTIN_DEFAULTS = {
     "concurrency": 5,
     "timeout": 900,
     "attempts": 3,
+    # Megabytes one run's stream may reach before it is stopped and refused. Sixty-four
+    # times what a run writes normally, because a ceiling a merely talkative agent can
+    # reach excludes whichever cell talks most - and an exclusion correlated with the
+    # treatment is worse than no ceiling at all.
+    "stream_limit": 1024,
     "draws": 10_000,
     "seed": 20260729,
 }

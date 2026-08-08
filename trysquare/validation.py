@@ -324,6 +324,7 @@ def run_judge(
     timeout: int,
     trace: Path,
     attempts: int = 1,
+    ceiling: int | None = None,
 ) -> Result:
     """Runs the judge, and reads back the verdict its tool call recorded.
 
@@ -350,7 +351,7 @@ def run_judge(
             session_dir=directory / "session",
             extensions=[brick],
         )
-        outcome = agent_mod.run(directory, args, timeout, trace)
+        outcome = agent_mod.run(directory, args, timeout, trace, ceiling)
 
         if verdict_path.is_file():
             try:

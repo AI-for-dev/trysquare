@@ -10,7 +10,9 @@ Nothing here spends a token.
 """
 
 import json
+import os
 import sys
+import time
 import tracemalloc
 from pathlib import Path
 
@@ -102,6 +104,118 @@ class TestTheStreamIsNeverHeld:
         assert found.response == "kept"
 
 
+class TestTheCeiling:
+    """A run that will not stop writing is stopped, and written down as an incident.
+
+    Once the stream lives on disk, time is all that still bounds how many bytes a
+    runaway produces, and the rate is the agent's. The ceiling is what turns "it fills
+    the disk and takes the four runs beside it" into one cell somebody can read.
+    """
+
+    def forever(self) -> list[str]:
+        """A child that writes without end, slowly enough not to flood a test run."""
+        script = (
+            "import sys, time\n"
+            "block = 'x' * (256 * 1024) + chr(10)\n"
+            "while True:\n"
+            "    sys.stdout.write(block)\n"
+            "    sys.stdout.flush()\n"
+            "    time.sleep(0.02)\n"
+        )
+        return ["-c", script]
+
+    def test_a_runaway_is_stopped_and_refused(self, fake_agent, tmp_path):
+        trace = tmp_path / "trace.jsonl"
+        outcome = agent.run(tmp_path, self.forever(), timeout=60, trace=trace, ceiling=4 * MB)
+
+        assert outcome.overflowed
+        assert not outcome.produced_something
+        assert "4 MB" in outcome.stderr
+        assert trace.stat().st_size >= 4 * MB
+
+    def test_a_run_that_derailed_after_working_is_still_refused(self, tmp_path):
+        """A usage in the wreckage does not make the wreckage a measurement."""
+        billed = {"input": 100, "output": 10, "turns": 1, "cacheRead": 0, "cost": 0.0, "retries": 0}
+        outcome = agent.Outcome(
+            trace=tmp_path / "trace.jsonl",
+            response="",
+            error="",
+            stderr="",
+            code=None,
+            duration=0,
+            timed_out=False,
+            usage=billed,
+            overflowed=True,
+        )
+        assert not outcome.produced_something
+
+    def test_a_runaway_is_not_retried(self, monkeypatch, tmp_path):
+        """Three runaways is the incident this ends, not the incident it triples."""
+        calls = []
+
+        def overrunning(cwd, args, timeout, trace, ceiling=None):  # noqa: ARG001
+            calls.append(trace)
+            return agent.Outcome(
+                trace=trace,
+                response="",
+                error="",
+                stderr="wrote more than 1024 MB and was stopped",
+                code=None,
+                duration=0,
+                timed_out=False,
+                usage={},
+                overflowed=True,
+            )
+
+        monkeypatch.setattr(agent, "run", overrunning)
+        _, tries = agent.run_until_productive(tmp_path, [], 10, 3, tmp_path / "t.jsonl", 1)
+        assert (len(calls), tries) == (1, 1)
+
+    def test_a_stream_under_the_ceiling_is_untouched(self, fake_agent, tmp_path):
+        trace = tmp_path / "trace.jsonl"
+        outcome = agent.run(
+            tmp_path, writing(message("done"), 4), timeout=60, trace=trace, ceiling=4 * MB
+        )
+
+        assert not outcome.overflowed
+        assert outcome.produced_something
+        assert outcome.usage["turns"] == 4
+
+    def test_the_whole_group_stops_writing_not_only_the_child(self, fake_agent, tmp_path):
+        """A runaway's own tool subprocesses hold the same file.
+
+        Killing the leader alone leaves a grandchild writing into a trace the harness
+        has already measured, so the file a validator reads is not the file that was
+        scored.
+        """
+        marker = tmp_path / "grandchild.pid"
+        inner = (
+            "import sys, time\n"
+            "block = 'x' * (256 * 1024) + chr(10)\n"
+            "while True:\n"
+            "    sys.stdout.write(block)\n"
+            "    sys.stdout.flush()\n"
+            "    time.sleep(0.02)\n"
+        )
+        script = (
+            "import pathlib, subprocess, sys\n"
+            f"kid = subprocess.Popen([sys.executable, '-c', {inner!r}])\n"
+            f"pathlib.Path({str(marker)!r}).write_text(str(kid.pid))\n"
+            "kid.wait()\n"
+        )
+        agent.run(tmp_path, ["-c", script], timeout=60, trace=tmp_path / "t.jsonl", ceiling=4 * MB)
+
+        pid = int(marker.read_text())
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+        pytest.fail("the grandchild outlived the ceiling and kept writing")
+
+
 class TestWhatTheTraceIsWorth:
     def test_a_run_that_said_nothing_still_leaves_its_trace(self, fake_agent, tmp_path):
         """The empty run is the one somebody wants to read.
@@ -147,7 +261,7 @@ class TestTheJudgeStreamStaysOutOfTheArchive:
 
         seen = {}
 
-        def fake_run(cwd, args, timeout, trace):  # noqa: ARG001
+        def fake_run(cwd, args, timeout, trace, ceiling=None):  # noqa: ARG001
             seen["trace"] = trace
             return agent.Outcome(
                 trace=trace,
