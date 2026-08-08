@@ -766,7 +766,10 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         # the agent as it goes rather than by the harness afterwards: a stream nobody
         # bounds must never become an object here.
         trace = work / "trace.jsonl"
-        outcome, tries = agent_mod.run_until_productive(clone, args, timeout, attempts, trace)
+        ceiling = stream_ceiling(plan)
+        outcome, tries = agent_mod.run_until_productive(
+            clone, args, timeout, attempts, trace, ceiling
+        )
 
         run.usage = outcome.usage
         run.duration = outcome.duration
@@ -780,7 +783,13 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
 
         if not outcome.produced_something:
             run.state = EMPTY
-            run.detail = outcome.error or one_line(outcome.stderr)[:200] or "no tokens consumed"
+            # The ceiling first. When the harness is what ended the run, that is the
+            # reason, and an error the truncated stream happens to carry is not.
+            run.detail = (
+                one_line(outcome.stderr)[:200]
+                if outcome.overflowed
+                else outcome.error or one_line(outcome.stderr)[:200] or "no tokens consumed"
+            )
             return run
 
         prompt_file = work / "prompt.txt"
@@ -913,8 +922,24 @@ def judge(
         "timeout", plan.config.fallback("timeout")
     )
     return validation_mod.run_judge(
-        validator, dossier, judge_prompt, brick, timeout, work / "judge.jsonl", attempts
+        validator,
+        dossier,
+        judge_prompt,
+        brick,
+        timeout,
+        work / "judge.jsonl",
+        attempts,
+        stream_ceiling(plan),
     )
+
+
+def stream_ceiling(plan: Plan) -> int:
+    """How many bytes one agent run may write, from a config expressed in megabytes.
+
+    Megabytes in the file a human writes, bytes at the one place that compares a size,
+    so the unit lives where it is read rather than in every signature it passes.
+    """
+    return plan.config.fallback("stream_limit") * interrupt.MEGABYTE
 
 
 def recorded_model(sessions: list[Path]) -> str | None:

@@ -67,10 +67,18 @@ class Outcome:
     duration: int
     timed_out: bool
     usage: dict
+    overflowed: bool = False
 
     @property
     def produced_something(self) -> bool:
-        return consumed_tokens(self.usage)
+        """Whether this is a measurement at all.
+
+        A run stopped for writing past its ceiling is not one, even when the bytes it
+        managed before derailing carry a usage. Recording it would publish the cost of
+        a run that never finished - the founding confusion of this harness, "did not do
+        the work" filed as "worked well", reached by a new road.
+        """
+        return not self.overflowed and consumed_tokens(self.usage)
 
     @property
     def signalled(self) -> bool:
@@ -138,18 +146,25 @@ def argv(
     return args
 
 
-def run(cwd: Path, args: list[str], timeout: int, trace: Path) -> Outcome:
+def run(
+    cwd: Path, args: list[str], timeout: int, trace: Path, ceiling: int | None = None
+) -> Outcome:
     """Runs the agent once, straight into `trace`, and reads back what it says.
 
     The agent writes to the file itself, so nothing here ever holds the stream. That
     is the whole difference: the file was written at the end anyway, and the copy
     that lived in this process on the way there had no bound.
 
+    `ceiling` is how many bytes that file may reach before the run is stopped and
+    refused. A truncated trace is still kept and still read: it is the best evidence
+    there is about what the agent was doing when it derailed.
+
     `stdin` must be closed. With an open pipe, the agent waits indefinitely for
     something to read and the run freezes without emitting a byte.
     """
     start = time.monotonic()
     trace.parent.mkdir(parents=True, exist_ok=True)
+    overflowed = False
     try:
         # Inside the `try`, so the file is closed on every path before it is read
         # back. Truncating, so an attempt reads its own stream and not the tail of
@@ -163,10 +178,13 @@ def run(cwd: Path, args: list[str], timeout: int, trace: Path) -> Outcome:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                ceiling=ceiling,
             )
         stderr, code, timed_out = proc.stderr, proc.returncode, False
     except subprocess.TimeoutExpired:
         stderr, code, timed_out = f"timed out after {timeout}s", None, True
+    except interrupt.TooMuchOutput as e:
+        stderr, code, timed_out, overflowed = str(e), None, False, True
     except OSError as e:
         stderr, code, timed_out = str(e), -1, False
 
@@ -180,11 +198,17 @@ def run(cwd: Path, args: list[str], timeout: int, trace: Path) -> Outcome:
         duration=round(time.monotonic() - start),
         timed_out=timed_out,
         usage=found.usage,
+        overflowed=overflowed,
     )
 
 
 def run_until_productive(
-    cwd: Path, args: list[str], timeout: int, attempts: int, trace: Path
+    cwd: Path,
+    args: list[str],
+    timeout: int,
+    attempts: int,
+    trace: Path,
+    ceiling: int | None = None,
 ) -> tuple[Outcome, int]:
     """Retries only while nothing has been produced.
 
@@ -196,13 +220,17 @@ def run_until_productive(
     from here - no tokens, nothing to select between - and the loop used to answer it
     by launching a fresh agent, which is how one Ctrl-C bought three more.
 
+    A run stopped for overrunning its ceiling is not retried either, and for the same
+    reason as a signalled one: the next attempt would be the same runaway, and three
+    of them is the incident this ceiling exists to end rather than to triple.
+
     Every attempt writes the same `trace`, so it holds the attempt that was kept. The
     sessions are what say what the others did: they are archived one file per attempt.
     """
     outcome = None
     for attempt in range(1, attempts + 1):
-        outcome = run(cwd, args, timeout, trace)
-        if outcome.produced_something or outcome.signalled:
+        outcome = run(cwd, args, timeout, trace, ceiling)
+        if outcome.produced_something or outcome.signalled or outcome.overflowed:
             return outcome, attempt
     return outcome, attempts
 

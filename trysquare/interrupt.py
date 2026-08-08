@@ -54,6 +54,26 @@ GRACE = 2.0
 #: How long the whole shutdown gets before the process leaves without it.
 DEADLINE = 5.0
 
+#: How often a child under a ceiling is weighed. What it writes between two weighings
+#: is what it may overrun by, so this is a fraction of a second rather than one.
+POLL = 0.25
+
+MEGABYTE = 1024 * 1024
+
+
+class TooMuchOutput(subprocess.SubprocessError):
+    """A child stopped for writing more than the caller allowed.
+
+    An exception rather than an exit status, for the reason `run` gives about the
+    status of a child we killed: it is not evidence about anything. An `Exception`
+    rather than a `Stopped`, because one runaway run must be written down in the
+    ledger, not unwind the matrix around it.
+    """
+
+    def __init__(self, what: str, limit: int) -> None:
+        super().__init__(f"{what} wrote more than {limit // MEGABYTE} MB and was stopped")
+        self.limit = limit
+
 
 class Stopped(KeyboardInterrupt):
     """A subprocess that the operator's interrupt cancelled, raised instead of run.
@@ -167,6 +187,7 @@ def run(
     text: bool = False,
     stdin=None,
     stdout=None,
+    ceiling: int | None = None,
 ) -> subprocess.CompletedProcess:
     """`subprocess.run`, for a process the harness can still stop.
 
@@ -187,6 +208,17 @@ def run(
     which is small and which the caller needs as a value. `CompletedProcess.stdout` is
     None: the file is the output, on a timeout too, where the exception carries nothing
     because there was no pipe to carry it from.
+
+    `ceiling` bounds that file the way `timeout` bounds the wait, and for the same kind
+    of child: one that will not end on its own. Once the stream lives on disk, time is
+    all that still bounds how many bytes a runaway produces, and bytes are rate times
+    time - the rate being the agent's, which nobody measures.
+
+    Two mechanisms, and neither replaces the other. A thread weighs the file while the
+    child runs and kills its **group** past the ceiling, which is what stops a runaway
+    from taking the disk and the four runs beside it. The verdict is then read from the
+    file itself after the wait, because a child fast enough to overrun between two
+    weighings would otherwise be accepted for having been quick about it.
 
     The timeout branch does what `subprocess.run` does and nothing more. For a piped
     caller the exception was built by `Popen._check_timeout` before `_communicate`
@@ -213,6 +245,7 @@ def run(
     ) as proc:
         with _lock:
             _children.add(proc)
+        weighed = _weigh(proc, stdout, ceiling)
         try:
             out, err = proc.communicate(input, timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -223,13 +256,59 @@ def run(
             proc.kill()
             raise
         finally:
+            weighed.set()
             with _lock:
                 _children.discard(proc)
         code = proc.poll()
 
     if stopping():
         raise Stopped(signalled(), f"killed while it ran: {argv[0]}")
+    if _overran(stdout, ceiling):
+        raise TooMuchOutput(str(argv[0]), ceiling)
     return subprocess.CompletedProcess(proc.args, code, out, err)
+
+
+def _overran(sink, ceiling: int | None) -> bool:
+    """Whether what the child wrote passed the ceiling, asked of the file itself."""
+    if sink is None or ceiling is None:
+        return False
+    try:
+        return os.fstat(sink.fileno()).st_size > ceiling
+    except (OSError, ValueError):
+        return False
+
+
+def _weigh(proc: subprocess.Popen, sink, ceiling: int | None) -> threading.Event:
+    """Kills the child's group once it has written past `ceiling`.
+
+    A thread because `communicate` blocks, and a daemon one for the reason `_arm`
+    gives: it must not be why the interpreter stays up. The returned event ends it,
+    and is set in the `finally` so a child that left on its own takes the thread with
+    it rather than weighing a file nobody is writing.
+
+    The group rather than the process, like `_terminate`: what has to stop writing is
+    the agent's own tool subprocesses too, which hold the same file. `poll` guards the
+    signal, since a process group id is free for reuse the moment its leader is waited
+    on.
+    """
+    done = threading.Event()
+    if sink is None or ceiling is None:
+        done.set()
+        return done
+
+    def watch() -> None:
+        while not done.wait(POLL):
+            if not _overran(sink, ceiling):
+                continue
+            if proc.poll() is None:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+            return
+
+    threading.Thread(target=watch, name="trysquare-ceiling", daemon=True).start()
+    return done
 
 
 @contextmanager
