@@ -188,6 +188,7 @@ def run(
     stdin=None,
     stdout=None,
     ceiling: int | None = None,
+    written=None,
 ) -> subprocess.CompletedProcess:
     """`subprocess.run`, for a process the harness can still stop.
 
@@ -209,16 +210,17 @@ def run(
     None: the file is the output, on a timeout too, where the exception carries nothing
     because there was no pipe to carry it from.
 
-    `ceiling` bounds that file the way `timeout` bounds the wait, and for the same kind
-    of child: one that will not end on its own. Once the stream lives on disk, time is
-    all that still bounds how many bytes a runaway produces, and bytes are rate times
-    time - the rate being the agent's, which nobody measures.
+    `ceiling` bounds what the child produces the way `timeout` bounds the wait, and for
+    the same kind of child: one that will not end on its own. `written` says how much
+    that is, and answering it is the caller's job - a file holds every byte, a pipe may
+    have a sieve at its far end keeping a thousandth of what arrives, and which of the
+    two is being bounded is not a decision this module can make.
 
-    Two mechanisms, and neither replaces the other. A thread weighs the file while the
-    child runs and kills its **group** past the ceiling, which is what stops a runaway
-    from taking the disk and the four runs beside it. The verdict is then read from the
-    file itself after the wait, because a child fast enough to overrun between two
-    weighings would otherwise be accepted for having been quick about it.
+    Two mechanisms, and neither replaces the other. A thread weighs the output while
+    the child runs and kills its **group** past the ceiling, which is what stops a
+    runaway from taking the machine and the runs beside it. The verdict is then asked
+    again after the wait, because a child fast enough to overrun between two weighings
+    would otherwise be accepted for having been quick about it.
 
     The timeout branch does what `subprocess.run` does and nothing more. For a piped
     caller the exception was built by `Popen._check_timeout` before `_communicate`
@@ -245,7 +247,7 @@ def run(
     ) as proc:
         with _lock:
             _children.add(proc)
-        weighed = _weigh(proc, stdout, ceiling)
+        weighed = _weigh(proc, written, ceiling)
         try:
             out, err = proc.communicate(input, timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -263,22 +265,21 @@ def run(
 
     if stopping():
         raise Stopped(signalled(), f"killed while it ran: {argv[0]}")
-    if _overran(stdout, ceiling):
+    if _overran(written, ceiling):
         raise TooMuchOutput(str(argv[0]), ceiling)
     return subprocess.CompletedProcess(proc.args, code, out, err)
 
 
-def _overran(sink, ceiling: int | None) -> bool:
-    """Whether what the child wrote passed the ceiling, asked of the file itself."""
-    if sink is None or ceiling is None:
-        return False
-    try:
-        return os.fstat(sink.fileno()).st_size > ceiling
-    except (OSError, ValueError):
-        return False
+def _overran(written, ceiling: int | None) -> bool:
+    """Whether the child has produced more than the ceiling allows.
+
+    The caller says how much, because only the caller knows where the output went and
+    what of it counts: a file holds everything, a pipe may have a sieve at its far end.
+    """
+    return written is not None and ceiling is not None and written() > ceiling
 
 
-def _weigh(proc: subprocess.Popen, sink, ceiling: int | None) -> threading.Event:
+def _weigh(proc: subprocess.Popen, written, ceiling: int | None) -> threading.Event:
     """Kills the child's group once it has written past `ceiling`.
 
     A thread because `communicate` blocks, and a daemon one for the reason `_arm`
@@ -292,13 +293,13 @@ def _weigh(proc: subprocess.Popen, sink, ceiling: int | None) -> threading.Event
     on.
     """
     done = threading.Event()
-    if sink is None or ceiling is None:
+    if written is None or ceiling is None:
         done.set()
         return done
 
     def watch() -> None:
         while not done.wait(POLL):
-            if not _overran(sink, ceiling):
+            if not _overran(written, ceiling):
                 continue
             if proc.poll() is None:
                 try:

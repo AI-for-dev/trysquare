@@ -212,19 +212,28 @@ def read_file(path: Path) -> Reading:
         return read(decoded(_lines(handle)))
 
 
-def _lines(handle):
-    """Every line of at most `LINE_LIMIT` bytes, decoded, longer ones dropped whole.
+def bounded(handle):
+    """Every line of at most `LINE_LIMIT` bytes, longer ones dropped whole.
 
     A chunk that neither ends in a newline nor stopped short of the limit is the head
     of a line too long to be an event; it and everything up to the next newline go.
+
+    Shared by the two readers of one stream - the sieve that writes a trace and the
+    reading that measures it - so what counts as a line is decided once.
     """
     dropping = False
     while chunk := handle.readline(LINE_LIMIT):
         ended = chunk.endswith(b"\n")
         over = not ended and len(chunk) >= LINE_LIMIT
         if not dropping and not over:
-            yield chunk.decode("utf-8", "replace")
+            yield chunk
         dropping = over or (dropping and not ended)
+
+
+def _lines(handle):
+    """`bounded`, decoded. `errors="replace"` so one bad byte costs one character."""
+    for chunk in bounded(handle):
+        yield chunk.decode("utf-8", "replace")
 
 
 def strip_session(session: str) -> dict:

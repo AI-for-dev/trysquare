@@ -88,9 +88,10 @@ class TestTheStreamIsNeverHeld:
         _, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
 
-        assert trace.stat().st_size == 64 * MB
         assert peak < 4 * measure.LINE_LIMIT
         assert outcome.usage["turns"] == 0
+        # Not one byte of it was an event, so the sieve kept none of it.
+        assert trace.stat().st_size == 0
 
     def test_an_over_long_line_costs_only_itself(self, tmp_path):
         """What follows a line too long to be an event is still read."""
@@ -102,6 +103,73 @@ class TestTheStreamIsNeverHeld:
         found = measure.read_file(trace)
         assert found.usage["turns"] == 1
         assert found.response == "kept"
+
+
+class TestTheSieve:
+    """What no reader wants never reaches the disk.
+
+    `pi` sends the whole accumulated message twice on every update to deliver a delta
+    of two characters, so the stream costs the square of the answer. Measured on the
+    campaign that found this: 1.001 GiB of `message_update` against 84 KB of
+    everything else, and every measurement comes off that 84 KB.
+    """
+
+    def update(self, text: str) -> str:
+        """One cumulative snapshot, shaped as `pi` writes it."""
+        body = {"role": "assistant", "content": text, "usage": {"input": 1, "output": 1}}
+        return json.dumps(
+            {
+                "type": "message_update",
+                "assistantMessageEvent": {"delta": text[-2:], "partial": body},
+                "message": body,
+            },
+            separators=(",", ":"),
+        )
+
+    def chattering(self, upto: int, answer: str) -> list[str]:
+        """A child that snapshots its way to `upto` characters, then speaks once.
+
+        Built inside the child rather than passed in: the whole point is a stream too
+        big to be an argument, and the quadratic growth is what makes it so.
+        """
+        script = (
+            "import json, sys\n"
+            "for n in range(1, %d):\n"
+            "    text = 'z' * n\n"
+            "    body = {'role': 'assistant', 'content': text,"
+            " 'usage': {'input': 1, 'output': 1}}\n"
+            "    sys.stdout.write(json.dumps({'type': 'message_update',"
+            " 'assistantMessageEvent': {'delta': text[-2:], 'partial': body},"
+            " 'message': body}, separators=(',', ':')) + chr(10))\n"
+            "sys.stdout.write(%r + chr(10))\n" % (upto, message(answer))
+        )
+        return ["-c", script]
+
+    def test_the_updates_are_dropped_and_the_measurement_is_unchanged(self, fake_agent, tmp_path):
+        trace = tmp_path / "trace.jsonl"
+        outcome = agent.run(tmp_path, self.chattering(400, "the answer"), timeout=60, trace=trace)
+
+        kept = trace.read_text()
+        assert "message_update" not in kept
+        assert outcome.response == "the answer"
+        assert outcome.usage["turns"] == 1
+        assert len(kept) < 1024, "only the answer should have survived"
+
+    def test_a_message_end_quoting_the_dropped_name_is_kept(self, tmp_path):
+        """The prefix match is what makes this safe; a search would lose the answer."""
+        trace = tmp_path / "trace.jsonl"
+        spoken = message("I looked at the message_update events")
+        assert agent.DISCARDED not in spoken.encode()[: len(agent.DISCARDED)]
+
+        with trace.open("wb") as keep:
+            sieve = agent._Sieve(keep)
+            with sieve.plumbed() as sink:
+                sink.write(self.update("zz").encode() + b"\n")
+                sink.write(spoken.encode() + b"\n")
+
+        found = measure.read_file(trace)
+        assert found.response == "I looked at the message_update events"
+        assert found.usage["turns"] == 1
 
 
 class TestTheCeiling:
@@ -170,6 +238,30 @@ class TestTheCeiling:
         monkeypatch.setattr(agent, "run", overrunning)
         _, tries = agent.run_until_productive(tmp_path, [], 10, 3, tmp_path / "t.jsonl", 1)
         assert (len(calls), tries) == (1, 1)
+
+    def test_a_long_answer_is_no_longer_what_trips_it(self, fake_agent, tmp_path):
+        """The ceiling weighs what is kept, and that is what makes it fair.
+
+        Weighing the raw stream meant weighing the square of the answer, so the cells
+        whose agent works at length hit it first - an exclusion that follows the
+        treatment, which is the one thing a matrix must never do.
+        """
+        trace = tmp_path / "trace.jsonl"
+        raw = tmp_path / "raw"
+        # 3000 snapshots of a message growing to 3000 characters: about 9 MB of stream
+        # for one answer, nine times a ceiling the run must not reach.
+        outcome = agent.run(
+            tmp_path,
+            TestTheSieve().chattering(3000, "a long answer"),
+            timeout=60,
+            trace=trace,
+            ceiling=1 * MB,
+        )
+
+        assert not outcome.overflowed
+        assert outcome.produced_something
+        assert outcome.response == "a long answer"
+        assert not raw.exists()
 
     def test_a_stream_under_the_ceiling_is_untouched(self, fake_agent, tmp_path):
         trace = tmp_path / "trace.jsonl"

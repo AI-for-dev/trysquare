@@ -15,13 +15,16 @@ subprocess.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import interrupt
-from .measure import consumed_tokens, read_file
+from .measure import bounded, consumed_tokens, read_file
 
 PI = "pi"
 
@@ -146,18 +149,74 @@ def argv(
     return args
 
 
+#: The one event kind a trace does not keep. It carries the whole message accumulated
+#: so far, twice - once as `partial` and once as `message` - to deliver a delta of two
+#: characters, so a stream costs the square of what the agent says. Nothing reads it:
+#: every measurement comes off `message_end`, and the validator that once parsed these
+#: was reworked to read the session because parsing them was the defect.
+#:
+#: Matched as a prefix rather than searched for, so a `message_end` whose text happens
+#: to quote this name cannot be dropped. Should `pi` ever reorder its keys the match
+#: stops, the trace grows back, and the ceiling says so - the failure is a loud one.
+DISCARDED = b'{"type":"message_update"'
+
+
+class _Sieve:
+    """Writes a child's stdout to a file, minus what no reader wants.
+
+    A thread rather than a file handed straight to the child, because something has to
+    look at the bytes to drop them. It holds one line at a time and writes what it
+    keeps immediately, so the memory bound is the same as reading a trace back.
+    """
+
+    def __init__(self, keep) -> None:
+        self._keep = keep
+        self._kept = 0
+
+    def kept(self) -> int:
+        return self._kept
+
+    @contextmanager
+    def plumbed(self):
+        """Yields the write end for the child, and drains the read end throughout.
+
+        The reader is joined on the way out, after the `with` has closed the parent's
+        write end - until then the pipe has a writer and would never reach EOF. The
+        child's own copy is closed by its exit, which `interrupt.run` has waited for.
+        """
+        read_fd, write_fd = os.pipe()
+        reader = threading.Thread(target=self._drain, args=(read_fd,), daemon=True)
+        reader.start()
+        try:
+            with os.fdopen(write_fd, "wb") as sink:
+                yield sink
+        finally:
+            reader.join()
+
+    def _drain(self, fd: int) -> None:
+        with os.fdopen(fd, "rb") as stream:
+            for line in bounded(stream):
+                if line.startswith(DISCARDED):
+                    continue
+                self._kept += len(line)
+                self._keep.write(line)
+
+
 def run(
     cwd: Path, args: list[str], timeout: int, trace: Path, ceiling: int | None = None
 ) -> Outcome:
-    """Runs the agent once, straight into `trace`, and reads back what it says.
+    """Runs the agent once through the sieve, and reads back what it says.
 
-    The agent writes to the file itself, so nothing here ever holds the stream. That
-    is the whole difference: the file was written at the end anyway, and the copy
-    that lived in this process on the way there had no bound.
+    Nothing here ever holds the stream: it passes line by line and only what an
+    event is lands in `trace`. That matters because the stream is quadratic in the
+    length of the answer - `pi` sends the whole accumulated message twice on every
+    update, to deliver two characters - so a 126 KB reply costs a gigabyte and a
+    1.5 MB one costs the 136 GB that started all this.
 
-    `ceiling` is how many bytes that file may reach before the run is stopped and
-    refused. A truncated trace is still kept and still read: it is the best evidence
-    there is about what the agent was doing when it derailed.
+    `ceiling` bounds what is **kept**, which is the honest quantity now. Bounding the
+    raw stream would keep excluding the cells whose agent answers at length, and
+    since the cost goes as the square, a ceiling with twice the bytes leaves only
+    half again as much to say.
 
     `stdin` must be closed. With an open pipe, the agent waits indefinitely for
     something to read and the run freezes without emitting a byte.
@@ -166,20 +225,22 @@ def run(
     trace.parent.mkdir(parents=True, exist_ok=True)
     overflowed = False
     try:
-        # Inside the `try`, so the file is closed on every path before it is read
-        # back. Truncating, so an attempt reads its own stream and not the tail of
-        # the attempt it is replacing.
-        with trace.open("wb") as sink:
-            proc = interrupt.run(
-                [PI, *args],
-                cwd=cwd,
-                stdin=subprocess.DEVNULL,
-                stdout=sink,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                ceiling=ceiling,
-            )
+        # Truncating, so an attempt reads its own stream and not the tail of the
+        # attempt it is replacing.
+        with trace.open("wb") as keep:
+            sieve = _Sieve(keep)
+            with sieve.plumbed() as sink:
+                proc = interrupt.run(
+                    [PI, *args],
+                    cwd=cwd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=sink,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    ceiling=ceiling,
+                    written=sieve.kept,
+                )
         stderr, code, timed_out = proc.stderr, proc.returncode, False
     except subprocess.TimeoutExpired:
         stderr, code, timed_out = f"timed out after {timeout}s", None, True
