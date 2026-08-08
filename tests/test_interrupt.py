@@ -6,6 +6,7 @@ The children are `sys.executable` sleeping, so nothing here needs the agent, the
 network, or a token.
 """
 
+import json
 import os
 import signal
 import subprocess
@@ -161,17 +162,21 @@ class TestTimeout:
         assert caught.value.stdout, "the partial output was dropped on the way out"
 
     def test_a_timed_out_agent_keeps_what_it_streamed(self, monkeypatch, tmp_path):
-        """The contract `agent.run` decodes by hand, checked where it is relied on.
+        """A timed-out run is read from its trace, not from the exception.
 
-        The exception is built before `communicate` reaches its text-mode translation,
-        so its output is bytes even under `text=True`. `agent.run` copes with either,
-        and this is what says it still has to.
+        There is no pipe left for the exception to carry a partial output on, so what
+        the child had flushed is on disk and is measured like any other stream. What
+        the old contract could not say is the last assertion: a timeout is folded, not
+        skipped, so a run that was billed before it froze still reports its turn.
         """
         monkeypatch.setattr(agent, "PI", sys.executable)
-        script = "import sys, time\nsys.stdout.write('partial')\nsys.stdout.flush()\ntime.sleep(30)"
-        outcome = agent.run(tmp_path, ["-c", script], timeout=1)
+        event = json.dumps({"type": "message_end", "message": {"usage": {"input": 7, "output": 2}}})
+        script = f"import sys, time\nsys.stdout.write({event!r} + chr(10))\nsys.stdout.flush()\ntime.sleep(30)"
+        trace = tmp_path / "trace.jsonl"
+        outcome = agent.run(tmp_path, ["-c", script], timeout=1, trace=trace)
         assert outcome.timed_out
-        assert "partial" in outcome.stream
+        assert "message_end" in trace.read_text()
+        assert outcome.usage["turns"] == 1
 
 
 class TestRetrying:
@@ -179,7 +184,14 @@ class TestRetrying:
 
     def outcome(self, code: int, usage: dict | None = None) -> agent.Outcome:
         return agent.Outcome(
-            stream="", stderr="", code=code, duration=0, timed_out=False, usage=usage or {}
+            trace=Path("trace.jsonl"),
+            response="",
+            error="",
+            stderr="",
+            code=code,
+            duration=0,
+            timed_out=False,
+            usage=usage or {},
         )
 
     def attempts(self, monkeypatch, code: int) -> int:
@@ -189,7 +201,7 @@ class TestRetrying:
             "run",
             lambda *a: calls.append(a) or self.outcome(code),  # noqa: ARG005
         )
-        agent.run_until_productive(Path.cwd(), [], 10, attempts=3)
+        agent.run_until_productive(Path.cwd(), [], 10, 3, Path("trace.jsonl"))
         return len(calls)
 
     def test_a_signalled_agent_is_not_retried(self, monkeypatch):

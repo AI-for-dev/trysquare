@@ -762,7 +762,11 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
             "timeout", plan.config.fallback("timeout")
         )
         attempts = scenario.protocol.get("attempts", plan.config.fallback("attempts"))
-        outcome, tries = agent_mod.run_until_productive(clone, args, timeout, attempts)
+        # Kept next to the run rather than in the measured repository, and written by
+        # the agent as it goes rather than by the harness afterwards: a stream nobody
+        # bounds must never become an object here.
+        trace = work / "trace.jsonl"
+        outcome, tries = agent_mod.run_until_productive(clone, args, timeout, attempts, trace)
 
         run.usage = outcome.usage
         run.duration = outcome.duration
@@ -776,26 +780,16 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
 
         if not outcome.produced_something:
             run.state = EMPTY
-            run.detail = (
-                agent_mod.first_error(outcome.stream)
-                or one_line(outcome.stderr)[:200]
-                or "no tokens consumed"
-            )
+            run.detail = outcome.error or one_line(outcome.stderr)[:200] or "no tokens consumed"
             return run
-
-        # The trace is kept next to the run, not in the measured repository.
-        trace = work / "trace.jsonl"
-        trace.write_text(outcome.stream)
 
         prompt_file = work / "prompt.txt"
         prompt_file.write_text(prompt)
 
-        # The agent's final prose, extracted once here so no validator has to
-        # reimplement stream parsing to get at it.
-        from .measure import final_text
-
+        # The agent's final prose, read once with the rest of the stream so no
+        # validator has to reimplement stream parsing to get at it.
         response_file = work / "response.txt"
-        response_file.write_text(final_text(outcome.stream))
+        response_file.write_text(outcome.response)
 
         # Computed once here rather than by every validator that wants them. Reading the
         # changed files writes to the clone's *index*, which is safe because each run owns
@@ -831,7 +825,17 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
             if validator.mode == "script":
                 result = validation_mod.run_script(validator, context_file, timeout, cwd=base)
             elif validator.mode == "judge":
-                result = judge(plan, validator, directory, base, prompt, outcome, clone, attempts)
+                result = judge(
+                    plan,
+                    validator,
+                    directory,
+                    base,
+                    prompt,
+                    outcome.response,
+                    clone,
+                    attempts,
+                    work,
+                )
             else:
                 # Recorded as a failure rather than silently skipped: an
                 # unimplemented validator must not read as a verdict.
@@ -865,24 +869,27 @@ def judge(
     directory: Path,
     base: Path,
     prompt: str,
-    outcome,
+    response: str,
     clone: Path,
     attempts: int,
+    work: Path,
 ):
     """Assembles the judge's dossier and runs it.
 
     The pieces are whatever the scenario declared, and nothing else - certainly not
     the cell. `response` is the agent's final prose rather than its transcript: a
     judge asked whether a note is usable must score the note, not the work behind it.
-    """
-    from . import measure as measure_mod
 
+    `work` is where the judge's own stream goes. It is passed rather than derived from
+    `directory`, which lies inside the published archive: a 16 MB stream per run has no
+    business in a tree meant to be committed, and `--extend` copies that tree whole.
+    """
     rubric_path = validator.config.get("rubric")
     rubric = read_brick(base, rubric_path) or ""
 
     available = {
         "prompt": prompt,
-        "response": measure_mod.final_text(outcome.stream),
+        "response": response,
         "diff": repo_mod.diff(clone),
     }
     declared = validator.config.get("pieces") or list(available)
@@ -899,13 +906,15 @@ def judge(
     if not brick.is_file():
         return validation_mod.Result(validator.mode, None, detail=f"judge brick missing: {brick}")
 
-    work, judge_prompt = validation_mod.judge_dossier(
+    dossier, judge_prompt = validation_mod.judge_dossier(
         directory / "judge", validator, rubric, pieces
     )
     timeout = plan.overrides.get("timeout") or plan.scenario.protocol.get(
         "timeout", plan.config.fallback("timeout")
     )
-    return validation_mod.run_judge(validator, work, judge_prompt, brick, timeout, attempts)
+    return validation_mod.run_judge(
+        validator, dossier, judge_prompt, brick, timeout, work / "judge.jsonl", attempts
+    )
 
 
 def recorded_model(sessions: list[Path]) -> str | None:

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import interrupt
-from .measure import consumed_tokens, events, one_line, strip
+from .measure import consumed_tokens, read_file
 
 PI = "pi"
 
@@ -49,9 +49,19 @@ def _bare(model: str) -> str:
 
 @dataclass
 class Outcome:
-    """One invocation of the agent, whatever happened to it."""
+    """One invocation of the agent, whatever happened to it.
 
-    stream: str
+    The stream itself is not here, and that absence is the point. It is the one thing
+    the harness handles whose size nobody controls, and holding it is how a single
+    runaway run reached 136 GB and had the matrix killed under it. What is kept is
+    everything that was ever derived from it - the numbers, the answer, the first
+    failure - each bounded by one message rather than by the length of the run. The
+    stream stays where it was written, and `trace` says where.
+    """
+
+    trace: Path
+    response: str
+    error: str
     stderr: str
     code: int | None
     duration: int
@@ -128,46 +138,53 @@ def argv(
     return args
 
 
-def run(cwd: Path, args: list[str], timeout: int) -> Outcome:
-    """Runs the agent once and returns whatever came back.
+def run(cwd: Path, args: list[str], timeout: int, trace: Path) -> Outcome:
+    """Runs the agent once, straight into `trace`, and reads back what it says.
+
+    The agent writes to the file itself, so nothing here ever holds the stream. That
+    is the whole difference: the file was written at the end anyway, and the copy
+    that lived in this process on the way there had no bound.
 
     `stdin` must be closed. With an open pipe, the agent waits indefinitely for
     something to read and the run freezes without emitting a byte.
     """
     start = time.monotonic()
+    trace.parent.mkdir(parents=True, exist_ok=True)
     try:
-        proc = interrupt.run(
-            [PI, *args],
-            cwd=cwd,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        stream, stderr, code, timed_out = proc.stdout, proc.stderr, proc.returncode, False
-    except subprocess.TimeoutExpired as e:
-        # `TimeoutExpired.stdout` stays bytes even with text=True. Without this
-        # decode, stripping raises a TypeError that propagates out of the thread
-        # pool and takes the whole matrix with it: one frozen run losing every
-        # other run in flight.
-        raw = e.stdout or b""
-        stream = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+        # Inside the `try`, so the file is closed on every path before it is read
+        # back. Truncating, so an attempt reads its own stream and not the tail of
+        # the attempt it is replacing.
+        with trace.open("wb") as sink:
+            proc = interrupt.run(
+                [PI, *args],
+                cwd=cwd,
+                stdin=subprocess.DEVNULL,
+                stdout=sink,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        stderr, code, timed_out = proc.stderr, proc.returncode, False
+    except subprocess.TimeoutExpired:
         stderr, code, timed_out = f"timed out after {timeout}s", None, True
     except OSError as e:
-        stream, stderr, code, timed_out = "", str(e), -1, False
+        stderr, code, timed_out = str(e), -1, False
 
+    found = read_file(trace)
     return Outcome(
-        stream=stream,
+        trace=trace,
+        response=found.response,
+        error=found.error,
         stderr=stderr,
         code=code,
         duration=round(time.monotonic() - start),
         timed_out=timed_out,
-        usage=strip(stream),
+        usage=found.usage,
     )
 
 
 def run_until_productive(
-    cwd: Path, args: list[str], timeout: int, attempts: int
+    cwd: Path, args: list[str], timeout: int, attempts: int, trace: Path
 ) -> tuple[Outcome, int]:
     """Retries only while nothing has been produced.
 
@@ -178,29 +195,16 @@ def run_until_productive(
     A run something else ended is not retried either. It looks identical to silence
     from here - no tokens, nothing to select between - and the loop used to answer it
     by launching a fresh agent, which is how one Ctrl-C bought three more.
+
+    Every attempt writes the same `trace`, so it holds the attempt that was kept. The
+    sessions are what say what the others did: they are archived one file per attempt.
     """
     outcome = None
     for attempt in range(1, attempts + 1):
-        outcome = run(cwd, args, timeout)
+        outcome = run(cwd, args, timeout, trace)
         if outcome.produced_something or outcome.signalled:
             return outcome, attempt
     return outcome, attempts
-
-
-def first_error(stream: str) -> str:
-    """The first error the stream reported, as one readable failure line.
-
-    Collapsed here rather than at the call sites: a provider writes its message with
-    whatever newline it likes, and this exists to be printed beside a run.
-    """
-    for event in events(stream):
-        for key in ("errorMessage", "error", "finalError"):
-            if event.get(key):
-                return one_line(str(event[key]))
-        message = event.get("message") or {}
-        if isinstance(message, dict) and message.get("errorMessage"):
-            return one_line(str(message["errorMessage"]))
-    return ""
 
 
 def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
