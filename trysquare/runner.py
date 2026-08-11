@@ -563,8 +563,14 @@ def prepare_source(config: Config, name: str, etalon: str) -> Path:
                 f"  url: {url}\n"
                 f"  git: {e.detail or e}\n"
                 f"Nothing was measured. Fix the entry in {config.path or CONFIG_NAME}, "
-                f"check network access, or list what the remote has: "
-                f"git ls-remote --tags {url}"
+                f"check network access, or see what the remote has: "
+                + (
+                    # A commit is not a ref, so `ls-remote` cannot answer for it. What
+                    # can is a clone, which is also what would have to succeed here.
+                    f"git clone {url} /tmp/x && git -C /tmp/x cat-file -e {etalon}"
+                    if repo_mod.is_commit(etalon)
+                    else f"git ls-remote --tags {url}"
+                )
             ) from e
         marker.write_text(stamp)
     return target
