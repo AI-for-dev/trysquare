@@ -11,18 +11,29 @@ correct: one caller is a hypothetical seam.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-# A fixed identity and a minimal PATH, so the fixture does not depend on whose machine
-# it runs on - an unset `user.email` makes `git commit` fail, and it is unset on CI.
+# A fixed identity, so the fixture does not depend on whose machine it runs on - an
+# unset `user.email` makes `git commit` fail, and it is unset on CI.
+#
+# The PATH is derived rather than fixed. It was `/usr/bin:/bin:/usr/local/bin`, which
+# names the same three directories everywhere and therefore looked machine-independent;
+# it is not, because what sits at `/usr/bin/git` is a machine's business. On macOS
+# without the command line tools accepted it is a stub that exits 69 on every call, and
+# on a Nix profile the real git is somewhere else entirely - either way the whole suite
+# fails on `git init` for a reason that has nothing to do with what it measures. Taking
+# the directory of the git that will actually run keeps the environment minimal and
+# makes it the *same* git the code under test uses.
+GIT = shutil.which("git") or "/usr/bin/git"
 ENV = {
     "GIT_AUTHOR_NAME": "t",
     "GIT_AUTHOR_EMAIL": "t@t",
     "GIT_COMMITTER_NAME": "t",
     "GIT_COMMITTER_EMAIL": "t@t",
-    "PATH": "/usr/bin:/bin:/usr/local/bin",
+    "PATH": f"{Path(GIT).parent}:/usr/bin:/bin",
 }
 
 
