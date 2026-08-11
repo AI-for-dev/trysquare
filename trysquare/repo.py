@@ -4,12 +4,21 @@
 Two decisions here are not interchangeable with the obvious alternatives, and
 both come from a trap that was actually hit.
 
-**Clone at a tag, never copy the working tree.** The measured state has to be
+**Clone at an etalon, never copy the working tree.** The measured state has to be
 immutable and named, or yesterday's measures no longer compare with tomorrow's.
 And a repository may be a *worktree*, whose `.git` is only a file pointing at a
 shared gitdir: a recursive copy then gives every run the same gitdir, so one
 agent running `git commit` moves the comparison base of every run in flight and
 nobody notices.
+
+**A tag is named, not immutable.** `git tag -f` moves one, and a matrix measured
+before the move no longer compares with one measured after - the two report the
+same etalon and measured different code. That is not hypothetical: two campaigns
+of the same scenario were joined by name and turned out to have read two different
+versions of the ticket under test, which `commit_of` was the only thing to record.
+So an etalon may also be a **commit**, written out in full, and `is_commit` decides
+which of the two it is. A commit cannot move, and the directory name then says what
+was measured rather than what it was called.
 
 **A remote is pinned as a working tree, never as a bare mirror.** A bare mirror is
 smaller and answers `git show` and `git ls-tree` perfectly well, so it looks right.
@@ -36,6 +45,7 @@ recorded. It is also what makes a replay exact - see `inject`.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +54,15 @@ from . import interrupt
 from .config import is_remote
 
 GIT_TIMEOUT = 180
+
+# An etalon written as a commit, which `--branch` cannot take and a checkout must.
+#
+# The full forty characters and nothing shorter. An abbreviation is not a pin either:
+# it designates one object only until the repository grows the one that collides with
+# it, and it would resolve here while failing on a fuller clone elsewhere. Refusing it
+# also keeps the rule legible - forty hex characters is a commit, anything else is a
+# ref - where a length range would leave every reader to guess the boundary.
+COMMIT = re.compile(r"\A[0-9a-f]{40}\Z")
 
 # Git is the one child here that would rather ask than fail. It has no terminal to ask
 # on - every child the harness starts is a session leader, so that it can be stopped as
@@ -92,6 +111,11 @@ def git(args: list[str], cwd: Path | None = None, check: bool = True) -> str:
     return proc.stdout
 
 
+def is_commit(etalon: str) -> bool:
+    """Whether this etalon names a commit outright rather than a ref."""
+    return bool(COMMIT.match(etalon))
+
+
 def clone_argv(source: str, etalon: str, target: Path, keep_tags: bool = False) -> list[str]:
     """The flags a clone is made with, separated so they can be asserted.
 
@@ -107,15 +131,24 @@ def clone_argv(source: str, etalon: str, target: Path, keep_tags: bool = False) 
     documents that interaction, though, and the pinned source's whole job is to answer a
     clone by tag - so it does not rest on undocumented behaviour. The cost is the tag
     refs of one branch.
+
+    **A commit takes none of that.** `--branch` refuses anything that is not a ref, so a
+    commit etalon is fetched whole and reached by the checkout `clone` runs next. That
+    also settles the two flags: `--single-branch` would keep only the default branch, and
+    `--no-tags` only the branch refs, either of which can leave the wanted commit
+    unreachable in a clone that otherwise looks complete. Fetching everything is the
+    price of an etalon that cannot move.
     """
     args = ["clone", "--quiet"]
+    if is_commit(etalon):
+        return [*args, source, str(target)]
     if not keep_tags:
         args.append("--no-tags")
     return [*args, "--single-branch", "--branch", etalon, source, str(target)]
 
 
 def clone(source: Path | str, etalon: str, target: Path, keep_tags: bool = False) -> Path:
-    """Clones `source` at tag `etalon` into `target`.
+    """Clones `source` at `etalon` into `target`, tag or commit.
 
     `source` may be a local directory or a git URL. A URL is handed to git verbatim:
     `resolve()` would turn it into a path, which is the defect `config.is_remote`
@@ -124,6 +157,11 @@ def clone(source: Path | str, etalon: str, target: Path, keep_tags: bool = False
     The `exists()` check stays as a backstop. `runner.prepare_source` checks earlier
     and says more, but a caller that reaches here with nothing on disk should still be
     told, not left with a bare git error.
+
+    A commit etalon leaves HEAD detached on it, which is where a tag etalon already
+    leaves it: everything downstream - `commit_of`, `etalon_file`, `etalon_files`, the
+    diff a run is scored on - reads the etalon as a revision and cannot tell the two
+    apart.
     """
     if is_remote(str(source)):
         where = str(source)
@@ -136,6 +174,15 @@ def clone(source: Path | str, etalon: str, target: Path, keep_tags: bool = False
     if target.exists():
         shutil.rmtree(target)
     git(clone_argv(where, etalon, target, keep_tags=keep_tags))
+    if is_commit(etalon):
+        try:
+            git(["checkout", "--quiet", "--detach", etalon], cwd=target)
+        except RepoError as e:
+            shutil.rmtree(target, ignore_errors=True)
+            raise RepoError(
+                f"commit {etalon} is not in {where}",
+                detail=e.detail or str(e),
+            ) from e
     return target
 
 
@@ -153,11 +200,12 @@ def pin(url: str, etalon: str, target: Path) -> Path:
 
 
 def commit_of(source: Path, etalon: str) -> str | None:
-    """The commit a tag designates, for the archive.
+    """The commit an etalon designates, for the archive.
 
     Peeled with `^{commit}` so an annotated and a lightweight tag record the same kind
     of object: two archives naming different object kinds for the same tag are not
-    comparable. Also the only trace left when a tag is moved between two matrices.
+    comparable. Also the only trace left when a tag is moved between two matrices - the
+    reason an etalon may now be a commit outright, see `is_commit`.
     """
     out = git(["rev-parse", "--verify", "--quiet", f"{etalon}^{{commit}}"], cwd=source, check=False)
     return out.strip() or None

@@ -45,7 +45,11 @@ result publishable rather than quietly reframed.
   - A **logical name**, resolved by `[repos]` in the config file. Never a path.
 * - `etalon`
   - **yes**
-  - A git tag, cloned fresh for each run. Never a branch or the working tree.
+  - A git tag, or a **commit written out in full** (40 hex characters), cloned fresh
+    for each run. Never a branch or the working tree. A tag reads well and can be
+    moved by whoever owns the repository, after which two matrices report the same
+    etalon and measured different code; a commit cannot move, and puts what was
+    measured in the directory name. `etalon_commit` records the resolution either way.
 * - `prompt`
   - no
   - The task given to the agent: inline text, or a path to a file.

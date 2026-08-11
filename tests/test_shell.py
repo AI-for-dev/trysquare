@@ -18,6 +18,7 @@ import pytest
 from trysquare import agent, config, outputs, repo, runner, validation
 from trysquare.measure import EMPTY, VALID, VALIDATOR_FAILED, Run
 from trysquare.scenario import Validator, parse
+from tests import gitrepo
 from tests.gitrepo import a_repo
 from tests.test_scenario import GRID, MINIMAL
 
@@ -137,6 +138,90 @@ class TestCloneArgv:
     def test_a_url_reaches_git_verbatim(self):
         args = repo.clone_argv("https://h/x.git", "t", Path("/x"), keep_tags=True)
         assert "https://h/x.git" in args
+
+
+class TestACommitEtalon:
+    """An etalon may be a commit, because a tag can be moved and a commit cannot."""
+
+    SHA = "d62ccd1f3255c8286ff6b5856860f7635f4d324e"
+
+    @pytest.mark.parametrize(
+        "etalon, commit",
+        [
+            (SHA, True),
+            (SHA.upper(), False),
+            (SHA[:12], False),
+            ("etalon-v1", False),
+            ("main", False),
+            ("deadbeef" * 5 + "x", False),
+        ],
+    )
+    def test_only_the_full_form_counts_as_a_commit(self, etalon, commit):
+        """An abbreviation is not a pin: it designates one object only until the
+        repository grows the one that collides with it."""
+        assert repo.is_commit(etalon) is commit
+
+    @pytest.mark.parametrize("keep_tags", [False, True])
+    def test_a_commit_is_fetched_whole_because_branch_refuses_it(self, keep_tags):
+        """`--branch` takes a ref only, and either narrowing flag can leave the wanted
+        commit unreachable in a clone that otherwise looks complete."""
+        args = repo.clone_argv("/s", self.SHA, Path("/x"), keep_tags=keep_tags)
+        assert "--branch" not in args
+        assert "--single-branch" not in args
+        assert "--no-tags" not in args
+        assert args[-2:] == ["/s", "/x"]
+
+    def test_cloning_at_a_commit_leaves_head_on_it(self, tmp_path):
+        source = a_repo({"a.txt": "one"})
+        first = gitrepo.git(source, "rev-parse", "HEAD").strip()
+        gitrepo.write(source, {"a.txt": "two"})
+        gitrepo.git(source, "commit", "-qam", "second")
+
+        clone = repo.clone(source, first, tmp_path / "clone")
+
+        assert repo.commit_of(clone, "HEAD") == first
+        assert (clone / "a.txt").read_text() == "one"
+
+    def test_a_commit_no_branch_reaches_is_still_reachable(self, tmp_path):
+        """The case `--single-branch` would have broken: the etalon is on a side
+        branch, and the default branch never held it."""
+        source = a_repo({"a.txt": "one"})
+        gitrepo.git(source, "checkout", "-q", "-b", "aside")
+        gitrepo.write(source, {"a.txt": "aside"})
+        gitrepo.git(source, "commit", "-qam", "aside")
+        wanted = gitrepo.git(source, "rev-parse", "HEAD").strip()
+        gitrepo.git(source, "checkout", "-q", "-")
+
+        clone = repo.clone(source, wanted, tmp_path / "clone")
+
+        assert (clone / "a.txt").read_text() == "aside"
+
+    def test_a_commit_the_source_lacks_is_named_and_leaves_nothing(self, tmp_path):
+        """A half-written clone reused later is the kind of failure that produces a
+        plausible measurement, so the target goes away with the error."""
+        source = a_repo({"a.txt": "one"})
+        target = tmp_path / "clone"
+
+        with pytest.raises(repo.RepoError) as raised:
+            repo.clone(source, "0" * 40, target)
+
+        assert "0" * 40 in str(raised.value)
+        assert not target.exists()
+
+    def test_the_etalon_reads_the_same_whether_it_is_a_tag_or_a_commit(self, tmp_path):
+        """Everything downstream reads the etalon as a revision and cannot tell the two
+        apart, which is what makes the commit form a drop-in pin."""
+        source = a_repo({"a.txt": "one"})
+        sha = gitrepo.git(source, "rev-parse", "HEAD").strip()
+
+        by_tag = repo.clone(source, "etalon-v1", tmp_path / "tag")
+        by_sha = repo.clone(source, sha, tmp_path / "sha")
+
+        assert repo.etalon_file(by_sha, sha, "a.txt") == repo.etalon_file(
+            by_tag, "etalon-v1", "a.txt"
+        )
+        assert repo.etalon_files(by_sha, sha) == ["a.txt"]
+        assert repo.commit_of(by_sha, sha) == sha
 
 
 class TestConfigRules:
