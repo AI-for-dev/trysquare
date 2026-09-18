@@ -42,6 +42,23 @@ def message(text: str, padding: int = 0) -> str:
     )
 
 
+def update(text: str) -> str:
+    """One cumulative snapshot, shaped as `pi` writes it.
+
+    Compact separators, because `agent.DISCARDED` matches the wire bytes as a prefix:
+    a pretty-printed copy of the same event is not the event the sieve drops.
+    """
+    body = {"role": "assistant", "content": text, "usage": {"input": 1, "output": 1}}
+    return json.dumps(
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {"delta": text[-2:], "partial": body},
+            "message": body,
+        },
+        separators=(",", ":"),
+    )
+
+
 @pytest.fixture
 def fake_agent(monkeypatch):
     monkeypatch.setattr(agent, "PI", sys.executable)
@@ -114,18 +131,6 @@ class TestTheSieve:
     everything else, and every measurement comes off that 84 KB.
     """
 
-    def update(self, text: str) -> str:
-        """One cumulative snapshot, shaped as `pi` writes it."""
-        body = {"role": "assistant", "content": text, "usage": {"input": 1, "output": 1}}
-        return json.dumps(
-            {
-                "type": "message_update",
-                "assistantMessageEvent": {"delta": text[-2:], "partial": body},
-                "message": body,
-            },
-            separators=(",", ":"),
-        )
-
     def chattering(self, upto: int, answer: str) -> list[str]:
         """A child that snapshots its way to `upto` characters, then speaks once.
 
@@ -164,7 +169,7 @@ class TestTheSieve:
         with trace.open("wb") as keep:
             sieve = agent._Sieve(keep)
             with sieve.plumbed() as sink:
-                sink.write(self.update("zz").encode() + b"\n")
+                sink.write(update("zz").encode() + b"\n")
                 sink.write(spoken.encode() + b"\n")
 
         found = measure.read_file(trace)
@@ -221,7 +226,7 @@ class TestTheCeiling:
         """Three runaways is the incident this ends, not the incident it triples."""
         calls = []
 
-        def overrunning(cwd, args, timeout, trace, ceiling=None):  # noqa: ARG001
+        def overrunning(cwd, args, timeout, trace, ceiling=None, watch=None):  # noqa: ARG001
             calls.append(trace)
             return agent.Outcome(
                 trace=trace,
