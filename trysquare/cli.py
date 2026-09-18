@@ -499,12 +499,8 @@ def _forecast(plan) -> list[str]:
     if not plan.runs:
         return []
     lines = []
-    concurrency = plan.overrides.get("concurrency") or plan.scenario.protocol.get(
-        "concurrency", plan.config.fallback("concurrency")
-    )
-    timeout = plan.overrides.get("timeout") or plan.scenario.protocol.get(
-        "timeout", plan.config.fallback("timeout")
-    )
+    concurrency = plan.load("concurrency")
+    timeout = plan.load("timeout")
     if concurrency and timeout:
         bound = math.ceil(plan.runs / concurrency) * timeout
         lines.append(

@@ -405,6 +405,36 @@ class TestNaming:
         assert first != outputs.run_id("t", "rule / off", 3)
 
 
+class TestTheLoadOneLaunchRunsAt:
+    """Read by the forecast, the pool and the ceiling each run is stopped at, so the
+    three declarations have to resolve to one answer."""
+
+    def plan(self, protocol: dict, **overrides) -> runner.Plan:
+        scenario = parse(MINIMAL | {"protocol": {"repetitions": 10} | protocol})
+        return runner.Plan(
+            scenario=scenario,
+            config=config.Config(defaults={"concurrency": 7, "attempts": 2}),
+            output=outputs.Output(Path(tempfile.mkdtemp()), scenario),
+            repo_path=Path("/x"),
+            repo_source="/x",
+            todo=[],
+            overrides=overrides,
+            blindness={},
+            notes=[],
+        )
+
+    def test_the_flag_wins_over_the_scenario(self):
+        assert self.plan({"concurrency": 5}, concurrency=50).load("concurrency") == 50
+
+    def test_the_scenario_wins_over_the_machine(self):
+        """A machine may supply a fallback, never a measurement."""
+        assert self.plan({"concurrency": 5}).load("concurrency") == 5
+
+    def test_the_machine_answers_what_the_scenario_leaves_out(self):
+        assert self.plan({}).load("concurrency") == 7
+        assert self.plan({}).load("attempts") == 2
+
+
 class TestResume:
     def output(self) -> outputs.Output:
         return outputs.Output(Path(tempfile.mkdtemp()), parse(GRID))
