@@ -596,12 +596,25 @@ class Output:
         self.directory.mkdir(parents=True, exist_ok=True)
         write_json(self.directory / STATE, state)
 
-    def initial_state(self, overrides: dict | None = None) -> dict:
-        """A fresh ledger, recording the load that produced it.
+    def load_record(self, overrides: dict | None = None) -> dict:
+        """The load a launch runs under, as the ledger records it.
 
         Concurrency and timeout are written down whatever their origin. They
         condition the retry count and therefore every cost column, so a matrix
         that does not record its own load cannot have its costs read.
+
+        The declaration and the flag stay two fields rather than one merged number: the
+        synthesis header prints both, and merged they would no longer tell an experiment
+        that asks for fifty from one whose operator asked for it that day.
+        """
+        return {
+            "concurrency": self.scenario.protocol.get("concurrency"),
+            "timeout": self.scenario.protocol.get("timeout"),
+            "overrides": overrides or {},
+        }
+
+    def initial_state(self, overrides: dict | None = None) -> dict:
+        """A fresh ledger, recording the load that produced it.
 
         The repository is recorded by its **logical** name only. Where it actually came
         from - a directory, or a URL and the commit its tag pointed at - is written per
@@ -621,10 +634,8 @@ class Output:
             "model": self.scenario.agent["model"],
             "thinking": self.scenario.agent["thinking"],
             "repetitions": self.repetitions,
-            "concurrency": self.scenario.protocol.get("concurrency"),
-            "timeout": self.scenario.protocol.get("timeout"),
+            **self.load_record(overrides),
             "layout": self.layout,
-            "overrides": overrides or {},
             "complete": False,
             "cells": self.fingerprints(),
             "runs": {
@@ -640,6 +651,12 @@ class Output:
         own directory. Since the count is part of the directory name this should be
         unreachable, but a ledger that disagrees with its own directory is worth
         catching rather than trusting.
+
+        The load is the one thing a reused ledger restates rather than keeps: it is not a
+        result, it is what this launch is about to run at. Inherited, it would name the
+        load of whichever launch created the directory, while the state, the synthesis
+        header and `compare`'s line of declared differences all read it as the load the
+        runs beside it were measured under.
         """
         state = self.read_state()
         if not state:
@@ -650,6 +667,7 @@ class Output:
                 f"repetitions, this run asks for {self.repetitions}: that is "
                 f"another experiment, so another directory"
             )
+        state.update(self.load_record(overrides))
         # A ledger may predate a scenario edit that added cells, or the layout field.
         # The layout itself is settled before this, against the tree the ledger describes.
         state.setdefault("layout", self.layout)

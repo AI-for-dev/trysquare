@@ -558,6 +558,18 @@ class TestResume:
         assert state["concurrency"] == 5
         assert state["overrides"] == {"concurrency": 10}
 
+    def test_a_relaunch_records_its_own_load_and_not_the_ledgers(self):
+        """The load is not a result, so it is the one thing a reused ledger restates."""
+        root = Path(tempfile.mkdtemp())
+        first = outputs.Output(root, parse(GRID))
+        first.prepare()
+        first.write_state(first.initial_state())
+
+        raised = GRID | {"protocol": GRID["protocol"] | {"concurrency": 50}}
+        state = outputs.Output(root, parse(raised)).load_or_create_state(overrides={"timeout": 60})
+        assert state["concurrency"] == 50
+        assert state["overrides"] == {"timeout": 60}
+
 
 class TestACellTheLedgerDoesNotKnow:
     """A scenario edited between two launches, and a directory name that cannot say so."""
