@@ -1,0 +1,210 @@
+<!doctype html>
+<!--
+  The page `trysquare watch` serves. One file, no network beyond its own `/data`, no
+  library: it is opened from a loopback port on a machine that may have no route out,
+  and a page that fetches a font is a page that hangs there.
+
+  It draws counts and never a verdict while the matrix is incomplete. The reason is in
+  `watch.py`, and it is the same reason `runner.resolve` refuses to write a synthesis
+  for a partial launch.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>trysquare</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1a1a1a; --dim: #5c5c5c; --line: #e2e2e2;
+  --head: #f6f6f6; --live: #0b7a3b; --warn: #a8500a; --stop: #a11b1b; --over: #1a56b8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171a; --fg: #e8e8e8; --dim: #9aa0a6; --line: #2c3036;
+    --head: #1d2025; --live: #4ec27e; --warn: #e0a05a; --stop: #e07070; --over: #7aa7f0;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg);
+       font: 15px/1.5 system-ui, sans-serif; }
+h1 { font-size: 1.3rem; margin: 0 0 .2rem; }
+h2 { font-size: 1rem; margin: 2rem 0 .6rem; font-weight: 600; }
+.sub { color: var(--dim); font-size: .85rem; margin-bottom: 1.2rem; }
+.sub b { font-weight: 600; color: var(--fg); }
+.pill { display: inline-block; padding: .1rem .5rem; border-radius: 1rem;
+        font-size: .78rem; font-weight: 600; border: 1px solid currentColor; }
+.pill.live { color: var(--live); } .pill.warn { color: var(--warn); }
+.pill.stop { color: var(--stop); } .pill.over { color: var(--over); }
+/* A retried run is the thing to notice in a table of fifty, so it carries the
+   colour rather than sitting in the same grey as every other count. */
+td.warn { color: var(--warn); font-weight: 600; }
+.bar { height: .5rem; background: var(--head); border-radius: .25rem; overflow: hidden;
+       margin: .4rem 0 .3rem; }
+.bar > i { display: block; height: 100%; background: var(--live); transition: width .4s; }
+/* Each table scrolls inside its own box. A scenario declares as many metrics as it
+   likes and every cell here is `nowrap`, so without this the widest table drags the
+   whole page sideways and clips its last column against the window. */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+th, td { padding: .3rem .55rem; border-bottom: 1px solid var(--line); text-align: right;
+         white-space: nowrap; }
+th { background: var(--head); font-weight: 600; text-align: right;
+     position: sticky; top: 0; z-index: 1; }
+/* The cell name stays put while the metrics scroll past it. A scenario declaring a
+   dozen metrics is wider than any window, and a row of counts whose row nobody can
+   name is not a table. */
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; }
+td:first-child { background: var(--bg); }
+th:first-child { z-index: 2; }
+td.cell { font-family: ui-monospace, monospace; }
+.num { font-variant-numeric: tabular-nums; }
+.zero { color: var(--dim); }
+.note { color: var(--dim); font-size: .8rem; margin-top: .5rem; }
+a { color: inherit; }
+.done { font-size: 1.6rem; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1 id="title">…</h1>
+<div class="sub" id="meta"></div>
+
+<div class="done"><span id="done" class="num">0</span> <span class="sub">/ <span id="planned">0</span> runs</span></div>
+<div class="bar"><i id="fill" style="width:0"></i></div>
+<div class="sub" id="states"></div>
+
+<h2>En vol <span id="inflight" class="sub"></span></h2>
+<div class="scroll"><table>
+  <thead><tr>
+    <th>cellule</th><th>rép</th><th>tent</th><th>modèle</th><th>tours</th>
+    <th>in</th><th>out</th><th>tok/s</th><th>maj/s</th><th>durée</th>
+  </tr></thead>
+  <tbody id="runs"></tbody>
+</table></div>
+<div class="note">
+  <b>tok/s</b> est exact&nbsp;: les tokens viennent de <code>message_end</code>, un par tour.
+  <b>maj/s</b> est un pouls&nbsp;: le rythme des mises à jour de flux, environ deux caractères
+  chacune. Ce ne sont pas des tokens.
+</div>
+
+<h2>Cellules</h2>
+<div class="scroll"><table>
+  <thead><tr id="cols"></tr></thead>
+  <tbody id="cells"></tbody>
+</table></div>
+<div class="note" id="tallynote"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const n = (v) => (v ?? 0).toLocaleString('fr-FR');
+
+function duration(s) {
+  s = Math.max(0, Math.round(s));
+  const m = Math.floor(s / 60);
+  return m ? `${m}m${String(s % 60).padStart(2, '0')}` : `${s}s`;
+}
+
+/* Kept per run id between polls, because a rate needs two readings and the payload
+   carries counters. A run that leaves the flight table takes its reading with it. */
+let previous = new Map();
+
+function rates(id, entry, now) {
+  const before = previous.get(id);
+  previous.set(id, { t: now, updates: entry.updates, output: entry.output });
+  const elapsed = now - entry.started;
+  const tokens = elapsed > 0 ? entry.output / elapsed : 0;
+  if (!before || now <= before.t) return { tokens, pulse: null };
+  return { tokens, pulse: (entry.updates - before.updates) / (now - before.t) };
+}
+
+function status(d) {
+  if (d.complete) return ['over', 'matrice complète'];
+  if (!d.live) return ['warn', 'aucun lancement'];
+  if (d.live.finished) return ['over', 'lancement terminé'];
+  if (d.silent) return ['warn', 'silencieux'];
+  return ['live', 'en cours'];
+}
+
+function header(d) {
+  const l = d.ledger, live = d.live || {};
+  $('title').textContent = live.title || l.scenario || d.directory;
+  const [cls, label] = status(d);
+  const bits = [
+    `<span class="pill ${cls}">${label}</span>`,
+    l.provider ? `<b>${l.provider}</b> / <b>${l.model}</b>` : '',
+    l.thinking ? `thinking <b>${l.thinking}</b>` : '',
+    l.etalon ? `étalon <b>${l.etalon}</b>` : '',
+    l.concurrency ? `concurrency <b>${l.concurrency}</b>, timeout <b>${l.timeout}s</b>` : '',
+    d.synthesis ? `<a href="${d.synthesis}">synthèse</a>` : '',
+  ];
+  $('meta').innerHTML = bits.filter(Boolean).join(' · ');
+}
+
+function flight(d) {
+  const runs = Object.entries((d.live || {}).runs || {});
+  const now = (d.live || {}).seen || Date.now() / 1000;
+  runs.sort((a, b) => a[1].cell.localeCompare(b[1].cell) || a[1].repetition - b[1].repetition);
+  $('inflight').textContent = runs.length ? `${runs.length} runs` : '';
+  $('runs').innerHTML = runs.map(([id, r]) => {
+    const { tokens, pulse } = rates(id, r, now);
+    return `<tr>
+      <td class="cell">${r.cell}</td>
+      <td class="num">${r.repetition}</td>
+      <td class="num${r.attempt > 1 ? ' warn' : ''}">${r.attempt}</td>
+      <td class="cell">${r.model_id || '—'}</td>
+      <td class="num">${r.turns}</td>
+      <td class="num">${n(r.input)}</td>
+      <td class="num">${n(r.output)}</td>
+      <td class="num">${tokens ? tokens.toFixed(1) : '<span class="zero">—</span>'}</td>
+      <td class="num">${pulse === null ? '<span class="zero">…</span>' : pulse.toFixed(1)}</td>
+      <td class="num">${duration(now - r.started)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="10" class="zero">rien en vol</td></tr>';
+  const stale = new Set(runs.map(([id]) => id));
+  for (const id of previous.keys()) if (!stale.has(id)) previous.delete(id);
+}
+
+function cells(d) {
+  const t = d.tallies, p = d.progress.cells;
+  const names = Object.keys(p).sort();
+  $('cols').innerHTML = ['<th>cellule</th>', '<th>runs</th>']
+    .concat(t.metrics.map((m) => `<th>${m}</th>`)).join('');
+  $('cells').innerHTML = names.map((cell) => {
+    const seen = t.cells[cell] || { runs: 0, counts: {} };
+    const counts = t.metrics.map((m) => {
+      const [x, total] = seen.counts[m] || [0, 0];
+      return `<td class="num${total ? '' : ' zero'}">${total ? `${x}/${total}` : '—'}</td>`;
+    }).join('');
+    return `<tr><td class="cell">${cell}</td>
+      <td class="num">${p[cell].done}/${p[cell].planned}</td>${counts}</tr>`;
+  }).join('');
+  $('tallynote').innerHTML = d.complete
+    ? 'Matrice complète. Les médianes, les intervalles et le verdict sont dans la synthèse.'
+    : 'Des comptages, pas un verdict : la matrice est incomplète, et les runs sont entrelacés '
+      + 'par répétition, donc chaque cellule n\'en tient qu\'une poignée. Ces comptages portent '
+      + 'sur les runs valides et n\'appliquent pas le filtre <code>validity</code> du scénario, '
+      + 'donc ils peuvent dépasser ceux de la synthèse.';
+}
+
+function counters(d) {
+  const p = d.progress;
+  $('done').textContent = n(p.done);
+  $('planned').textContent = n(p.planned);
+  $('fill').style.width = p.planned ? `${(100 * p.done) / p.planned}%` : '0';
+  $('states').textContent = Object.entries(p.states)
+    .sort().map(([s, c]) => `${c} ${s}`).join(' · ');
+}
+
+async function poll() {
+  try {
+    const d = await (await fetch('/data', { cache: 'no-store' })).json();
+    header(d); counters(d); flight(d); cells(d);
+    document.title = `${d.progress.done}/${d.progress.planned} · trysquare`;
+  } catch (e) {
+    $('meta').innerHTML = '<span class="pill stop">serveur injoignable</span>';
+  }
+}
+
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

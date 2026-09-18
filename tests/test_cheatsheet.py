@@ -61,9 +61,9 @@ class TestEveryFlagIsRealAndPresent:
 
 
 class TestEverySubcommandHasACard:
-    def test_all_eight(self):
-        """The sheet's own claim - eight commands - checked against the parser, since a
-        ninth would otherwise be documented everywhere but here.
+    def test_all_nine(self):
+        """The sheet's own claim - nine commands - checked against the parser, since a
+        tenth would otherwise be documented everywhere but here.
 
         A card title is what is looked for, not the bare word: `run` and `render` appear
         in one another's prose, so a substring match would pass for a command the sheet
@@ -73,5 +73,5 @@ class TestEverySubcommandHasACard:
             name for action in build_parser()._subparsers._group_actions for name in action.choices
         }
         text = sheet()
-        assert len(commands) == 8
+        assert len(commands) == 9
         assert [c for c in sorted(commands) if f'"ts-name">{c} ' not in text] == []

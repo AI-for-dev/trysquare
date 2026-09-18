@@ -24,6 +24,7 @@ import math
 import statistics
 import sys
 import textwrap
+import webbrowser
 from pathlib import Path
 
 from . import agent as agent_mod
@@ -39,12 +40,14 @@ from . import repo as repo_mod
 from . import runner as runner_mod
 from . import table as table_mod
 from . import validation as validation_mod
+from . import watch as watch_mod
 from .measure import EMPTY, Run, VALID, counted
 from .verdict import plain
 from .outputs import (
     DIFF,
     SESSION,
     STAMP,
+    STATE,
     Output,
     archived_run_dirs,
     carried_note,
@@ -235,6 +238,12 @@ def build_parser() -> argparse.ArgumentParser:
     parity.add_argument("--workdir", type=Path, help="where sessions live, for the thinking check")
     parity.add_argument("--config", type=Path)
     parity.set_defaults(func=cmd_parity)
+
+    watch = sub.add_parser("watch", help="follow a matrix directory in a browser")
+    watch.add_argument("directory", type=Path, help="the matrix directory to follow")
+    watch.add_argument("--port", type=int, default=0, help="default: a free one")
+    watch.add_argument("--no-open", action="store_true", help="print the address, open nothing")
+    watch.set_defaults(func=cmd_watch)
 
     form = with_common(sub.add_parser("form", help="generate or ingest a manual scoring form"))
     form.add_argument("--ingest", type=Path, help="merge a filled form back in")
@@ -843,6 +852,40 @@ def _write_synthesis(
     html_path = path.with_suffix(".html")
     html_path.write_text(pages_mod.synthesis_page(path.read_text(), session_links(output, runs)))
     print(f"  written {html_path}")
+    return 0
+
+
+# --- watch -----------------------------------------------------------------
+
+
+def cmd_watch(args) -> int:
+    """Serves one matrix directory on the loopback interface until interrupted.
+
+    The directory is the one `run` was given plus the experiment name it derived, which
+    is what the launch prints as `output`. Refused when it holds no ledger: a path that
+    is merely wrong would otherwise open a page saying nothing, and a reader would
+    believe the matrix was empty rather than the address.
+    """
+    directory = args.directory
+    if not (directory / STATE).is_file():
+        print(
+            f"error: {directory} holds no {STATE}. "
+            f"Give the directory a launch printed as its output",
+            file=sys.stderr,
+        )
+        return 1
+
+    httpd = watch_mod.server(directory, args.port)
+    url = f"http://127.0.0.1:{httpd.server_address[1]}/"
+    print(f"watching {directory.name}\n  {url}\n  Ctrl-C to stop")
+    if not args.no_open:
+        webbrowser.open(url)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print()
+    finally:
+        httpd.server_close()
     return 0
 
 

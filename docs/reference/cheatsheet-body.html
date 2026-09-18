@@ -265,6 +265,31 @@
 
       <article class="ts-cmd">
         <div class="ts-cmd-head">
+          <span class="ts-name">watch <span class="ts-arg">&lt;matrix dir&gt;</span></span>
+          <span class="ts-chip">free</span>
+        </div>
+        <p>
+          Follows a running matrix in a browser, on <code>127.0.0.1</code>. Reads the
+          directory a launch printed as its <code>output</code>, and writes nothing into
+          it. The runs in flight come from <code>live.json</code>, which
+          <code>run</code> refreshes every second.
+        </p>
+        <dl class="ts-flags">
+          <dt>--port &lt;n&gt;</dt>
+          <dd>default: a free one</dd>
+          <dt>--no-open</dt>
+          <dd>print the address, open nothing</dd>
+        </dl>
+        <div class="ts-note">
+          <b>Counts, never a verdict</b>, until the matrix is complete: runs are
+          interleaved by repetition, so every cell holds the same handful at any moment
+          and an interval over four runs swings at each one that lands. The verdict stays
+          <code>synthesis.md</code>'s, and the page links to it once there is one.
+        </div>
+      </article>
+
+      <article class="ts-cmd">
+        <div class="ts-cmd-head">
           <span class="ts-name">form <span class="ts-arg">&lt;scenario&gt; -o &lt;dir&gt;</span></span>
           <span class="ts-chip">free</span>
         </div>

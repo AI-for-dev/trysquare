@@ -71,6 +71,7 @@ class TestParser:
             "compare",
             "parity",
             "form",
+            "watch",
         }
 
     def test_the_three_answers_cannot_be_given_at_once(self):
