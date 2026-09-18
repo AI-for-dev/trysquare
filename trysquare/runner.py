@@ -64,6 +64,24 @@ class Plan:
     def runs(self) -> int:
         return len(self.todo)
 
+    def load(self, name: str):
+        """What this launch actually runs `name` at: concurrency, timeout, attempts.
+
+        The one place the precedence is spelled out, so the forecast an operator reads
+        before spending, the pool that spends it and the ceiling each run is stopped at
+        cannot answer differently.
+
+        The flag wins because it is explicit, announced in the header and recorded in
+        the ledger; then the scenario, which is the experiment; then the machine, which
+        may supply a fallback and never a measurement.
+
+        Distinct from what the ledger records, which keeps the *declaration* and the
+        flag as two fields rather than the one number they resolve to.
+        """
+        return self.overrides.get(name) or self.scenario.protocol.get(
+            name, self.config.fallback(name)
+        )
+
 
 def resolve(
     scenario: Scenario,
@@ -764,10 +782,8 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
             skills=bricks["skills"],
             has_context=context is not None,
         )
-        timeout = plan.overrides.get("timeout") or scenario.protocol.get(
-            "timeout", plan.config.fallback("timeout")
-        )
-        attempts = scenario.protocol.get("attempts", plan.config.fallback("attempts"))
+        timeout = plan.load("timeout")
+        attempts = plan.load("attempts")
         # Kept next to the run rather than in the measured repository, and written by
         # the agent as it goes rather than by the harness afterwards: a stream nobody
         # bounds must never become an object here.
@@ -924,15 +940,12 @@ def judge(
     dossier, judge_prompt = validation_mod.judge_dossier(
         directory / "judge", validator, rubric, pieces
     )
-    timeout = plan.overrides.get("timeout") or plan.scenario.protocol.get(
-        "timeout", plan.config.fallback("timeout")
-    )
     return validation_mod.run_judge(
         validator,
         dossier,
         judge_prompt,
         brick,
-        timeout,
+        plan.load("timeout"),
         work / "judge.jsonl",
         attempts,
         stream_ceiling(plan),
@@ -1059,9 +1072,7 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     if plan.replay:
         state = plan.output.replayed(state, plan.replay)
     plan.output.write_state(state)
-    concurrency = plan.overrides.get("concurrency") or plan.scenario.protocol.get(
-        "concurrency", plan.config.fallback("concurrency")
-    )
+    concurrency = plan.load("concurrency")
 
     # Runs are consumed as they finish, not in the order they were submitted. Walking
     # the futures in submission order made one slow run hold back the ledger of every
