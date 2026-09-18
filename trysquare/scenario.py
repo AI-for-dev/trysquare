@@ -93,10 +93,19 @@ class ScenarioError(Exception):
 
 @dataclass(frozen=True)
 class Cell:
-    """One configuration to measure, and how it differs from the baseline."""
+    """One configuration to measure, and how it differs from the baseline.
+
+    `description` is prose the scenario may declare about why this cell exists, and it
+    is deliberately **not** in `delta`. The delta is what the cell changes, which is
+    what `outputs.cell_fingerprint` hashes and what a reader can check against the run;
+    a sentence about it is neither. Kept apart, editing the prose cannot make a resume
+    refuse the runs it describes, and `is_baseline` still reads an empty delta as the
+    baseline rather than as a cell that explains itself.
+    """
 
     name: str
     delta: dict = field(default_factory=dict)
+    description: str = ""
 
     @property
     def is_baseline(self) -> bool:
@@ -274,15 +283,21 @@ def _expand(axes: dict, values: dict, variants: dict) -> tuple[Cell, ...]:
             delta: dict = {}
             for axis, value in zip(names, combo):
                 delta.update(values.get(axis, {}).get(value, {}))
-            cells.append(Cell(" / ".join(combo), delta))
+            cells.append(_cell(" / ".join(combo), delta))
 
     for name, delta in variants.items():
-        cells.append(Cell(name, dict(delta)))
+        cells.append(_cell(name, delta))
 
     duplicate = {n for n, k in Counter(c.name for c in cells).items() if k > 1}
     if duplicate:
         raise ScenarioError(f"cell declared twice: {', '.join(sorted(duplicate))}")
     return tuple(cells)
+
+
+def _cell(name: str, delta: dict) -> Cell:
+    """One cell, with its prose taken out of what it declares."""
+    delta = dict(delta)
+    return Cell(name, delta, str(delta.pop("description", "") or ""))
 
 
 def _check_axes(axes: dict, values: dict) -> None:

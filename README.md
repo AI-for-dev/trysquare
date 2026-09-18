@@ -152,6 +152,11 @@ shows that the baseline *is* a cell of the matrix. Every other value must declar
 delta, so a misspelled axis value raises instead of silently producing a duplicate
 of the baseline that would be published twice under two names.
 
+A cell may carry a `description`, which `watch` shows under its name. It is prose and
+is kept out of the delta: the delta is what was measured and what the fingerprint
+hashes, so rewriting the sentence cannot make a `--resume` refuse the runs it
+describes, and a baseline that explains itself is still a baseline.
+
 ## Writing a validator
 
 Any executable in any language:

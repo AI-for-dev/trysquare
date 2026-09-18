@@ -132,6 +132,31 @@ class TestGrid:
         cell = parse(GRID).cell("rule / high")
         assert cell.delta == {"context": "context/AGENTS.md", "thinking": "high"}
 
+    def test_a_cell_may_say_why_it_exists(self):
+        raw = MINIMAL | {
+            "variants": {"none": {}, "+rule": {"context": "c.md", "description": "la convention"}}
+        }
+        assert parse(raw).cell("+rule").description == "la convention"
+
+    def test_the_prose_is_not_part_of_what_the_cell_changes(self):
+        """`delta` is what was measured and what the fingerprint hashes. A sentence about
+        it is neither, and `is_baseline` reads the delta's emptiness."""
+        raw = MINIMAL | {
+            "variants": {"none": {"description": "ce que fait quelqu un le premier jour"}}
+        }
+        cell = parse(raw).cell("none")
+        assert cell.delta == {}
+        assert cell.is_baseline
+
+    def test_an_axis_value_may_say_it_too(self):
+        raw = GRID | {
+            "values": GRID["values"]
+            | {"thinking": {"high": {"thinking": "high", "description": "un budget"}}}
+        }
+        cell = parse(raw).cell("rule / high")
+        assert cell.description == "un budget"
+        assert cell.delta == {"context": "context/AGENTS.md", "thinking": "high"}
+
     def test_a_misspelled_axis_value_is_loud(self):
         """The counterpart of leaving the baseline implicit.
 

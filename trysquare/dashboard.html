@@ -46,7 +46,7 @@ td.warn { color: var(--warn); font-weight: 600; }
 .scroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: .85rem; }
 th, td { padding: .3rem .55rem; border-bottom: 1px solid var(--line); text-align: right;
-         white-space: nowrap; }
+         white-space: nowrap; vertical-align: top; }
 th { background: var(--head); font-weight: 600; text-align: right;
      position: sticky; top: 0; z-index: 1; }
 /* The cell name stays put while the metrics scroll past it. A scenario declaring a
@@ -56,6 +56,13 @@ th:first-child, td:first-child { text-align: left; position: sticky; left: 0; }
 td:first-child { background: var(--bg); }
 th:first-child { z-index: 2; }
 td.cell { font-family: ui-monospace, monospace; }
+/* The delta and the prose live under the cell name rather than in columns of their
+   own: the metrics already run wider than any window, and what a cell *is* belongs
+   next to its name. */
+.what { max-width: 26rem; white-space: normal; font-family: system-ui, sans-serif;
+        font-size: .78rem; color: var(--dim); margin-top: .1rem; }
+.what code { font-family: ui-monospace, monospace; color: var(--fg); }
+.what .prose { display: block; font-style: italic; }
 .num { font-variant-numeric: tabular-nums; }
 .zero { color: var(--dim); }
 .note { color: var(--dim); font-size: .8rem; margin-top: .5rem; }
@@ -162,8 +169,23 @@ function flight(d) {
   for (const id of previous.keys()) if (!stale.has(id)) previous.delete(id);
 }
 
+/* What a cell is, from the header the launch froze. The delta first, because it is
+   what was measured and cannot go stale; the declared sentence after, because it can. */
+function what(cell) {
+  if (!cell) return '';
+  const bits = Object.entries(cell.delta || {}).map(([k, v]) => {
+    const value = Array.isArray(v) ? v.join(', ') : String(v);
+    const short = value.split('/').pop();
+    return `${k} <code title="${value}">${short}</code>`;
+  });
+  if (cell.baseline) bits.push('<i>la base, aucun delta</i>');
+  const prose = cell.description ? `<span class="prose">${cell.description}</span>` : '';
+  return `<div class="what">${bits.join(' · ')}${prose}</div>`;
+}
+
 function cells(d) {
   const t = d.tallies, p = d.progress.cells;
+  const declared = new Map(((d.live || {}).cells || []).map((c) => [c.name, c]));
   const names = Object.keys(p).sort();
   $('cols').innerHTML = ['<th>cellule</th>', '<th>runs</th>']
     .concat(t.metrics.map((m) => `<th>${m}</th>`)).join('');
@@ -173,7 +195,7 @@ function cells(d) {
       const [x, total] = seen.counts[m] || [0, 0];
       return `<td class="num${total ? '' : ' zero'}">${total ? `${x}/${total}` : '—'}</td>`;
     }).join('');
-    return `<tr><td class="cell">${cell}</td>
+    return `<tr><td class="cell">${cell}${what(declared.get(cell))}</td>
       <td class="num">${p[cell].done}/${p[cell].planned}</td>${counts}</tr>`;
   }).join('');
   $('tallynote').innerHTML = d.complete
