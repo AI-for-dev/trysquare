@@ -1,6 +1,8 @@
 [project]
 name = "trysquare"
-version = "0.1.1"
+# release-please writes this line, and `.release-please-manifest.json` holds the same
+# number. Nothing has been distributed yet, so it counts the first release from zero.
+version = "0.0.0"
 description = "A scenario harness for measuring coding agents reproducibly."
 requires-python = ">=3.11"
 # An SPDX expression, not a `License ::` classifier: PEP 639 made the expression the
@@ -8,10 +10,13 @@ requires-python = ">=3.11"
 # fact twice, in two schemas, one of them on its way out.
 license = "BSD-3-Clause"
 # Shipped inside the wheel, which is the only copy a reader of an installed package
-# has. AUTHORS is here because LICENSE names its holders collectively - "The trysquare
-# Authors" - so the notice is complete only with the file that enumerates them.
+# has. AUTHORS is here because LICENSE names one collective holder - the AI-for-dev
+# team - so the notice is complete only with the file that lists its members.
 license-files = ["LICENSE", "AUTHORS"]
-authors = [{ name = "Loïc Gouarin", email = "loic.gouarin@polytechnique.edu" }]
+authors = [{ name = "AI-for-dev team", email = "loic.gouarin@gmail.com" }]
+# PyPI renders its project page from this metadata and nothing else. Without a readme,
+# that page is the one-line summary above.
+readme = "README.md"
 # `rich` draws the pinned progress bar a matrix needs when it runs for hours.
 # TOML parsing is `tomllib`, which is why the floor is 3.11.
 dependencies = ["rich>=13.7"]
@@ -35,6 +40,12 @@ dev = [
     "pytest==9.1.1",
     "ruff==0.15.20",
 ]
+
+[project.urls]
+Homepage = "https://github.com/AI-for-dev/trysquare"
+Documentation = "https://ai-for-dev.github.io/trysquare/"
+Repository = "https://github.com/AI-for-dev/trysquare"
+Changelog = "https://github.com/AI-for-dev/trysquare/blob/main/CHANGELOG.md"
 
 [project.scripts]
 # The installed command. It is a shell entry point rather than `cli:main` directly,

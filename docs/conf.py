@@ -17,9 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from trysquare import __version__  # noqa: E402 - the path above is what makes it importable
 
 project = "trysquare"
-# The holders LICENSE names, so a page and a licence cannot disagree about who they are.
-copyright = "2026, The trysquare Authors"
-author = "Loic Gouarin"
+# The holder LICENSE names, so a page and a licence cannot disagree about who it is.
+copyright = "2026, AI-for-dev team"
+author = "AI-for-dev team"
 # Derived rather than written a third time: `pyproject.toml` names the version.
 release = __version__
 

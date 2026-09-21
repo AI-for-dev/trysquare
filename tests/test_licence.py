@@ -12,6 +12,7 @@ docstring as commands. Every existing test passed, because they all invoke the e
 with an explicit interpreter.
 """
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -59,11 +60,11 @@ class TestTheIdentifierTravelsWithTheCode:
         assert pyproject["project"]["license"] == "BSD-3-Clause"
         licence = (ROOT / "LICENSE").read_text()
         assert licence.startswith("BSD 3-Clause License")
-        assert "The trysquare Authors" in licence
+        assert "AI-for-dev team" in licence
 
     def test_the_collective_holder_is_enumerated(self):
-        """LICENSE names its holders collectively, so the notice is complete only with the
-        file that lists them - which is why both ship in the wheel."""
+        """LICENSE names one collective holder, so the notice is complete only with the
+        file that lists its members - which is why both ship in the wheel."""
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
         assert set(pyproject["project"]["license-files"]) == {"LICENSE", "AUTHORS"}
         assert "@" in (ROOT / "AUTHORS").read_text()
@@ -113,8 +114,15 @@ class TestTheVersionIsNamedOnce:
         ]
         assert written == [], f"these repeat the version instead of deriving it: {written}"
 
+    def test_the_release_manifest_agrees(self):
+        """release-please decides the next version from the manifest and then writes both.
+        Editing one of them by hand is what would make a release bump from a number the
+        project never shipped."""
+        manifest = json.loads((ROOT / ".release-please-manifest.json").read_text())
+        assert manifest["."] == self.declared()
+
     def test_the_copyright_a_page_shows_is_the_one_the_licence_names(self):
         """A documentation footer is a copyright notice, so it cannot name someone the
         licence does not."""
         conf = (ROOT / "docs" / "conf.py").read_text()
-        assert 'copyright = "2026, The trysquare Authors"' in conf
+        assert 'copyright = "2026, AI-for-dev team"' in conf
