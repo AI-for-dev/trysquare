@@ -679,7 +679,7 @@ class TestMeasuringOneVariantAgain:
         from trysquare import runner
         from trysquare.measure import VALID, Run
 
-        def one(_plan, run_id, meta):
+        def one(_plan, run_id, meta, _board=None):
             return Run(
                 id=run_id,
                 cell=meta["cell"],
@@ -1285,7 +1285,7 @@ class TestCompletionOrder:
         )
         slot = {rid: i for i, (rid, _) in enumerate(plan.todo)}
 
-        def slowest_first(_plan, run_id, meta):
+        def slowest_first(_plan, run_id, meta, _board=None):
             # The run submitted first finishes last, so completion order is the exact
             # reverse of submission order and the two orders cannot be confused.
             time.sleep(0.02 * (len(slot) - slot[run_id]))
@@ -1391,7 +1391,7 @@ class TestInterruptedMatrix:
         started: list[str] = []
         guard = threading.Lock()
 
-        def launch(_plan, run_id, meta):
+        def launch(_plan, run_id, meta, _board=None):
             with guard:
                 started.append(run_id)
             if run_id != first:
@@ -1488,7 +1488,7 @@ class TestWhatTheInterruptKeeps:
         together = {rid for rid, _ in plan.todo[:concurrency]}
         gate = threading.Barrier(concurrency, timeout=10)
 
-        def launch(_plan, run_id, meta):
+        def launch(_plan, run_id, meta, _board=None):
             if run_id in together:
                 gate.wait()
             else:

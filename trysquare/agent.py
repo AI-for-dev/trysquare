@@ -169,9 +169,12 @@ class _Sieve:
     keeps immediately, so the memory bound is the same as reading a trace back.
     """
 
-    def __init__(self, keep) -> None:
+    def __init__(self, keep, watch=None) -> None:
         self._keep = keep
         self._kept = 0
+        # A `live.Watch`, or nothing. Duck-typed on purpose: this module knows how to
+        # run an agent and must not acquire an opinion about who is looking.
+        self._watch = watch
 
     def kept(self) -> int:
         return self._kept
@@ -194,16 +197,26 @@ class _Sieve:
             reader.join()
 
     def _drain(self, fd: int) -> None:
+        watch = self._watch
         with os.fdopen(fd, "rb") as stream:
             for line in bounded(stream):
                 if line.startswith(DISCARDED):
+                    if watch:
+                        watch.update()
                     continue
                 self._kept += len(line)
                 self._keep.write(line)
+                if watch:
+                    watch.kept(line)
 
 
 def run(
-    cwd: Path, args: list[str], timeout: int, trace: Path, ceiling: int | None = None
+    cwd: Path,
+    args: list[str],
+    timeout: int,
+    trace: Path,
+    ceiling: int | None = None,
+    watch=None,
 ) -> Outcome:
     """Runs the agent once through the sieve, and reads back what it says.
 
@@ -228,7 +241,7 @@ def run(
         # Truncating, so an attempt reads its own stream and not the tail of the
         # attempt it is replacing.
         with trace.open("wb") as keep:
-            sieve = _Sieve(keep)
+            sieve = _Sieve(keep, watch)
             with sieve.plumbed() as sink:
                 proc = interrupt.run(
                     [PI, *args],
@@ -270,6 +283,7 @@ def run_until_productive(
     attempts: int,
     trace: Path,
     ceiling: int | None = None,
+    watch=None,
 ) -> tuple[Outcome, int]:
     """Retries only while nothing has been produced.
 
@@ -290,7 +304,9 @@ def run_until_productive(
     """
     outcome = None
     for attempt in range(1, attempts + 1):
-        outcome = run(cwd, args, timeout, trace, ceiling)
+        if watch:
+            watch.attempt(attempt)
+        outcome = run(cwd, args, timeout, trace, ceiling, watch)
         if outcome.produced_something or outcome.signalled or outcome.overflowed:
             return outcome, attempt
     return outcome, attempts

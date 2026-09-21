@@ -54,6 +54,9 @@ from .measure import EMPTY, VALIDATOR_FAILED, Run, counted
 
 STATE = "state.json"
 MEASURES = "measures.json"
+#: What the launch is doing while it is doing it. Not part of the archive: it holds
+#: only runs in flight, and a finished matrix's copy of it is empty by construction.
+LIVE = "live.json"
 SYNTHESIS = "synthesis.md"
 SESSION = "session"
 RUNS = "runs"
@@ -595,6 +598,9 @@ class Output:
     def write_state(self, state: dict) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         write_json(self.directory / STATE, state)
+
+    def write_live(self, payload: dict) -> None:
+        write_json(self.directory / LIVE, payload)
 
     def load_record(self, overrides: dict | None = None) -> dict:
         """The load a launch runs under, as the ledger records it.

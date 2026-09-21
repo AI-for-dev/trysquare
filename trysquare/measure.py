@@ -153,39 +153,55 @@ class Reading:
     error: str
 
 
-def read(evts) -> Reading:
-    """Everything a stream says, in one forward pass over it.
+class Fold:
+    """Everything a stream says, folded one event at a time.
 
-    One pass because the stream is the one thing here with no bound: it was walked
-    four times, and each walk needed it whole. The three rules are independent -
-    a sum, a last, a first - so folding them together answers what the separate
-    walks answered.
+    The three rules are independent - a sum, a last, a first - so one forward pass
+    answers what four separate walks over the stream used to answer. Stateful rather
+    than a loop, because the same fold is fed two ways: `read` hands it a stream that
+    has ended, and a live board hands it each event as it arrives. One implementation,
+    so what a dashboard shows during a run and what the ledger records after it cannot
+    be two different numbers.
 
-    Turns are counted on `message_end` events **carrying a usage**, not on
-    `turn_end`. The `usage` filter is what makes a counted turn a billed turn:
-    without it, a run that produced nothing still reports turns.
+    Turns are counted on `message_end` events **carrying a usage**, not on `turn_end`.
+    The `usage` filter is what makes a counted turn a billed turn: without it, a run
+    that produced nothing still reports turns.
 
-    Retries matter beyond logging. When the stream is cut, `pi` replays the turn
-    with the whole accumulated context, so input tokens, turns and duration
-    inflate without the measured configuration having anything to do with it.
-    Measured on the bench: zero retries gives 4 turns and 15.9k input tokens,
-    thirteen retries gives 24 turns and 79.4k. Publishing those columns without
-    looking at retries means publishing our own load on the provider.
+    Retries matter beyond logging. When the stream is cut, `pi` replays the turn with
+    the whole accumulated context, so input tokens, turns and duration inflate without
+    the measured configuration having anything to do with it. Measured on the bench:
+    zero retries gives 4 turns and 15.9k input tokens, thirteen retries gives 24 turns
+    and 79.4k. Publishing those columns without looking at retries means publishing our
+    own load on the provider.
     """
-    usage = _blank_usage()
-    usage["retries"] = 0
-    response, error = "", ""
-    for event in evts:
+
+    def __init__(self) -> None:
+        self.usage = _blank_usage()
+        self.usage["retries"] = 0
+        self.response = ""
+        self.error = ""
+
+    def feed(self, event: dict) -> None:
         kind_ = event.get("type")
         if kind_ == "auto_retry_start":
-            usage["retries"] += 1
+            self.usage["retries"] += 1
         elif kind_ == "message_end":
             message = event.get("message") or {}
-            _add_usage(usage, message.get("usage"))
-            response = _assistant_text(message) or response
-        if not error:
-            error = _error_of(event)
-    return Reading(usage=usage, response=response, error=error)
+            _add_usage(self.usage, message.get("usage"))
+            self.response = _assistant_text(message) or self.response
+        if not self.error:
+            self.error = _error_of(event)
+
+    def reading(self) -> Reading:
+        return Reading(usage=self.usage, response=self.response, error=self.error)
+
+
+def read(evts) -> Reading:
+    """Everything a stream that has ended says."""
+    fold = Fold()
+    for event in evts:
+        fold.feed(event)
+    return fold.reading()
 
 
 def read_file(path: Path) -> Reading:

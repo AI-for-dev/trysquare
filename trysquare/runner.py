@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,7 @@ from . import interrupt
 from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
+from .live import Board, published, watching
 from .measure import EMPTY, VALID, Run, counted, merge, models, one_line
 from .outputs import RESUMABLE, Carried, Output, carryable, matrices, slug, write_text
 from .scenario import Cell, Scenario
@@ -720,7 +722,7 @@ def preflight(scenario: Scenario, base: Path) -> list[str]:
     return missing
 
 
-def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
+def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
     """Measures one cell once, and writes down everything about it.
 
     Every failure path here ends in a `Run` with a state, never in an exception:
@@ -789,9 +791,13 @@ def one_run(plan: Plan, run_id: str, meta: dict) -> Run:
         # bounds must never become an object here.
         trace = work / "trace.jsonl"
         ceiling = stream_ceiling(plan)
-        outcome, tries = agent_mod.run_until_productive(
-            clone, args, timeout, attempts, trace, ceiling
-        )
+        # The live entry exists only for as long as the agent does: what the run
+        # produced is `measures.json`'s to say, and saying it twice is how two records
+        # of one run come to disagree.
+        with watching(board, run_id, cell.name, meta["repetition"]) as watch:
+            outcome, tries = agent_mod.run_until_productive(
+                clone, args, timeout, attempts, trace, ceiling, watch
+            )
 
         run.usage = outcome.usage
         run.duration = outcome.duration
@@ -1116,8 +1122,26 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
         plan.output.write_measures(sorted(archived.values(), key=lambda r: place[r.id]))
         plan.output.write_state(state)
 
-    with ThreadPoolExecutor(max_workers=concurrency) as pool:
-        futures = {pool.submit(one_run, plan, rid, meta): rid for rid, meta in plan.todo}
+    # Frozen here, and holding only what `state.json` does not already say: a reader of
+    # the dashboard has both files in the same directory, and two copies of the provider
+    # are two things that can disagree.
+    board = Board(
+        {
+            "scenario": plan.scenario.name,
+            "title": plan.scenario.title or plan.scenario.name,
+            "started": time.time(),
+            "planned": len(plan.todo),
+            "finished": None,
+        }
+    )
+
+    # Opened around the pool and not inside it, so the stamp that says this launch has
+    # stopped is written on the way out of an interruption too.
+    with (
+        published(plan.output.write_live, board),
+        ThreadPoolExecutor(max_workers=concurrency) as pool,
+    ):
+        futures = {pool.submit(one_run, plan, rid, meta, board): rid for rid, meta in plan.todo}
         try:
             for future in as_completed(futures):
                 run = future.result()
