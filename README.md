@@ -60,7 +60,7 @@ uv run trysquare run my-scenario.toml --output out
 `trysquare` is a console script, so `uv tool install .` - or `pip install -e .` in a
 virtual environment - puts the same command on PATH without `uv run` in front of it.
 `uv run trysquare --help` lists the subcommands, and `uv run trysquare <command>
---help` the flags of one. `python -m trysquare` runs the same eight subcommands from
+--help` the flags of one. `python -m trysquare` runs the same nine subcommands from
 an installed environment, which is what the tests use.
 
 ## Commands
@@ -75,6 +75,7 @@ an installed environment, which is what the tests use.
 | `compare` | compares two experiments side by side, refusing what is not comparable |
 | `parity` | checks this harness against the previous bench, layer by layer |
 | `form` | generates or ingests a blind manual scoring form |
+| `watch` | follows a running matrix in a browser, on the loopback interface, writing nothing |
 
 `--output <dir>` roots everything that writes. One directory per experiment:
 
@@ -309,11 +310,14 @@ trysquare/
   assay.py      the base a validator is written on                       |
   runner.py     orchestration: interleaving, concurrency, archiving      |
   pages.py      the synthesis as a self-contained page                   |
+  live.py       what a matrix is doing, while it does it                 |
+  watch.py      that, read back and served on 127.0.0.1                  |
   progress.py   a pinned bar for the loops that take hours               |
   cli.py        argparse, overrides, reporting                          /
 
-  judge-tool.ts the judge's verdict tool          \  shipped inside the package:
-  agent-gate.ts the subagent scope gate           /  neither is an experiment's choice
+  judge-tool.ts  the judge's verdict tool         \  shipped inside the package:
+  agent-gate.ts  the subagent scope gate          |  none is an experiment's choice
+  dashboard.html the page `watch` serves          /
 
 examples/validator.py   a whole validator, run by the suite against tests/fixtures/tiny
 ```
