@@ -1473,6 +1473,7 @@ class TestWhatTheInterruptKeeps:
     def interrupted(self, concurrency: int = 6):
         import threading
         import unittest.mock
+        from concurrent.futures import as_completed, wait
 
         from trysquare import config as config_mod
         from trysquare import runner
@@ -1487,6 +1488,11 @@ class TestWhatTheInterruptKeeps:
         )
         together = {rid for rid, _ in plan.todo[:concurrency]}
         gate = threading.Barrier(concurrency, timeout=10)
+        futures: dict = {}
+
+        def capture(pending):
+            futures.update(pending)
+            return as_completed(pending)
 
         def launch(_plan, run_id, meta):
             if run_id in together:
@@ -1505,11 +1511,19 @@ class TestWhatTheInterruptKeeps:
             )
 
         def report(_run):
+            # The barrier says the six entered `launch`, which is not the same as the six
+            # having a result. A thread can be descheduled between returning its run and
+            # the pool marking its future done, and a future not yet done is one the
+            # harvest is right to leave alone - so interrupting on the barrier alone
+            # failed here about once in three runs, on a matrix this test never meant to
+            # describe. The wait is what makes "finished when the interrupt landed" true.
+            wait([f for f, rid in futures.items() if rid in together], timeout=10)
             raise KeyboardInterrupt
 
         with (
             unittest.mock.patch.object(runner, "prepare_source"),
             unittest.mock.patch.object(runner, "one_run", side_effect=launch),
+            unittest.mock.patch.object(runner, "as_completed", side_effect=capture),
         ):
             with pytest.raises(KeyboardInterrupt):
                 runner.execute(plan, on_run=report)
