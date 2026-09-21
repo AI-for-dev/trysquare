@@ -1466,12 +1466,14 @@ class TestWhatTheInterruptKeeps:
     abandons every run that had finished behind the one being written down. Those cost
     exactly what the recorded one cost, and dropping them means paying twice.
 
-    Six runs are made to finish at the same instant by a barrier rather than a sleep:
-    whichever of them `as_completed` yields first, the other five are done and
-    unconsumed at the moment the interrupt lands, on any machine.
+    Six runs are released at the same instant by a barrier, and the interrupt then waits
+    on their futures. The barrier is what puts five of them behind whichever one
+    `as_completed` yields first; the wait is what makes those five *finished* rather than
+    merely released, on any machine.
     """
 
     def interrupted(self, concurrency: int = 6):
+        import concurrent.futures
         import threading
         import unittest.mock
 
@@ -1488,6 +1490,15 @@ class TestWhatTheInterruptKeeps:
         )
         together = {rid for rid, _ in plan.todo[:concurrency]}
         gate = threading.Barrier(concurrency, timeout=10)
+        held: dict[str, concurrent.futures.Future] = {}
+
+        class Tracking(concurrent.futures.ThreadPoolExecutor):
+            """Hands the futures to the test. Nothing in `execute` gives them out, and
+            their state is what the harvest reads."""
+
+            def submit(self, fn, plan, run_id, *rest):
+                held[run_id] = future = super().submit(fn, plan, run_id, *rest)
+                return future
 
         def launch(_plan, run_id, meta, _board=None):
             if run_id in together:
@@ -1506,10 +1517,15 @@ class TestWhatTheInterruptKeeps:
             )
 
         def report(_run):
+            # A released thread still has to be scheduled before it hands its result to
+            # its future, and the harvest reads the futures. Waiting on them is the
+            # condition itself, so a slow machine cannot turn this into a race.
+            concurrent.futures.wait([held[rid] for rid in together], timeout=10)
             raise KeyboardInterrupt
 
         with (
             unittest.mock.patch.object(runner, "prepare_source"),
+            unittest.mock.patch.object(runner, "ThreadPoolExecutor", Tracking),
             unittest.mock.patch.object(runner, "one_run", side_effect=launch),
         ):
             with pytest.raises(KeyboardInterrupt):
