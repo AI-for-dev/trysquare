@@ -2,7 +2,7 @@
 name = "trysquare"
 # release-please writes this line, and `.release-please-manifest.json` holds the same
 # number. Nothing has been distributed yet, so it counts the first release from zero.
-version = "0.0.0"
+version = "0.1.0"
 description = "A scenario harness for measuring coding agents reproducibly."
 requires-python = ">=3.11"
 # An SPDX expression, not a `License ::` classifier: PEP 639 made the expression the
