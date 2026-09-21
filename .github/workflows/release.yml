@@ -1,0 +1,69 @@
+# release-please keeps a pull request open holding the next version and the changelog
+# entries for the commits since the last tag. Merging it is the release; the job below is
+# what turns that release into a wheel on TestPyPI.
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# A queued run waits rather than cancels: cancelling the half that publishes leaves a tag
+# and a GitHub release with nothing on the index behind them.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          # A personal access token rather than GITHUB_TOKEN, so that the release pull
+          # request gets the same CI as every other pull request. Nothing GITHUB_TOKEN
+          # creates starts a workflow, and a version bump nobody tested is a poor thing
+          # to merge on trust.
+          token: ${{ secrets.RELEASE_PLEASE }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # In this workflow rather than one triggered by the release. The token above would make
+  # a `release: published` workflow possible, but it would also make publishing depend on
+  # that token staying valid: the day it expires, release-please falls back to
+  # GITHUB_TOKEN, which starts no workflow, and the upload stops happening with nothing
+  # failing. Here the release and its upload are one run, and a token that lapses costs
+  # the CI on the release pull request and nothing else.
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/trysquare
+    permissions:
+      contents: read
+      # Trusted publishing: the job proves who it is to the index with a short-lived
+      # OIDC token, so there is no API token to store here and none to rotate.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        # The tag release-please just pushed, not the branch: another commit landing on
+        # main meanwhile would otherwise be built and uploaded under the released version.
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        # TestPyPI while the release path itself is what is being tried out. Moving to
+        # PyPI is this `with:` removed and the environment above renamed - plus the
+        # publisher declared over there, since the two indexes share nothing.
+        with:
+          repository-url: https://test.pypi.org/legacy/

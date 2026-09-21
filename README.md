@@ -352,7 +352,7 @@ BSD 3-Clause, in [LICENSE](LICENSE). Every source file of the package carries
 `SPDX-License-Identifier: BSD-3-Clause`, and `pyproject.toml` declares the same
 expression, so a file that travels out of this repository still says what it is.
 
-The holders are named collectively - "The trysquare Authors" - and enumerated in
+The holder is named collectively - the AI-for-dev team - and its members are listed in
 [AUTHORS](AUTHORS), which is what keeps LICENSE unchanged as that list grows. Both files
 ship inside the wheel.
 
@@ -375,3 +375,22 @@ make -C docs html          # then open docs/_build/html/index.html
   Python API
 
 Sphinx lives in the `docs` optional group and is never imported by the package.
+
+## Releases
+
+Commit subjects follow [Conventional Commits](https://www.conventionalcommits.org):
+release-please reads `feat:` and `fix:` to work out the next version. It keeps a pull
+request open carrying that version and the changelog entries for the commits since the
+last tag. Merging it tags the release, and the `release` workflow builds the wheel from
+that tag and uploads it by trusted publishing, so no token lives in the repository.
+
+Releases go to [TestPyPI](https://test.pypi.org/project/trysquare/) while the release
+path itself is what is being tried out. TestPyPI is a separate index rather than a
+mirror, so an install has to reach both it and PyPI, where the dependencies are:
+
+```bash
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ trysquare
+```
+
+`CHANGELOG.md` is written by that workflow, which makes it an output rather than a file
+to edit.
