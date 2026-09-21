@@ -1125,6 +1125,10 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     # Frozen here, and holding only what `state.json` does not already say: a reader of
     # the dashboard has both files in the same directory, and two copies of the provider
     # are two things that can disagree.
+    #
+    # The cells are frozen with it, for the reason the whole header is: a reader looking
+    # at a run must be told what that run was measured under, not what the scenario says
+    # now. A scenario edited mid-campaign would otherwise relabel runs already measured.
     board = Board(
         {
             "scenario": plan.scenario.name,
@@ -1132,6 +1136,15 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
             "started": time.time(),
             "planned": len(plan.todo),
             "finished": None,
+            "cells": [
+                {
+                    "name": cell.name,
+                    "delta": cell.delta,
+                    "description": cell.description,
+                    "baseline": cell.is_baseline,
+                }
+                for cell in plan.scenario.cells
+            ],
         }
     )
 

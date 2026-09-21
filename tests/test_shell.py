@@ -715,6 +715,21 @@ class TestACellThatChangedUnderItsName:
         o = self.output(GRID)
         assert sorted(o.initial_state()["cells"]) == sorted(c.name for c in parse(GRID).cells)
 
+    def test_rewriting_the_prose_does_not_condemn_the_runs_it_describes(self):
+        """A sentence about a cell is not something a run was measured under, so editing
+        one must not make the next `--resume` refuse the cell it explains."""
+        with_prose = GRID | {
+            "values": GRID["values"]
+            | {"thinking": {"high": {"thinking": "high", "description": "un budget"}}}
+        }
+        rewritten = GRID | {
+            "values": GRID["values"]
+            | {"thinking": {"high": {"thinking": "high", "description": "autre chose"}}}
+        }
+        assert self.digest(with_prose, "rule / high") == self.digest(rewritten, "rule / high")
+        later, state = self.reloaded(with_prose, rewritten, measured="rule / high")
+        assert later.changed_cells(state) == []
+
     def test_two_cells_declaring_different_things_are_told_apart(self):
         """A digest that is constant over a matrix guards nothing."""
         assert self.digest(GRID, "none / off") != self.digest(GRID, "rule / high")

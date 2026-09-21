@@ -109,6 +109,37 @@ class TestTheVerdictWaits:
         assert payload["synthesis"] == watch.SYNTHESIS_PAGE
 
 
+class TestWhatACellIs:
+    """The header a launch froze says what each cell was, so a reader of a count knows
+    what it is a count of."""
+
+    def test_the_delta_and_the_prose_reach_the_page(self, tmp_path):
+        header = {
+            "seen": time.time(),
+            "finished": None,
+            "runs": {},
+            "cells": [
+                {"name": "nothing", "delta": {}, "description": "la base", "baseline": True},
+                {
+                    "name": "+agents",
+                    "delta": {"context": "../briques/AGENTS.md"},
+                    "description": "la convention de projet",
+                    "baseline": False,
+                },
+            ],
+        }
+        d = matrix(tmp_path, live=header)
+        cells = {c["name"]: c for c in watch.assemble(d)["live"]["cells"]}
+        assert cells["+agents"]["delta"] == {"context": "../briques/AGENTS.md"}
+        assert cells["nothing"]["baseline"] is True
+
+    def test_a_directory_whose_launch_predates_this_still_draws(self, tmp_path):
+        """An older `live.json` carries no cells, and a page that fails on one would
+        make every archive written before today unreadable."""
+        d = matrix(tmp_path, live={"seen": time.time(), "finished": None, "runs": {}})
+        assert watch.assemble(d)["live"].get("cells") is None
+
+
 class TestSilence:
     def test_a_launch_that_stopped_writing_is_called_out(self, tmp_path):
         """`SIGKILL` stamps no ending, so the file goes on claiming its runs are alive.
