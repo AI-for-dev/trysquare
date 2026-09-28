@@ -24,6 +24,12 @@ zero precisely in the slowest, most fragile cells.
 Counting turns is not enough on its own: a run killed by the timeout also has real
 turns. The filter is turns **and** input **and** output.
 
+Tokens are not enough either. A provider can answer a few turns and then fail until
+the agent stops retrying: the run has tokens, changed nothing, and reads as an agent
+that decided the code was fine. A run whose last message ended on a provider error is
+therefore `empty`, and its `detail` carries that error. One matrix lost three of its
+nine cells this way before the rule existed.
+
 ## 2. Nothing that changes a measurement may be inherited
 
 `provider`, `model`, `thinking`, `etalon` and `repetitions` are mandatory in the
@@ -77,11 +83,12 @@ an interval *touching* zero is inconclusive. Touching is not excluding.
 A matrix is never rerun "to see". Optional stopping is the cure for a result you
 happen to like, so the harness removes the opportunity:
 
-- a **resume** may only relaunch runs that produced *nothing* - never launched, or
-  launched and consumed no tokens. `run --until-complete [N]` is that same resume,
-  bounded and automatic: at most N passes, each relaunching only what produced
-  nothing. It reaches nothing a hand-typed `--resume` could not, which is what lets a
-  matrix that runs for hours finish itself;
+- a **resume** may only relaunch runs that produced *nothing* - never launched,
+  launched and consumed no tokens, or abandoned by the provider.
+  `run --until-complete [N]` is that same resume, bounded and automatic: at most N
+  passes, each relaunching only what produced nothing. It reaches nothing a
+  hand-typed `--resume` could not, which is what lets a matrix that runs for hours
+  finish itself;
 - a validator failure is **re-scored** instead, at no token cost, because the run did
   produce a result and re-measuring it would let a resume change it;
 - **attempts are counted** per run, so an abusive resume leaves a trace in

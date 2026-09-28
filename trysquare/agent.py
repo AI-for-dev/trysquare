@@ -71,6 +71,7 @@ class Outcome:
     timed_out: bool
     usage: dict
     overflowed: bool = False
+    gave_up: str = ""
 
     @property
     def produced_something(self) -> bool:
@@ -80,8 +81,12 @@ class Outcome:
         managed before derailing carry a usage. Recording it would publish the cost of
         a run that never finished - the founding confusion of this harness, "did not do
         the work" filed as "worked well", reached by a new road.
+
+        A run the provider gave up on is not one either, for the same reason. The turns
+        before the failure are real, and they are exactly what made three whole cells of
+        a matrix read as agents that chose to change nothing.
         """
-        return not self.overflowed and consumed_tokens(self.usage)
+        return not self.overflowed and not self.gave_up and consumed_tokens(self.usage)
 
     @property
     def signalled(self) -> bool:
@@ -273,6 +278,7 @@ def run(
         timed_out=timed_out,
         usage=found.usage,
         overflowed=overflowed,
+        gave_up=found.gave_up,
     )
 
 

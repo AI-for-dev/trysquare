@@ -121,6 +121,34 @@ class TestReading:
         assert read(events(stream(message_end()))).error == ""
 
 
+def ended(reason: str, error: str = "") -> dict:
+    """An assistant message as `pi` closes it, `reason` being its `stopReason`."""
+    message = {"role": "assistant", "stopReason": reason, "usage": {"input": 0, "output": 0}}
+    if error:
+        message["errorMessage"] = error
+    return {"type": "message_end", "message": message}
+
+
+class TestGaveUp:
+    """A provider that dies mid-run leaves turns behind, and they are not a result.
+
+    Observed on a real matrix: three whole cells of runs that read two files, then hit
+    socket timeouts until `pi` stopped retrying. Each had tokens, so each was scored as
+    an agent that chose to change nothing.
+    """
+
+    def test_a_run_that_ended_on_an_error_gave_up(self):
+        s = stream(message_end(1000, 20), ended("error", "500: EngineCore\n died"))
+        assert read(events(s)).gave_up == "500: EngineCore died"
+
+    def test_an_error_the_agent_recovered_from_is_not_giving_up(self):
+        s = stream(message_end(), ended("error", "timeout"), ended("stop"))
+        assert read(events(s)).gave_up == ""
+
+    def test_a_run_that_finished_did_not_give_up(self):
+        assert read(events(stream(message_end(), ended("stop")))).gave_up == ""
+
+
 class TestEvents:
     """One tolerance, shared by every reader of a stream or a session."""
 
