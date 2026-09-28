@@ -57,6 +57,12 @@ class TestStrip:
         s = stream({"type": "message_end", "message": {}}, message_end())
         assert strip(s)["turns"] == 1
 
+    def test_a_message_the_provider_never_served_is_not_a_turn(self):
+        """`pi` closes a failed request with a usage of zeros. Counted, each retry added
+        a turn the provider never billed: 6 turns for 2 answers."""
+        s = stream(message_end(1000, 20), message_end(0, 0), message_end(1000, 20))
+        assert strip(s)["turns"] == 2
+
     def test_retries_are_counted(self):
         s = stream(
             {"type": "auto_retry_start", "attempt": 1},
@@ -224,6 +230,13 @@ class TestStripSession:
         u = strip_session(s)
         assert u["turns"] == 2
         assert u["input"] == 600
+
+    def test_a_failed_request_is_not_a_turn_here_either(self):
+        s = stream(
+            {"type": "message", "message": {"usage": {"input": 500, "output": 50}}},
+            {"type": "message", "message": {"usage": {"input": 0, "output": 0}}},
+        )
+        assert strip_session(s)["turns"] == 1
 
     def test_retries_are_none_not_zero(self):
         """A session cannot know: `auto_retry_start` is a stream event.
