@@ -238,7 +238,8 @@ that left. `turns` is not here: it is a shape of the conversation rather than a 
 and it is read against the reference or not at all.
 
 The **gap table** is the part a conclusion rests on. `*` established, `o` inconclusive,
-and no sentence may rest on an `o`.
+and no sentence may rest on an `o`. Each gap shows its `p`, Holm-adjusted over every
+gap of the table.
 
 When retries are present, a warning follows the table and covers even results marked
 established - see {doc}`../guide/invariants`.

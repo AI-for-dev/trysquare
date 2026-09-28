@@ -130,6 +130,12 @@ A gap between a cell and the reference is resampled 10 000 times with a fixed se
 and it is **established** if the 95% interval of the difference excludes zero.
 Otherwise **inconclusive**.
 
+Each gap also carries a p-value from the same draws: twice the share of draws on the
+far side of zero. The gap table adjusts it with Holm over all the gaps it shows,
+because fifteen gaps at 95% each yield 0.75 stars on average with no real effect. The
+p-value changes no state. It tells the reader which stars still hold once the number
+of gaps tested is taken into account.
+
 :::{admonition} Why two states and not three
 :class: important
 

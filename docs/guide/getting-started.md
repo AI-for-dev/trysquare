@@ -324,18 +324,23 @@ Then the gaps, which is where a conclusion may come from:
 
 10000 draws, seed 20260729: the verdict is reproducible.
 
-| cell                     | in        | out      | turns | duration | overflow    |
-| ------------------------ | --------- | -------- | ----- | -------- | ----------- |
-| rule / off               | +11 502 o | -284 o   | +1 o  | -8 o     | -10 pts o   |
-| rule / high              | +43 248 * | +4 767 * | +2 o  | +144 *   | -80 pts *   |
-| careful ticket / off     | +15 929 o | -296 o   | +3 *  | +7 o     | -100 pts *  |
+| cell                 | in                | out              | turns         | duration        | overflow            |
+| -------------------- | ----------------- | ---------------- | ------------- | --------------- | ------------------- |
+| rule / off           | +11 502 o p=1.000 | -284 o p=1.000   | +1 o p=1.000  | -8 o p=1.000    | -10 pts o p=1.000   |
+| rule / high          | +43 248 * p<0.001 | +4 767 * p=0.003 | +2 o p=0.920  | +144 * p=0.012  | -80 pts * p<0.001   |
+| careful ticket / off | +15 929 o p=0.880 | -296 o p=1.000   | +3 * p=0.270  | +7 o p=1.000    | -100 pts * p<0.001  |
 
 `*` established, the interval excludes zero - `o` inconclusive.
+`p` comes from the same draws, Holm-adjusted over the 15 gaps of this
+table. It changes no state, but a star with `p` above 0.05 could be chance
+alone, given how many gaps were tested.
 ```
 
 Read that as: **only the `*` rows may be written about.** An `o` is shown rather
 than hidden - hiding a measurement would be another dishonesty, and the dispersion
-is exactly what a reader needs - but no sentence may rest on one.
+is exactly what a reader needs - but no sentence may rest on one. A `*` with a `p`
+above 0.05, like `careful ticket / off` on `turns`, is one to confirm with more
+repetitions before writing about it.
 
 ## Rebuild a table without remeasuring
 

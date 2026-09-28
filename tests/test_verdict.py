@@ -12,11 +12,13 @@ from trysquare.verdict import (
     ESTABLISHED,
     INCONCLUSIVE,
     gap_interval,
+    holm,
     interval,
     judge,
     mean,
     plain,
     points,
+    probability,
     signed,
 )
 
@@ -133,3 +135,63 @@ class TestStat:
     def test_median_is_the_default(self):
         v = judge([1, 2, 3], [10, 20, 30])
         assert v["gap"] == statistics.median([10, 20, 30]) - statistics.median([1, 2, 3])
+
+
+class TestBootstrapP:
+    """The p-value is read off the draws the interval comes from, not a second test."""
+
+    def test_complete_separation_has_no_draw_on_the_other_side(self):
+        assert judge([1.0] * 10, [0.0] * 10, mean)["p"] == 0
+
+    def test_identical_constant_samples_give_one(self):
+        assert judge([1.0] * 10, [1.0] * 10, mean)["p"] == 1
+
+    @pytest.mark.parametrize(
+        "a,b",
+        [
+            ([1.0] * 10, [1.0] * 9 + [0.0]),
+            ([1.0] * 10, [1.0] * 6 + [0.0] * 4),
+            ([1.0] * 10, [1.0] * 7 + [0.0] * 3),
+            ([i * 0.37 for i in range(20)], [i * 0.41 + 1 for i in range(20)]),
+            ([1, 0, 1, 0], [1, 0, 1, 0]),
+        ],
+    )
+    def test_it_agrees_with_the_state(self, a, b):
+        """Established puts at most 2.5% of the draws on the far side of zero, so p is
+        at most 0.05; inconclusive puts at least that much on both, so p is at least
+        0.05. The two readings of one sorted list cannot contradict each other."""
+        v = judge(a, b, mean)
+        assert (v["p"] <= 0.05) if v["state"] == ESTABLISHED else (v["p"] >= 0.05)
+
+    def test_it_does_not_move_the_interval(self):
+        a, b = [i * 0.37 for i in range(20)], [i * 0.41 + 1 for i in range(20)]
+        v = judge(a, b)
+        assert (v["low"], v["high"]) == gap_interval(a, b)
+
+
+class TestHolm:
+    def test_known_values(self):
+        got = holm([0.0128, 0.0083, 0.0128, 0.0164, 0.4506])
+        assert got == pytest.approx([0.0512, 0.0415, 0.0512, 0.0512, 0.4506])
+
+    def test_it_never_exceeds_one(self):
+        assert holm([0.6, 0.7, 0.9]) == pytest.approx([1.0, 1.0, 1.0])
+
+    def test_a_single_test_is_left_alone(self):
+        assert holm([0.03]) == [0.03]
+
+    def test_no_test_gives_nothing(self):
+        assert holm([]) == []
+
+
+class TestProbability:
+    def test_three_decimals(self):
+        assert probability(0.0512) == "p=0.051"
+
+    def test_a_small_p_never_renders_as_zero(self):
+        """The same rule as `signed`: 0.0004 shown as `p=0.000` reads as certainty."""
+        assert probability(0.0004) == "p<0.001"
+        assert probability(0) == "p<0.001"
+
+    def test_one(self):
+        assert probability(1.0) == "p=1.000"

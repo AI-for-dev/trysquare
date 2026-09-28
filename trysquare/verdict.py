@@ -21,6 +21,7 @@ Pure: lists of numbers in, intervals out.
 
 from __future__ import annotations
 
+import bisect
 import random
 import statistics
 
@@ -36,8 +37,8 @@ def mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
 
-def _bounds(one_draw, draws: int, seed: int) -> tuple[float, float]:
-    """Replays `one_draw` with a fresh seeded RNG and returns the 95% bounds.
+def _draws(one_draw, draws: int, seed: int) -> list[float]:
+    """Replays `one_draw` with a fresh seeded RNG and returns the draws, sorted.
 
     The RNG is created fresh here rather than shared across calls, so each
     interval depends only on its own inputs and the seed. Two runs of the tool
@@ -45,21 +46,39 @@ def _bounds(one_draw, draws: int, seed: int) -> tuple[float, float]:
     later.
     """
     rng = random.Random(seed)
-    values = sorted(one_draw(rng) for _ in range(draws))
+    return sorted(one_draw(rng) for _ in range(draws))
+
+
+def _bounds(values: list[float]) -> tuple[float, float]:
+    """The 95% bounds of sorted draws."""
     return (
         values[int(0.025 * len(values))],
         values[min(len(values) - 1, int(0.975 * len(values)))],
     )
 
 
-def gap_interval(
+def _p(values: list[float]) -> float:
+    """The two-sided p-value of sorted draws: twice the share on the rarer side of zero.
+
+    A draw of exactly zero counts on both sides, so a gap that resamples to zero is
+    never read as significant. That is the same choice as `judge`, where an interval
+    touching zero is inconclusive, and it is what keeps the two readings in step:
+    established means p <= 0.05, inconclusive means p >= 0.05.
+    """
+    n = len(values)
+    at_most_zero = bisect.bisect_right(values, 0) / n
+    at_least_zero = (n - bisect.bisect_left(values, 0)) / n
+    return min(1.0, 2 * min(at_most_zero, at_least_zero))
+
+
+def gap_draws(
     reference: list[float],
     cell: list[float],
     stat=statistics.median,
     draws: int = DRAWS,
     seed: int = SEED,
-) -> tuple[float, float]:
-    """95% interval of `stat(cell) - stat(reference)`.
+) -> list[float]:
+    """The resampled values of `stat(cell) - stat(reference)`, sorted.
 
     Draw order matters for byte-identical reproduction: the reference sample is
     drawn before the cell sample on every iteration.
@@ -72,7 +91,18 @@ def gap_interval(
         b = rng.choices(cell, k=len(cell))
         return stat(b) - stat(a)
 
-    return _bounds(one_draw, draws, seed)
+    return _draws(one_draw, draws, seed)
+
+
+def gap_interval(
+    reference: list[float],
+    cell: list[float],
+    stat=statistics.median,
+    draws: int = DRAWS,
+    seed: int = SEED,
+) -> tuple[float, float]:
+    """95% interval of `stat(cell) - stat(reference)`."""
+    return _bounds(gap_draws(reference, cell, stat, draws, seed))
 
 
 def interval(
@@ -92,7 +122,7 @@ def interval(
     if not values:
         raise ValueError("an empty sample has no interval")
 
-    return _bounds(lambda rng: stat(rng.choices(values, k=len(values))), draws, seed)
+    return _bounds(_draws(lambda rng: stat(rng.choices(values, k=len(values))), draws, seed))
 
 
 def judge(
@@ -102,22 +132,43 @@ def judge(
     draws: int = DRAWS,
     seed: int = SEED,
 ) -> dict:
-    """A gap, its interval, and one of exactly two states.
+    """A gap, its interval, its p-value, and one of exactly two states.
 
     Two states only. A third would invite a reading where a gap is "almost"
-    something, and almost is how six conclusions got published.
+    something, and almost is how six conclusions got published. The p-value comes
+    from the same draws as the interval and decides nothing. It exists so a whole
+    table can be adjusted for the number of gaps it tests, which an interval cannot.
     """
-    low, high = gap_interval(reference, cell, stat, draws, seed)
+    values = gap_draws(reference, cell, stat, draws, seed)
+    low, high = _bounds(values)
     gap = stat(cell) - stat(reference)
     return {
         "gap": gap,
         "low": low,
         "high": high,
+        "p": _p(values),
         # Excluding zero is the whole test. Written this way rather than as
         # `low > 0 or high < 0` so that an interval touching zero exactly counts
         # as inconclusive.
         "state": INCONCLUSIVE if low <= 0 <= high else ESTABLISHED,
     }
+
+
+def holm(p: list[float]) -> list[float]:
+    """Holm's step-down adjustment of `p`, in the order given.
+
+    Every gap of a table is its own test at 95%, so fifteen gaps with no real effect
+    still yield 0.75 stars on average. Holm bounds the chance of even one false star
+    over the whole table, and it assumes nothing about how the gaps are correlated.
+    That matters here, since every column of a row resamples the same runs.
+    """
+    order = sorted(range(len(p)), key=lambda i: p[i])
+    adjusted = [0.0] * len(p)
+    running = 0.0
+    for rank, i in enumerate(order):
+        running = max(running, min(1.0, (len(p) - rank) * p[i]))
+        adjusted[i] = running
+    return adjusted
 
 
 def signed(x: float) -> str:
@@ -142,6 +193,11 @@ def plain(x: float) -> str:
     if x != 0 and abs(x) < 1:
         return f"{x:.1f}"
     return f"{x:,.0f}".replace(",", " ")
+
+
+def probability(p: float) -> str:
+    """A p-value, never rendered as zero: resampling cannot prove a gap certain."""
+    return "p<0.001" if p < 0.001 else f"p={p:.3f}"
 
 
 def points(x: float) -> str:
