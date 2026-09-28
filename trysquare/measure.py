@@ -143,14 +143,20 @@ class Reading:
     """What one run's stream is worth: the numbers, the answer, the first failure.
 
     Everything anybody derived from a `pi --mode json` stream, and the reason the
-    stream itself never has to be held: these three are bounded where it is not.
+    stream itself never has to be held: these are bounded where it is not.
     `response` is one assistant message, so its ceiling is the provider's output
     limit rather than the length of the run.
+
+    `gave_up` is the error the run ended on, empty when it ended on anything else.
+    `pi` closes a message it could not get from the provider with `stopReason:
+    "error"`, and stops once its own retries are spent: a last message closed that
+    way is a run the provider abandoned, however many turns came before it.
     """
 
     usage: dict
     response: str
     error: str
+    gave_up: str = ""
 
 
 class Fold:
@@ -180,6 +186,7 @@ class Fold:
         self.usage["retries"] = 0
         self.response = ""
         self.error = ""
+        self.gave_up = ""
 
     def feed(self, event: dict) -> None:
         kind_ = event.get("type")
@@ -189,11 +196,15 @@ class Fold:
             message = event.get("message") or {}
             _add_usage(self.usage, message.get("usage"))
             self.response = _assistant_text(message) or self.response
+            if message.get("role") == "assistant":
+                self.gave_up = _error_of(event) if message.get("stopReason") == "error" else ""
         if not self.error:
             self.error = _error_of(event)
 
     def reading(self) -> Reading:
-        return Reading(usage=self.usage, response=self.response, error=self.error)
+        return Reading(
+            usage=self.usage, response=self.response, error=self.error, gave_up=self.gave_up
+        )
 
 
 def read(evts) -> Reading:

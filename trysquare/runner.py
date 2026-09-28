@@ -816,7 +816,10 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
             run.detail = (
                 one_line(outcome.stderr)[:200]
                 if outcome.overflowed
-                else outcome.error or one_line(outcome.stderr)[:200] or "no tokens consumed"
+                else outcome.gave_up
+                or outcome.error
+                or one_line(outcome.stderr)[:200]
+                or "no tokens consumed"
             )
             return run
 

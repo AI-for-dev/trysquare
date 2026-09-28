@@ -329,6 +329,26 @@ class TestWhatTheTraceIsWorth:
         assert trace.is_file()
         assert outcome.error == "upstream is unavailable"
 
+    def test_a_run_the_provider_gave_up_on_is_not_a_measurement(self, fake_agent, tmp_path):
+        """Tokens were spent, then the provider died: the work was never finished."""
+        died = json.dumps(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "error",
+                    "errorMessage": "500: EngineCore encountered an issue",
+                    "usage": {"input": 0, "output": 0},
+                },
+            }
+        )
+        script = f"print({message('reading the code')!r})\nprint({died!r})\n"
+        outcome = agent.run(tmp_path, ["-c", script], timeout=30, trace=tmp_path / "t.jsonl")
+
+        assert measure.consumed_tokens(outcome.usage)
+        assert not outcome.produced_something
+        assert outcome.gave_up == "500: EngineCore encountered an issue"
+
     def test_a_retry_reads_its_own_attempt_and_not_the_one_it_replaced(self, tmp_path):
         """Truncation is what keeps the numbers the last attempt's.
 
