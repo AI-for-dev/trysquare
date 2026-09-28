@@ -18,7 +18,19 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .measure import Run, counted, kind, rate, valid_runs
-from .verdict import DRAWS, ESTABLISHED, SEED, interval, judge, mean, plain, points, signed
+from .verdict import (
+    DRAWS,
+    ESTABLISHED,
+    SEED,
+    holm,
+    interval,
+    judge,
+    mean,
+    plain,
+    points,
+    probability,
+    signed,
+)
 
 
 @dataclass(frozen=True)
@@ -81,6 +93,9 @@ def gap_rows(
 
     Only valid runs enter a verdict: a run that delivered nothing, or whose tests
     fail, measures neither its cost nor its discipline.
+
+    Each case also carries `holm`, its p-value adjusted over every case of the
+    table, because that is the family a reader scans for stars.
     """
     kwargs = {}
     if draws is not None:
@@ -134,6 +149,10 @@ def gap_rows(
                 }
             )
         rows.append({"cell": name, "measures": cells})
+
+    cases = [c for row in rows for c in row["measures"]]
+    for c, adjusted in zip(cases, holm([c["p"] for c in cases])):
+        c["holm"] = adjusted
     return rows
 
 
@@ -162,13 +181,14 @@ def gap_table(rows: list[dict], reference: str, draws: int, seed: int) -> str:
         cells = []
         for c in row["measures"]:
             mark = "*" if c["state"] == ESTABLISHED else "o"
-            cells.append(f"{c['rendered']} {mark}")
+            cells.append(f"{c['rendered']} {mark} {probability(c['holm'])}")
             if c["state"] == ESTABLISHED:
                 established.append(
                     f"- `{row['cell']}`: **{c['measure']} {c['rendered']}**, "
-                    f"interval {c['interval']}"
+                    f"interval {c['interval']}, {probability(c['holm'])}"
                 )
         body.append((row["cell"], cells))
+    family = sum(len(row["measures"]) for row in rows)
 
     return "\n".join(
         [
@@ -179,6 +199,9 @@ def gap_table(rows: list[dict], reference: str, draws: int, seed: int) -> str:
             *_markdown(names, body),
             "",
             "`*` established, the interval excludes zero - `o` inconclusive.",
+            f"`p` comes from the same draws, Holm-adjusted over the {family} gaps of this",
+            "table. It changes no state, but a star with `p` above 0.05 could be chance",
+            "alone, given how many gaps were tested.",
             "",
             "**No sentence may rest on an `o`.** The table shows them anyway:",
             "hiding a measurement would be another dishonesty, and the dispersion",

@@ -16,6 +16,7 @@ from trysquare.table import (
     cost_measures,
     criterion_measure,
     gap_rows,
+    gap_table,
     retry_warning,
     score_rows,
     score_table,
@@ -289,3 +290,49 @@ class TestCompareTable:
 
     def test_nothing_boolean_is_said_not_blank(self):
         assert "nothing to tabulate" in compare_table([], (), "l", "r")
+
+
+class TestGapTable:
+    """Each verdict carries its p-value, adjusted over every gap the table shows.
+
+    Fifteen gaps at 95% each yield 0.75 stars on average with no real effect, and
+    nothing on the page said so.
+    """
+
+    def cells(self):
+        return {
+            "nothing": [run("nothing", ident=f"n{i}", input=100 + i) for i in range(8)],
+            "+a": [run("+a", ident=f"a{i}", input=900 + i, overflow=False) for i in range(8)],
+            "+b": [run("+b", ident=f"b{i}", input=100 + 2 * i) for i in range(8)],
+        }
+
+    def rows(self):
+        measures = cost_measures() + (criterion_measure("overflow"),)
+        return gap_rows(self.cells(), "nothing", measures)
+
+    def cases(self, rows):
+        return [c for r in rows for c in r["measures"]]
+
+    def test_the_adjustment_spans_every_cell_of_the_table(self):
+        cases = self.cases(self.rows())
+        assert all(c["holm"] >= c["p"] for c in cases)
+        assert any(c["holm"] > c["p"] for c in cases), "a family of one adjusts nothing"
+
+    def test_the_state_is_still_the_interval(self):
+        """Display only: the verdict stays "the interval excludes zero"."""
+        for c in self.cases(self.rows()):
+            excluded = c["low"] > 0 or c["high"] < 0
+            assert (c["state"] == "established") == excluded
+
+    def test_every_verdict_shows_its_adjusted_p(self):
+        text = gap_table(self.rows(), "nothing", 10_000, 1)
+        assert "+800 * p<0.001" in text
+        assert "p=1.000" in text
+
+    def test_the_note_names_the_family(self):
+        text = gap_table(self.rows(), "nothing", 10_000, 1)
+        assert "Holm-adjusted over the 10 gaps of" in text
+
+    def test_a_publishable_gap_carries_its_p(self):
+        text = gap_table(self.rows(), "nothing", 10_000, 1)
+        assert "interval [+796, +804], p<0.001" in text
