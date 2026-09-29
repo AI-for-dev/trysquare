@@ -119,8 +119,11 @@ def _add_usage(u: dict, usage: dict | None) -> None:
     `parity` layer 1 compares. What still differs between them - the event type
     that carries a message, and where the usage sits inside it - is decided by the
     caller, so the comparison still tests the extraction.
+
+    A usage of zeros is a request the provider never served: `pi` closes a failed
+    one that way, then retries it. Counted, every retry would add a turn.
     """
-    if not usage:
+    if not usage or not any(usage.get(k) for k in ("input", "output", "cacheRead")):
         return
     u["turns"] += 1
     u["input"] += usage.get("input", 0)
@@ -169,9 +172,9 @@ class Fold:
     so what a dashboard shows during a run and what the ledger records after it cannot
     be two different numbers.
 
-    Turns are counted on `message_end` events **carrying a usage**, not on `turn_end`.
-    The `usage` filter is what makes a counted turn a billed turn: without it, a run
-    that produced nothing still reports turns.
+    Turns are counted on `message_end` events **carrying tokens**, not on `turn_end`.
+    That filter is what makes a counted turn a billed turn: without it, a run that
+    produced nothing still reports turns.
 
     Retries matter beyond logging. When the stream is cut, `pi` replays the turn with
     the whole accumulated context, so input tokens, turns and duration inflate without
