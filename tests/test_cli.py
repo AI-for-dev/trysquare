@@ -1375,10 +1375,11 @@ class TestInterruptedMatrix:
     def interrupted(self, concurrency: int = 2, repetitions: int = 4):
         """A matrix stopped at its first completed run. Returns the plan and what ran."""
         import threading
+        import time
         import unittest.mock
 
         from trysquare import config as config_mod
-        from trysquare import runner
+        from trysquare import interrupt, runner
         from trysquare.measure import VALID, Run
         from trysquare.scenario import load
 
@@ -1396,9 +1397,13 @@ class TestInterruptedMatrix:
             with guard:
                 started.append(run_id)
             if run_id != first:
-                # Long enough to still be in flight when the interrupt lands, short
-                # enough that the unfixed drain of twenty-four runs costs seconds.
-                threading.Event().wait(0.2)
+                # In flight until the interrupt reaches it, however long that takes,
+                # then cut short the way a real run is. The bound only keeps a broken
+                # interrupt from hanging the suite.
+                deadline = time.monotonic() + 10
+                while not interrupt.stopping() and time.monotonic() < deadline:
+                    threading.Event().wait(0.01)
+                raise interrupt.Stopped()
             return Run(
                 id=run_id,
                 cell=meta["cell"],
