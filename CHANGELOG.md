@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/AI-for-dev/trysquare/compare/v0.2.0...v0.2.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* a request the provider never served is no turn ([#75](https://github.com/AI-for-dev/trysquare/issues/75)) ([6edae71](https://github.com/AI-for-dev/trysquare/commit/6edae715e3a8453ac5216e67cd171f4a635d2dac))
+
 ## [0.2.0](https://github.com/AI-for-dev/trysquare/compare/v0.1.0...v0.2.0) (2026-09-28)
 
 
