@@ -5,6 +5,7 @@ someone else's machine.
 """
 
 import statistics
+from math import comb
 
 import pytest
 
@@ -140,8 +141,9 @@ class TestStat:
 class TestBootstrapP:
     """The p-value is read off the draws the interval comes from, not a second test."""
 
-    def test_complete_separation_has_no_draw_on_the_other_side(self):
-        assert judge([1.0] * 10, [0.0] * 10, mean)["p"] == 0
+    def test_complete_separation_sits_on_the_floor(self):
+        """No draw on the other side, so the draws alone would say zero."""
+        assert judge([1.0] * 10, [0.0] * 10, mean)["p"] == 2 / comb(20, 10)
 
     def test_identical_constant_samples_give_one(self):
         assert judge([1.0] * 10, [1.0] * 10, mean)["p"] == 1
@@ -167,6 +169,28 @@ class TestBootstrapP:
         a, b = [i * 0.37 for i in range(20)], [i * 0.41 + 1 for i in range(20)]
         v = judge(a, b)
         assert (v["low"], v["high"]) == gap_interval(a, b)
+
+
+class TestFloor:
+    """What a handful of runs can establish at all.
+
+    With one run per cell every draw repeats the observed gap: the interval is a point
+    and the draws alone say p=0. No test can say that much from two numbers. The
+    smallest p any permutation test can reach is 2 / C(n1 + n2, n1), so a gap needs
+    four runs against four before 0.05 is within reach.
+    """
+
+    def test_one_run_against_one_is_never_established(self):
+        v = judge([10.0], [20.0])
+        assert (v["state"], v["p"]) == (INCONCLUSIVE, 1)
+
+    def test_two_against_two_is_not_enough_even_fully_separated(self):
+        v = judge([1.0, 2.0], [5.0, 6.0])
+        assert (v["state"], v["p"]) == (INCONCLUSIVE, 2 / comb(4, 2))
+
+    def test_four_against_four_can_be(self):
+        v = judge([1.0, 2.0, 3.0, 4.0], [10.0, 11.0, 12.0, 13.0])
+        assert (v["state"], v["p"]) == (ESTABLISHED, 2 / comb(8, 4))
 
 
 class TestHolm:

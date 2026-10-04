@@ -131,7 +131,11 @@ and it is **established** if the 95% interval of the difference excludes zero.
 Otherwise **inconclusive**.
 
 Each gap also carries a p-value from the same draws: twice the share of draws on the
-far side of zero. The gap table adjusts it with Holm over all the gaps it shows,
+far side of zero. It never goes below 2 / C(n1 + n2, n1), the smallest p any
+permutation test can reach with `n1` runs against `n2`. With one run per cell every
+draw repeats the observed gap, so the draws alone would read p=0 from two numbers. A
+gap whose floor is above 0.05 stays inconclusive, so it takes four valid runs against
+four before anything can be established. The gap table adjusts it with Holm over all the gaps it shows,
 because fifteen gaps at 95% each yield 0.75 stars on average with no real effect. The
 p-value changes no state. It tells the reader which stars still hold once the number
 of gaps tested is taken into account.
