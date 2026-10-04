@@ -367,6 +367,10 @@ is lost because `replay` rebuilds a tree from a tag and a diff.
 └── <experiment>/<run id>/             one clone, session and trace per run
 ```
 
+A run's clone is fetched rather than cloned: it holds the etalon and its ancestors and no
+other object, where a clone from a local directory would hardlink the whole object store,
+later commits included. `sources/` is a full clone, which runs fetch from by tag name.
+
 `sources/` exists only for repository entries that are URLs; a `[repos]` entry naming a
 directory is read where it already is. Because it lives under a disposable `workdir`, a
 `--resume` against a URL after the directory has been purged clones again, and so needs

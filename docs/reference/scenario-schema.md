@@ -50,6 +50,8 @@ result publishable rather than quietly reframed.
     moved by whoever owns the repository, after which two matrices report the same
     etalon and measured different code; a commit cannot move, and puts what was
     measured in the directory name. `etalon_commit` records the resolution either way.
+    A run's clone holds the etalon and its history and nothing after it, so no later
+    commit can hand the agent the fix it is asked to write.
 * - `prompt`
   - no
   - The task given to the agent: inline text, or a path to a file.

@@ -131,27 +131,60 @@ class TestTheAgentVersion:
 
 
 class TestCloneArgv:
-    """The flags that make a clone the pinned state and nothing else."""
+    """The flags that make a pinned source the etalon's history, tags included."""
 
-    @pytest.mark.parametrize("keep_tags", [False, True])
-    def test_a_clone_is_pinned_to_the_tag(self, keep_tags):
-        args = repo.clone_argv("/s", "etalon-v1", Path("/x"), keep_tags=keep_tags)
+    def test_a_pinned_source_is_pinned_to_the_tag_and_keeps_the_tags(self):
+        """Every run fetches *from* the pinned source by tag name."""
+        args = repo.clone_argv("/s", "etalon-v1", Path("/x"))
         assert "--single-branch" in args
         assert args[args.index("--branch") + 1] == "etalon-v1"
-
-    def test_a_run_clone_drops_the_tags_and_a_pinned_source_keeps_them(self):
-        """Every run clones *from* the pinned source by tag name.
-
-        Git happens to keep the tag named by `--branch` even under `--no-tags`, so this
-        is not the difference between working and not working. It is the difference
-        between resting on documented behaviour and resting on an accident.
-        """
-        assert "--no-tags" in repo.clone_argv("/s", "t", Path("/x"))
-        assert "--no-tags" not in repo.clone_argv("/s", "t", Path("/x"), keep_tags=True)
+        assert "--no-tags" not in args
 
     def test_a_url_reaches_git_verbatim(self):
-        args = repo.clone_argv("https://h/x.git", "t", Path("/x"), keep_tags=True)
-        assert "https://h/x.git" in args
+        assert "https://h/x.git" in repo.clone_argv("https://h/x.git", "t", Path("/x"))
+
+
+class TestARunCloneHoldsNoFuture:
+    """The commits after the etalon hold the fix the agent is asked to write.
+
+    A clone from a local directory hardlinked the whole object store, so they sat in every
+    run's clone with no ref pointing at them: `git log --all` showed them for a commit
+    etalon, and `git cat-file --batch-all-objects` for a tag etalon too.
+    """
+
+    @pytest.fixture
+    def source(self):
+        source = a_repo({"a.txt": "bug"})
+        gitrepo.write(source, {"a.txt": "THE FIX"})
+        gitrepo.git(source, "commit", "-qam", "fix")
+        return source
+
+    def blobs(self, clone: Path) -> list[str]:
+        """Every file content the clone's object store holds, referenced or not."""
+        listed = gitrepo.git(clone, "cat-file", "--batch-all-objects", "--batch-check")
+        ids = [line.split()[0] for line in listed.splitlines() if line.split()[1] == "blob"]
+        return [gitrepo.git(clone, "cat-file", "-p", i) for i in ids]
+
+    @pytest.mark.parametrize("by", ["tag", "commit"])
+    def test_nothing_after_the_etalon_is_in_the_clone(self, source, tmp_path, by):
+        etalon = "etalon-v1" if by == "tag" else repo.commit_of(source, "etalon-v1")
+        clone = repo.clone(source, etalon, tmp_path / "clone")
+        assert (clone / "a.txt").read_text() == "bug"
+        assert self.blobs(clone) == ["bug"]
+        assert gitrepo.git(clone, "log", "--all", "--format=%s").split() == ["etalon"]
+
+    def test_the_tag_still_names_the_etalon_in_the_clone(self, source, tmp_path):
+        clone = repo.clone(source, "etalon-v1", tmp_path / "clone")
+        assert repo.commit_of(clone, "etalon-v1") == repo.commit_of(source, "etalon-v1")
+
+    def test_the_fetch_takes_the_etalon_and_no_tag(self):
+        assert repo.fetch_argv("/s", "etalon-v1") == [
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "/s",
+            "etalon-v1",
+        ]
 
 
 class TestACommitEtalon:
@@ -175,14 +208,12 @@ class TestACommitEtalon:
         repository grows the one that collides with it."""
         assert repo.is_commit(etalon) is commit
 
-    @pytest.mark.parametrize("keep_tags", [False, True])
-    def test_a_commit_is_fetched_whole_because_branch_refuses_it(self, keep_tags):
-        """`--branch` takes a ref only, and either narrowing flag can leave the wanted
-        commit unreachable in a clone that otherwise looks complete."""
-        args = repo.clone_argv("/s", self.SHA, Path("/x"), keep_tags=keep_tags)
+    def test_a_pinned_source_at_a_commit_is_cloned_whole(self):
+        """`--branch` takes a ref only, and `--single-branch` can leave the wanted commit
+        out of a clone that otherwise looks complete."""
+        args = repo.clone_argv("/s", self.SHA, Path("/x"))
         assert "--branch" not in args
         assert "--single-branch" not in args
-        assert "--no-tags" not in args
         assert args[-2:] == ["/s", "/x"]
 
     def test_cloning_at_a_commit_leaves_head_on_it(self, tmp_path):
