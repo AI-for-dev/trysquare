@@ -1716,7 +1716,7 @@ class TestInstalledCommand:
 
 class TestCompare:
     def experiment(
-        self, root, name, etalon="v1", cells=("base", "rule"), hit=True, agents=("",)
+        self, root, name, etalon="v1", cells=("base", "rule"), hit=True, agents=("",), isolation=""
     ) -> Path:
         directory = root / name
         directory.mkdir(parents=True)
@@ -1730,6 +1730,7 @@ class TestCompare:
                 "metrics": {"overflow": hit},
                 "state": "valid",
                 "agent_version": agents[i % len(agents)],
+                "isolation": isolation,
             }
             for c in cells
             for i in range(2)
@@ -1775,6 +1776,15 @@ class TestCompare:
         code, said = self.compared(["compare", str(left), str(right)])
         assert code == 0
         assert "identical: etalon, provider, model, repetitions, agent" in said
+
+    def test_different_isolations_refuse(self, tmp_path):
+        """Unconfined, the agent ran on the operator's machine with its tools and its
+        neighbours' work in reach. Confined, it did not: not the same measurement."""
+        left = self.experiment(tmp_path, "left_n2", isolation="none")
+        right = self.experiment(tmp_path, "right_n2", isolation="docker")
+        code, said = self.compared(["compare", str(left), str(right)])
+        assert code == 1
+        assert "different isolations, none against docker" in said
 
     def test_an_archive_that_predates_the_record_is_named_unknown(self, tmp_path):
         left = self.experiment(tmp_path, "left_n2")
