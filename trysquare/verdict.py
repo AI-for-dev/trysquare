@@ -7,8 +7,9 @@ while every one of them looked solid when it was written.
 
 One mechanism covers both rates and medians: replay the draw. Resample the runs
 with replacement, recompute the gap to the reference cell on each draw, and the
-gap is publishable if its 95% interval excludes zero. Nothing else to read, no
-fragile statistic.
+gap is publishable if its 95% interval excludes zero - on samples large enough for
+any test to reach 0.05, which `floor` decides. Nothing else to read, no fragile
+statistic.
 
 This judges a **gap**. An isolated measurement - the glow costs 23% of a frame
 budget - asserts no effect: it is published with its dispersion and no verdict.
@@ -24,6 +25,7 @@ from __future__ import annotations
 import bisect
 import random
 import statistics
+from math import comb
 
 DRAWS = 10_000
 SEED = 20260729
@@ -69,6 +71,18 @@ def _p(values: list[float]) -> float:
     at_most_zero = bisect.bisect_right(values, 0) / n
     at_least_zero = (n - bisect.bisect_left(values, 0)) / n
     return min(1.0, 2 * min(at_most_zero, at_least_zero))
+
+
+def floor(n1: int, n2: int) -> float:
+    """The smallest two-sided p that `n1` runs against `n2` can support.
+
+    Resampling one run per cell repeats the observed gap on every draw, so the draws
+    alone read p=0 from two numbers. No test can say that much: of the C(n1 + n2, n1)
+    ways to split the runs between the cells, the observed split is at best the most
+    extreme on its side, which is what a permutation test would report. It takes four
+    runs against four to reach 0.05.
+    """
+    return min(1.0, 2 / comb(n1 + n2, n1))
 
 
 def gap_draws(
@@ -142,15 +156,16 @@ def judge(
     values = gap_draws(reference, cell, stat, draws, seed)
     low, high = _bounds(values)
     gap = stat(cell) - stat(reference)
+    p = max(_p(values), floor(len(reference), len(cell)))
     return {
         "gap": gap,
         "low": low,
         "high": high,
-        "p": _p(values),
-        # Excluding zero is the whole test. Written this way rather than as
-        # `low > 0 or high < 0` so that an interval touching zero exactly counts
-        # as inconclusive.
-        "state": INCONCLUSIVE if low <= 0 <= high else ESTABLISHED,
+        "p": p,
+        # Excluding zero is the test, on samples large enough to pass one at all.
+        # Written this way rather than as `low > 0 or high < 0` so that an interval
+        # touching zero exactly counts as inconclusive.
+        "state": INCONCLUSIVE if low <= 0 <= high or p > 0.05 else ESTABLISHED,
     }
 
 

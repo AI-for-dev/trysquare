@@ -326,7 +326,8 @@ class TestGapTable:
 
     def test_every_verdict_shows_its_adjusted_p(self):
         text = gap_table(self.rows(), "nothing", 10_000, 1)
-        assert "+800 * p<0.001" in text
+        # 8 runs against 8 floor p at 2 / C(16, 8), and Holm multiplies it by 10 gaps.
+        assert "+800 * p=0.002" in text
         assert "p=1.000" in text
 
     def test_the_note_names_the_family(self):
@@ -335,4 +336,4 @@ class TestGapTable:
 
     def test_a_publishable_gap_carries_its_p(self):
         text = gap_table(self.rows(), "nothing", 10_000, 1)
-        assert "interval [+796, +804], p<0.001" in text
+        assert "interval [+796, +804], p=0.002" in text

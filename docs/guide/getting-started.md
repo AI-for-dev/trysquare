@@ -331,9 +331,11 @@ Then the gaps, which is where a conclusion may come from:
 | careful ticket / off | +15 929 o p=0.880 | -296 o p=1.000   | +3 * p=0.270  | +7 o p=1.000    | -100 pts * p<0.001  |
 
 `*` established, the interval excludes zero - `o` inconclusive.
-`p` comes from the same draws, Holm-adjusted over the 15 gaps of this
-table. It changes no state, but a star with `p` above 0.05 could be chance
-alone, given how many gaps were tested.
+`p` comes from the same draws, never below what a permutation test could
+reach with these runs, so fewer than four valid runs a side establish
+nothing. Holm-adjusted over the 15 gaps of this table, it changes no
+state, but a star with `p` above 0.05 could be chance alone, given how many
+gaps were tested.
 ```
 
 Read that as: **only the `*` rows may be written about.** An `o` is shown rather
