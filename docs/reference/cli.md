@@ -359,7 +359,7 @@ which is exactly what a single harness exists to prevent.
 
 What it may and may not touch:
 
-`usage`, `duration`, `attempts`
+`usage`, `duration`, `attempts`, `agent_version`
 : never. They are facts about the run, not about the scoring. In particular `attempts` is
   what leaves an abusive resume visible in `state.json`, and a re-scoring must not spend
   that.
@@ -434,6 +434,11 @@ trysquare compare <left dir> <right dir>
 
 **Hard refusal** on different etalons - a different baseline means the two measures
 are not of the same thing.
+
+**Hard refusal** on different agents, including a side that ran under two versions. A
+new version of `pi` can change its tools, its system prompt and its stream, so it is a
+different harness. Runs that do not record a version are shown as `unknown` and are not
+refused.
 
 **Cost columns set aside** unless retries are near zero on both sides, with the counts
 shown.

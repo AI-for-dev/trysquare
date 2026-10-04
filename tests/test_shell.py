@@ -7,6 +7,8 @@ silently lost or a standard silently bent.
 
 import json
 import os
+import platform
+import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -114,6 +116,18 @@ class TestTheModelThatAnswered:
         bare = tmp_path / "b.jsonl"
         bare.write_text(json.dumps({"type": "message", "message": {}}))
         assert runner.recorded_model([bare]) is None
+
+
+class TestTheAgentVersion:
+    def test_the_binary_about_to_run_says_what_it_is(self, monkeypatch):
+        monkeypatch.setattr(agent, "PI", sys.executable)
+        assert agent.version() == f"Python {platform.python_version()}"
+
+    @pytest.mark.parametrize("binary", ["no-such-agent", "false"])
+    def test_an_agent_that_cannot_say_records_nothing(self, monkeypatch, binary):
+        """Empty, so `compare` names it unknown rather than reading an error as a version."""
+        monkeypatch.setattr(agent, "PI", binary)
+        assert agent.version() == ""
 
 
 class TestCloneArgv:

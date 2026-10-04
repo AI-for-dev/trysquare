@@ -179,10 +179,16 @@ One entry per run, and the raw material every table is rebuilt from.
     "metrics": { "overflow": true, "delivered": true, "tests": true, "issues": ["#1"] },
     "reasons": { "overflow": "addressed without being asked: #1" },
     "state": "valid",
-    "attempts": 1
+    "attempts": 1,
+    "agent_version": "1.0.2"
   }
 ]
 ```
+
+`agent_version` is what `pi --version` printed just before the run started. It is
+recorded per run rather than per experiment because a `--resume` after an upgrade
+measures one matrix with two agents. It is empty when the binary could not say, and in
+archives that predate the field.
 
 Persisting **per-run** values rather than aggregates is what makes `render` possible.
 Keeping only medians would make a matrix permanently unusable for a verdict, and a

@@ -48,6 +48,9 @@ class Run:
     state: str = VALID
     detail: str = ""
     attempts: int = 1
+    # What `pi --version` answered when the run started. Per run rather than per
+    # experiment, because a `--resume` after an upgrade measures one matrix with two.
+    agent_version: str = ""
 
     @property
     def is_valid(self) -> bool:
