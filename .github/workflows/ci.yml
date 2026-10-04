@@ -47,3 +47,26 @@ jobs:
       # `make html` already passes -W: a warning is a defect in the
       # documentation, held to the same standard as the code.
       - run: uv run --extra docs make -C docs html
+
+  # The boundaries between runs, exercised for real. `test` skips these tests where
+  # docker or bwrap cannot run, which on a stock runner is always for bwrap: a green
+  # gate that checked no boundary. This job gives them what they need and fails if
+  # one of them still skips.
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends bubblewrap
+      # Ubuntu forbids unprivileged user namespaces through AppArmor since 24.04, and
+      # bwrap needs one. Where the knob does not exist, nothing forbids them.
+      - run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      # The image the docker tests run in. Pulled here, never by the tests.
+      - run: docker pull alpine:3
+      - shell: bash
+        run: |
+          uv run --group dev pytest tests/test_confine.py -k Inside -rs | tee pytest.log
+          ! grep -qi skipped pytest.log
