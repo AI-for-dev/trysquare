@@ -191,11 +191,19 @@ class TestTheExampleScoresARun:
         assert "test_it_adds_up" in payload["reasons"]["tests"]
 
     def test_an_agent_that_did_nothing_is_not_a_perfect_score(self, a_measured_run):
-        """The metric that exists because a run which changed nothing consumes tokens,
-        passes the tests by construction, and overflows nothing."""
+        """The metric that exists because a run which changed nothing consumes tokens and
+        overflows nothing."""
         payload = score(a_measured_run(response="I did nothing at all. " * 5))
         assert payload["metrics"]["delivered"] is False
         assert payload["metrics"]["touched"] == []
+
+    def test_the_etalon_fails_its_own_suite(self, a_measured_run):
+        """The fixture holds the bug its prompt names. When it did not, `sum([])` was
+        already 0, agents rightly changed nothing, and with `delivered` in the validity
+        filter a real matrix published no synthesis at all."""
+        payload = score(a_measured_run(response="I did nothing at all. " * 5))
+        assert payload["metrics"]["tests"] is False
+        assert "test_an_empty_basket_is_zero" in payload["reasons"]["tests"]
 
     def test_a_touched_set_comes_out_sorted(self, a_measured_run):
         payload = score(
