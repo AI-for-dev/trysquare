@@ -16,6 +16,7 @@ Nothing here spends a token. The one test that runs the agent runs it on a fixtu
 
 import itertools
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -31,7 +32,9 @@ FIXTURE = Path(__file__).parent / "fixtures" / "session-minimal.jsonl"
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO = str(ROOT / "tests" / "fixtures" / "matrix.toml")
 
-needs_the_agent = pytest.mark.skipif(not agent.available(), reason=f"{agent.PI!r} is not on PATH")
+needs_the_agent = pytest.mark.skipif(
+    shutil.which(agent.PI) is None, reason=f"{agent.PI!r} is not on PATH"
+)
 
 
 @pytest.fixture
@@ -205,7 +208,7 @@ class TestRenderHtml:
         only runs on the author's machine guards nothing on CI.
         """
         directory = measured("aaaa1111", "bbbb2222")
-        monkeypatch.setattr(agent, "available", lambda: True)
+        monkeypatch.setattr(agent, "unrunnable", lambda *_: None)
         code, text = rendered(
             capsys,
             ["render", SCENARIO, "-o", str(directory), "--repetitions", "1", "--html"],
@@ -256,13 +259,15 @@ class TestRenderHtml:
 
     def test_an_absent_agent_refuses_with_a_message(self, measured, capsys, monkeypatch):
         directory = measured("aaaa1111")
-        monkeypatch.setattr(agent, "available", lambda: False)
+        monkeypatch.setattr(agent, "PI", "/nonexistent/pi")
         code, text = rendered(
             capsys,
             ["render", SCENARIO, "-o", str(directory), "--repetitions", "1", "--html"],
         )
         assert code == 1
-        assert "is not on PATH" in text
+        assert (
+            "'/nonexistent/pi' does not run on this machine, so no session can be exported" in text
+        )
 
     def test_without_the_flag_nothing_is_exported(self, measured, capsys):
         """The flag exists because a rendering must not pay for what was not asked."""

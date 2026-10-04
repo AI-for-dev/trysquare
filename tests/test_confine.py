@@ -6,6 +6,7 @@ docker running something that is not an agent.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -60,6 +61,19 @@ class TestTheMachineChooses:
     def test_a_machine_that_says_nothing_runs_unconfined(self):
         assert confine.backend(config.Config().isolation).name == confine.NONE
 
+    @pytest.mark.parametrize(
+        "setting,refusal",
+        [
+            ("cpus = 0", "cpus = 0 is not a positive number"),
+            ("cpus = true", "cpus = True is not a positive number"),
+            ('memory = "4 GB"', "memory = '4 GB' is not a size"),
+            ("memory = 4", "memory = 4 is not a size"),
+        ],
+    )
+    def test_a_limit_docker_cannot_read_is_refused(self, tmp_path, setting, refusal):
+        with pytest.raises(config.ConfigError, match=re.escape(refusal)):
+            config.load(self.write(tmp_path, f'backend = "docker"\n{setting}'))
+
     def test_docker_takes_the_variables_it_passes_as_a_list(self, tmp_path):
         with pytest.raises(config.ConfigError, match="is not a list of variable names"):
             config.load(self.write(tmp_path, 'backend = "docker"\nenv = "ILAAS_API_KEY"'))
@@ -109,15 +123,21 @@ class TestOneRun:
 
 class TestTheSynthesisSays:
     def test_a_matrix_measured_without_a_boundary_is_warned_about(self):
-        [line] = isolation_lines([Run("a", "c", 0, isolation="none")])
+        [line] = isolation_lines([Run("a", "c", 0, isolation="none")], {})
         assert line.startswith("- isolation `none`: runs were not isolated")
 
     def test_a_confined_matrix_names_its_image(self):
-        [line] = isolation_lines([Run("a", "c", 0, isolation="docker", image="sha256:ab")])
+        [line] = isolation_lines([Run("a", "c", 0, isolation="docker", image="sha256:ab")], {})
         assert line == "- isolation `docker`, image `sha256:ab`"
 
+    def test_the_limits_each_run_had_are_said(self):
+        runs = [Run("a", "c", 0, isolation="docker", image="sha256:ab")]
+        assert isolation_lines(runs, {"cpus": 2, "memory": "4g"})[1] == (
+            "- limits per run: cpus 2, memory 4g"
+        )
+
     def test_an_archive_that_predates_the_record_says_nothing(self):
-        assert isolation_lines([Run("a", "c", 0)]) == []
+        assert isolation_lines([Run("a", "c", 0)], {}) == []
 
 
 class TestTheDockerCommand:
@@ -142,6 +162,16 @@ class TestTheDockerCommand:
         assert args[-4:] == ["sha256:abc", "pi", "-p", "go"]
         assert args[args.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
         assert args[args.index("--workdir") + 1] == str(tmp_path / "repo")
+
+    def test_the_limits_hold_and_no_swap_gets_past_them(self, tmp_path):
+        args = self.argv(tmp_path, cpus=1.5, memory="4g")
+        assert args[args.index("--cpus") + 1] == "1.5"
+        assert args[args.index("--memory") + 1] == "4g"
+        assert args[args.index("--memory-swap") + 1] == "4g"
+
+    def test_no_limit_set_is_no_limit_passed(self, tmp_path):
+        args = self.argv(tmp_path)
+        assert "--cpus" not in args and "--memory" not in args
 
     def test_a_key_is_passed_by_name_and_never_by_value(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SOME_KEY", "secret")

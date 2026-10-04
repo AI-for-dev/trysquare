@@ -51,6 +51,9 @@ class Confinement(Protocol):
     image: str
     #: Where that is, for a refusal to name.
     where: str
+    #: What each run may use of the machine, as the config set it. Recorded with the
+    #: load, because a run held to two CPUs is slower than one that was not.
+    limits: dict
 
     def prepare(self, agent: dict) -> None:
         """Checks this machine can run the backend, or raises `RuntimeError` saying why.
@@ -73,6 +76,7 @@ class Unconfined:
     name = NONE
     image = ""
     where = "on this machine"
+    limits: dict = {}
 
     def prepare(self, agent: dict) -> None:
         pass
@@ -95,6 +99,9 @@ SETTINGS = ("defaultThinkingLevel",)
 #: `$!` are escapes, not references.
 REFERENCE = re.compile(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
 ESCAPE = re.compile(r"\$[$!]")
+
+#: A memory size as docker reads it.
+MEMORY = re.compile(r"^\d+[bkmg]$")
 
 
 def seed(provider: str, env: Sequence[str], agent_dir: Path) -> dict[str, dict]:
@@ -170,10 +177,19 @@ class Docker:
 
     name = DOCKER
 
-    def __init__(self, env: Sequence[str] = ()) -> None:
+    def __init__(
+        self, env: Sequence[str] = (), cpus: float | None = None, memory: str | None = None
+    ) -> None:
         if isinstance(env, str) or not all(isinstance(v, str) for v in env):
             raise ValueError(f"env = {env!r} is not a list of variable names")
+        if cpus is not None and (
+            isinstance(cpus, bool) or not isinstance(cpus, int | float) or cpus <= 0
+        ):
+            raise ValueError(f"cpus = {cpus!r} is not a positive number")
+        if memory is not None and not (isinstance(memory, str) and MEMORY.match(memory)):
+            raise ValueError(f'memory = {memory!r} is not a size such as "4g" or "512m"')
         self.env = tuple(env)
+        self.limits = {k: v for k, v in (("cpus", cpus), ("memory", memory)) if v is not None}
         self.image = ""
         self.where = "in docker"
         self._seed: dict[str, dict] = {}
@@ -225,6 +241,11 @@ class Docker:
             "--env",
             f"HOME={HOME}",
         ]
+        if "cpus" in self.limits:
+            args += ["--cpus", str(self.limits["cpus"])]
+        if "memory" in self.limits:
+            # The same ceiling for swap: a limit the run can swap past is not one.
+            args += ["--memory", self.limits["memory"], "--memory-swap", self.limits["memory"]]
         for variable in self.env:
             # By name only: docker copies the value, so a key never sits in an argv.
             args += ["--env", variable]

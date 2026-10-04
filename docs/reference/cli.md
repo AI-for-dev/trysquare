@@ -319,8 +319,10 @@ Two things are said rather than left to be discovered:
 - a session that will not render is reported on stderr and skipped. One broken trace does
   not cost the rest, the same rule that applies to a run inside a matrix.
 
-Without `pi` on `PATH` the command refuses with a message and exit 1, rather than writing
-nothing and claiming success.
+The pages are rendered by `pi` where the runs ran: on `PATH` under `backend = "none"`,
+in the scenario's image under `docker`, with no variable passed in since an export calls
+no provider. When `pi` does not run there the command refuses with a message and exit 1,
+rather than writing nothing and claiming success.
 
 Whenever `synthesis.md` is written - by `run`, `render` or `replay --rescore` -
 `synthesis.html` is written beside it: the same synthesis as one self-contained

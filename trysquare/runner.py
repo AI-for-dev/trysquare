@@ -1099,6 +1099,8 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     # next `--resume` would refuse the runs this launch is about to measure.
     if plan.replay:
         state = plan.output.replayed(state, plan.replay)
+    # Restated by every launch, like the rest of the load: it is what this one runs under.
+    state["limits"] = plan.confinement.limits
     plan.output.write_state(state)
     concurrency = plan.load("concurrency")
 

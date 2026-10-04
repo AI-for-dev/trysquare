@@ -82,6 +82,7 @@ The ledger, and what makes a matrix resumable.
   "repetitions": 2,
   "concurrency": 5,
   "timeout": 900,
+  "limits": { "cpus": 2, "memory": "4g" },
   "layout": "by-cell",
   "overrides": { "repetitions": 2 },
   "complete": true,
@@ -92,6 +93,9 @@ The ledger, and what makes a matrix resumable.
   }
 }
 ```
+
+`limits` is what `[isolation]` held each run to, empty when nothing did. Restated by
+every launch, like `concurrency` and `timeout`.
 
 Four states: `missing`, `empty`, `validator_failed`, `valid`.
 
