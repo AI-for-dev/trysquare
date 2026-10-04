@@ -59,10 +59,11 @@ class Confinement(Protocol):
     #: machine's tools.
     takes_image: bool
 
-    def prepare(self, agent: dict) -> None:
+    def prepare(self, image: str | None, providers: Sequence[str]) -> None:
         """Checks this machine can run the backend, or raises `RuntimeError` saying why.
 
-        `agent` is the scenario's `[agent]` table: its image and its provider.
+        `image` is the scenario's `[agent] image`, and `providers` every provider a launch
+        calls: the agent's, and each judge's.
         """
         ...
 
@@ -83,7 +84,7 @@ class Unconfined:
     limits: dict = {}
     takes_image = False
 
-    def prepare(self, agent: dict) -> None:
+    def prepare(self, image: str | None, providers: Sequence[str]) -> None:
         pass
 
     def run(self, argv: Sequence[str], scope: Scope, **kwargs) -> subprocess.CompletedProcess:
@@ -109,21 +110,23 @@ ESCAPE = re.compile(r"\$[$!]")
 MEMORY = re.compile(r"^\d+[bkmg]$")
 
 
-def seed(provider: str, env: Sequence[str], agent_dir: Path) -> dict[str, dict]:
+def seed(providers: Sequence[str], env: Sequence[str], agent_dir: Path) -> dict[str, dict]:
     """What the agent's home starts with, by file name, read from the operator's `agent_dir`.
 
     Written rather than copied. `models.json` describes every provider the operator uses,
-    and a key or a header in it may be written out in full: only the scenario's provider
-    goes in, and its secrets must be references to variables `[isolation] env` passes, or
-    the launch is refused. `auth.json` never goes in. A provider `models.json` does not
-    describe is one of `pi`'s own, which reads its key from the environment.
+    and a key or a header in it may be written out in full: only the providers the launch
+    calls go in, and their secrets must be references to variables `[isolation] env`
+    passes, or the launch is refused. `auth.json` never goes in. A provider `models.json`
+    does not describe is one of `pi`'s own, which reads its key from the environment.
     """
     found = {}
     models = _read(agent_dir / "models.json").get("providers", {})
-    if provider in models:
-        for where, value in _secrets(models[provider]):
+    kept = {p: models[p] for p in providers if p in models}
+    for provider, entry in kept.items():
+        for where, value in _secrets(entry):
             _check(value, f"{where} of provider {provider!r} in {agent_dir / 'models.json'}", env)
-        found["models.json"] = {"providers": {provider: models[provider]}}
+    if kept:
+        found["models.json"] = {"providers": kept}
     settings = _read(agent_dir / "settings.json")
     if kept := {k: settings[k] for k in SETTINGS if k in settings}:
         found["settings.json"] = kept
@@ -178,12 +181,12 @@ def _variables(env: Sequence[str]) -> tuple[str, ...]:
     return tuple(env)
 
 
-def _settled(env: tuple[str, ...], agent: dict) -> dict[str, dict]:
-    """The agent's home for this scenario, once every variable `env` names is set."""
+def _settled(env: tuple[str, ...], providers: Sequence[str]) -> dict[str, dict]:
+    """The agent's home for this launch, once every variable `env` names is set."""
     unset = [v for v in env if v not in os.environ]
     if unset:
         raise RuntimeError(f"[isolation] env names {', '.join(unset)}, unset here")
-    return seed(agent.get("provider", ""), env, Path.home() / ".pi" / "agent")
+    return seed(providers, env, Path.home() / ".pi" / "agent")
 
 
 class Docker:
@@ -215,14 +218,13 @@ class Docker:
         self._live: set[str] = set()
         self._lock = threading.Lock()
 
-    def prepare(self, agent: dict) -> None:
-        image = agent.get("image")
+    def prepare(self, image: str | None, providers: Sequence[str]) -> None:
         if not image:
             raise RuntimeError(
                 "the docker backend runs the image the scenario declares, and [agent] "
                 "declares no image"
             )
-        self._seed = _settled(self.env, agent)
+        self._seed = _settled(self.env, providers)
         running = _docker("version")
         if running.returncode != 0:
             raise RuntimeError(f"docker does not answer here: {running.stderr.strip()[:200]}")
@@ -330,8 +332,8 @@ class Bwrap:
         self.bind = tuple(Path(os.path.expanduser(p)) for p in bind)
         self._seed: dict[str, dict] = {}
 
-    def prepare(self, agent: dict) -> None:
-        self._seed = _settled(self.env, agent)
+    def prepare(self, image: str | None, providers: Sequence[str]) -> None:
+        self._seed = _settled(self.env, providers)
         probe = _run("bwrap", "--ro-bind", "/", "/", "true")
         if probe.returncode != 0:
             raise RuntimeError(

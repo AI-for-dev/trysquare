@@ -325,6 +325,7 @@ def run_judge(
     trace: Path,
     attempts: int = 1,
     ceiling: int | None = None,
+    confinement=None,
 ) -> Result:
     """Runs the judge, and reads back the verdict its tool call recorded.
 
@@ -336,8 +337,13 @@ def run_judge(
     from `directory`: `directory` sits inside the published archive, which deliberately
     never carries a raw stream. Nor is it discarded - the judge's first error is the
     only diagnosis a silent judge leaves behind.
+
+    `confinement` is the runs' backend. The judge is an agent with tools like the one it
+    scores, and its pieces are in its prompt: it writes its dossier, reads its brick, and
+    has no business with anything else - the clone or the other runs.
     """
     from . import agent as agent_mod
+    from .confine import Scope
 
     verdict_path = directory / JUDGE_VERDICT
     detail = ""
@@ -351,7 +357,15 @@ def run_judge(
             session_dir=directory / "session",
             extensions=[brick],
         )
-        outcome = agent_mod.run(directory, args, timeout, trace, ceiling)
+        outcome = agent_mod.run(
+            directory,
+            args,
+            timeout,
+            trace,
+            ceiling,
+            confinement=confinement or agent_mod.UNCONFINED,
+            scope=Scope(writable=(directory,), readable=(brick,)),
+        )
 
         if verdict_path.is_file():
             try:

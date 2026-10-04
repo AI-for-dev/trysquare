@@ -151,6 +151,12 @@ class Scenario:
         return tuple(m for v in self.validators for m in v.metrics)
 
     @property
+    def providers(self) -> tuple[str, ...]:
+        """Every provider a launch calls: the agent's, and each judge's."""
+        named = [self.agent["provider"], *(v.config.get("provider") for v in self.validators)]
+        return tuple(dict.fromkeys(p for p in named if p))
+
+    @property
     def manual_metrics(self) -> tuple[str, ...]:
         """The metrics a human fills in, and the reason an output tree stays blind."""
         return tuple(m for v in self.validators if v.mode == "form" for m in v.metrics)

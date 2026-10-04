@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from trysquare import agent, config, confine, outputs, runner
+from trysquare import agent, config, confine, outputs, runner, validation
 from trysquare.cli import isolation_lines
 from trysquare.measure import Run
 from trysquare.scenario import parse
@@ -33,12 +33,58 @@ class Spy:
     def __init__(self) -> None:
         self.calls: list[tuple[list[str], confine.Scope, dict]] = []
 
-    def prepare(self, agent) -> None:
+    def prepare(self, image, providers) -> None:
         pass
 
     def run(self, argv, scope, **kwargs) -> subprocess.CompletedProcess:
         self.calls.append((list(argv), scope, kwargs))
         return subprocess.CompletedProcess(argv, 0, "1.0.2\n", "")
+
+
+class Talkative(Spy):
+    """A spy whose agent answers, so the run goes on to be scored."""
+
+    ANSWER = (
+        json.dumps(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": "done",
+                    "usage": {"input": 1, "output": 1},
+                },
+            }
+        )
+        + "\n"
+    ).encode()
+
+    def run(self, argv, scope, **kwargs) -> subprocess.CompletedProcess:
+        if "stdout" in kwargs:
+            kwargs["stdout"].write(self.ANSWER)
+        return super().run(argv, scope, **kwargs)
+
+
+def measured_once(tmp_path, monkeypatch, scenario, spy) -> tuple[Run, Path]:
+    """One run of the first cell through `spy`, and the run's work directory."""
+    repo = gitrepo.a_repo({"a.py": "x = 1\n"})
+    plan = runner.Plan(
+        scenario=scenario,
+        config=config.Config(
+            repos={"my-repo": str(repo)},
+            defaults=config.BUILTIN_DEFAULTS | {"workdir": str(tmp_path / "work")},
+            isolation={"backend": Spy.name},
+        ),
+        output=outputs.Output(tmp_path / "out", scenario),
+        repo_path=repo,
+        repo_source=str(repo),
+        todo=[],
+        overrides={},
+        blindness={},
+        notes=[],
+    )
+    monkeypatch.setitem(confine.BACKENDS, Spy.name, lambda: spy)
+    run = runner.one_run(plan, "abcd1234", {"cell": scenario.cells[0].name, "repetition": 0})
+    return run, tmp_path / "work" / plan.output.directory.name / "abcd1234"
 
 
 class TestTheMachineChooses:
@@ -86,27 +132,9 @@ class TestOneRun:
     @pytest.fixture
     def measured(self, tmp_path, monkeypatch):
         """One run of a cell, through the spy, and what it recorded."""
-        scenario = parse(MINIMAL)
-        repo = gitrepo.a_repo({"a.py": "x = 1\n"})
-        plan = runner.Plan(
-            scenario=scenario,
-            config=config.Config(
-                repos={"my-repo": str(repo)},
-                defaults=config.BUILTIN_DEFAULTS | {"workdir": str(tmp_path / "work")},
-                isolation={"backend": Spy.name},
-            ),
-            output=outputs.Output(tmp_path / "out", scenario),
-            repo_path=repo,
-            repo_source=str(repo),
-            todo=[],
-            overrides={},
-            blindness={},
-            notes=[],
-        )
         spy = Spy()
-        monkeypatch.setitem(confine.BACKENDS, Spy.name, lambda: spy)
-        run = runner.one_run(plan, "abcd1234", {"cell": "none", "repetition": 0})
-        return run, spy, tmp_path / "work" / plan.output.directory.name / "abcd1234"
+        run, work = measured_once(tmp_path, monkeypatch, parse(MINIMAL), spy)
+        return run, spy, work
 
     def test_the_run_says_what_it_ran_inside(self, measured):
         run, _, _ = measured
@@ -122,6 +150,40 @@ class TestOneRun:
         _, scope, kwargs = spy.calls[-1]
         assert scope.writable == (work / "repo", work / "session")
         assert kwargs["cwd"] == work / "repo"
+
+
+class TestTheJudge:
+    """The judge is an agent too, with tools, and it ran where the operator stands."""
+
+    JUDGED = MINIMAL | {
+        "validation": [
+            {
+                "mode": "judge",
+                "provider": "judging",
+                "model": "m",
+                "metrics": ["overflow", "delivered"],
+            }
+        ]
+    }
+
+    @pytest.fixture
+    def calls(self, tmp_path, monkeypatch):
+        """What the judge of one scored run was asked to run."""
+        spy = Talkative()
+        measured_once(tmp_path, monkeypatch, parse(self.JUDGED), spy)
+        return [c for c in spy.calls if c[2].get("cwd") and c[2]["cwd"].name == "judge"]
+
+    def test_the_judge_runs_through_the_backend(self, calls):
+        assert calls
+
+    def test_the_judge_may_write_its_dossier_and_read_its_brick_and_nothing_else(self, calls):
+        """Its pieces are in its prompt, so it has no business with the clone."""
+        _, scope, kwargs = calls[0]
+        assert scope.writable == (kwargs["cwd"],)
+        assert scope.readable == (validation.JUDGE_BRICK,)
+
+    def test_a_launch_serves_the_judge_s_provider_as_well_as_the_agent_s(self):
+        assert parse(self.JUDGED).providers == ("ilaas", "judging")
 
 
 class TestTheSynthesisSays:
@@ -184,17 +246,17 @@ class TestTheDockerCommand:
 
     def test_no_image_declared_is_refused(self):
         with pytest.raises(RuntimeError, match=r"\[agent\] declares no image"):
-            confine.Docker().prepare({})
+            confine.Docker().prepare(None, ())
 
     def test_a_daemon_that_does_not_answer_is_said_as_such(self, monkeypatch):
         monkeypatch.setenv("PATH", "/nonexistent")
         with pytest.raises(RuntimeError, match="docker does not answer here"):
-            confine.Docker().prepare({"image": "alpine:3"})
+            confine.Docker().prepare("alpine:3", ())
 
     def test_a_variable_unset_here_is_refused(self, monkeypatch):
         monkeypatch.delenv("SOME_KEY", raising=False)
         with pytest.raises(RuntimeError, match="names SOME_KEY, unset here"):
-            confine.Docker(env=["SOME_KEY"]).prepare({"image": "alpine:3"})
+            confine.Docker(env=["SOME_KEY"]).prepare("alpine:3", ())
 
 
 class TestWhatTheHomeStartsWith:
@@ -217,8 +279,20 @@ class TestWhatTheHomeStartsWith:
                 "other": self.provider(apiKey="sk-literal"),
             }
         }
-        seed = confine.seed("ilaas", ("ILAAS_API_KEY",), self.agent_dir(tmp_path, models))
+        seed = confine.seed(["ilaas"], ("ILAAS_API_KEY",), self.agent_dir(tmp_path, models))
         assert seed["models.json"] == {"providers": {"ilaas": models["providers"]["ilaas"]}}
+
+    def test_a_judge_on_another_provider_is_written_too(self, tmp_path):
+        """Otherwise the judge finds no provider in its container and scores nothing."""
+        models = {
+            "providers": {
+                "ilaas": self.provider(apiKey="$A"),
+                "judging": self.provider(apiKey="$B"),
+                "other": self.provider(apiKey="sk-literal"),
+            }
+        }
+        seed = confine.seed(["ilaas", "judging"], ("A", "B"), self.agent_dir(tmp_path, models))
+        assert sorted(seed["models.json"]["providers"]) == ["ilaas", "judging"]
 
     @pytest.mark.parametrize(
         "fields",
@@ -234,11 +308,11 @@ class TestWhatTheHomeStartsWith:
         with pytest.raises(
             RuntimeError, match="models.json is written in the file, where the agent"
         ):
-            confine.seed("ilaas", (), self.agent_dir(tmp_path, models))
+            confine.seed(["ilaas"], (), self.agent_dir(tmp_path, models))
 
     def test_a_header_built_around_a_variable_is_kept(self, tmp_path):
         models = {"providers": {"ilaas": self.provider(headers={"Authorization": "Bearer ${T}"})}}
-        seed = confine.seed("ilaas", ("T",), self.agent_dir(tmp_path, models))
+        seed = confine.seed(["ilaas"], ("T",), self.agent_dir(tmp_path, models))
         assert seed["models.json"]["providers"]["ilaas"]["headers"] == {
             "Authorization": "Bearer ${T}"
         }
@@ -247,22 +321,22 @@ class TestWhatTheHomeStartsWith:
         """It would run inside the container, where it is not what the operator wrote."""
         models = {"providers": {"ilaas": self.provider(apiKey="!pass show ilaas")}}
         with pytest.raises(RuntimeError, match="runs a command"):
-            confine.seed("ilaas", (), self.agent_dir(tmp_path, models))
+            confine.seed(["ilaas"], (), self.agent_dir(tmp_path, models))
 
     def test_a_variable_env_does_not_pass_is_refused(self, tmp_path):
         """Otherwise every run comes back empty, with a provider error to decode."""
         models = {"providers": {"ilaas": self.provider(apiKey="${ILAAS_API_KEY}")}}
         with pytest.raises(RuntimeError, match=r"add ILAAS_API_KEY to \[isolation\] env"):
-            confine.seed("ilaas", (), self.agent_dir(tmp_path, models))
+            confine.seed(["ilaas"], (), self.agent_dir(tmp_path, models))
 
     def test_a_built_in_provider_needs_no_file(self, tmp_path):
         models = {"providers": {"ilaas": self.provider(apiKey="sk-literal")}}
-        assert confine.seed("anthropic", (), self.agent_dir(tmp_path, models)) == {}
+        assert confine.seed(["anthropic"], (), self.agent_dir(tmp_path, models)) == {}
 
     def test_of_the_settings_only_the_subagent_thinking_level(self, tmp_path):
         """The rest would be inherited from the operator's machine, which no scenario says."""
         settings = {"defaultThinkingLevel": "high", "compaction": {"enabled": False}}
-        seed = confine.seed("ilaas", (), self.agent_dir(tmp_path, settings=settings))
+        seed = confine.seed(["ilaas"], (), self.agent_dir(tmp_path, settings=settings))
         assert seed == {"settings.json": {"defaultThinkingLevel": "high"}}
 
 
@@ -284,7 +358,7 @@ class TestInsideDocker:
     @pytest.fixture
     def backend(self) -> confine.Docker:
         backend = confine.Docker()
-        backend.prepare({"image": IMAGE, "provider": "none-here"})
+        backend.prepare(IMAGE, ())
         return backend
 
     @pytest.fixture
@@ -332,10 +406,7 @@ class TestInsideDocker:
         assert left.stdout.strip() == ""
 
     def test_an_image_without_the_agent_is_refused_before_any_run(self, backend):
-        assert (
-            agent.unrunnable(backend, {"image": IMAGE, "provider": "none-here"})
-            == f"'pi' does not run in image '{IMAGE}'"
-        )
+        assert agent.unrunnable(backend, IMAGE) == f"'pi' does not run in image '{IMAGE}'"
 
 
 class TestTheBwrapCommand:
@@ -390,7 +461,7 @@ class TestInsideBwrap:
     @pytest.fixture
     def backend(self) -> confine.Bwrap:
         backend = confine.Bwrap()
-        backend.prepare({"provider": "none-here"})
+        backend.prepare(None, ())
         return backend
 
     @pytest.fixture
@@ -455,11 +526,11 @@ class TestInsideTheShippedImage:
     @pytest.fixture
     def backend(self) -> confine.Docker:
         backend = confine.Docker()
-        backend.prepare({"image": AGENT_IMAGE})
+        backend.prepare(AGENT_IMAGE, ())
         return backend
 
     def test_the_agent_answers_in_it(self, backend):
-        assert agent.unrunnable(backend, {"image": AGENT_IMAGE}) is None
+        assert agent.unrunnable(backend, AGENT_IMAGE) is None
 
     def test_a_session_renders_in_it(self, backend, tmp_path):
         session = tmp_path / "session" / "trace.jsonl"
