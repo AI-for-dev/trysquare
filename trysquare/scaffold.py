@@ -30,6 +30,7 @@ prompt = "prompt.md"            # inline text works too
 provider = "your-provider"
 model = "your-model"
 thinking = "off"
+# image = "trysquare-agent"     # read when [isolation] runs each agent in docker
 
 [protocol]
 repetitions = 10                # declared in advance, never raised "to see"
