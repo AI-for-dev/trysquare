@@ -138,9 +138,31 @@ on every run it measured.
 backend = "none"
 ```
 
-`backend` defaults to `none`, the only backend so far: the agent sees whatever the
-operator sees, the other runs included, and the synthesis header says so. An unknown
-backend, or a setting the backend does not take, is refused when the file is loaded.
+`backend` defaults to `none`: the agent sees whatever the operator sees, the other runs
+included, and the synthesis header says so. An unknown backend, or a setting the backend
+does not take, is refused when the file is loaded.
+
+```toml
+[isolation]
+backend = "docker"
+env = ["ANTHROPIC_API_KEY"]
+```
+
+`docker` runs each run in its own container, from the image the scenario declares in
+`[agent] image`. The container sees the run's clone and session, read-write, and the
+bricks it loads, read-only, each at the path the host has it. Nothing else of the
+workdir, the sources or the output directory exists inside. It runs as your uid, so
+what the agent writes stays yours, and it gets a fresh home seeded with copies of
+`~/.pi/agent/models.json` and `settings.json`. Never `auth.json`.
+
+`env` lists the variables passed into the container, by name: a provider key reaches
+the agent that way, and **the agent can read it**. Nothing else of your environment
+does. A variable `env` names that is unset is refused before any run.
+
+A launch refuses when docker is not running, when the image is not on the machine
+(nothing is pulled on a run's behalf), or when `pi --version` does not run in it. A
+container whose client was killed is removed; one left by a `kill -9` of trysquare
+itself is not, and `docker ps --filter name=trysquare-` finds it.
 
 ## Absent config
 

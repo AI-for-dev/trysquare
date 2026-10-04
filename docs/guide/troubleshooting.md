@@ -129,19 +129,25 @@ Nothing is lost. **A validity condition must match the task**: `delivered` requi
 file to have changed, which is right for a task asking for a diff and wrong for one
 asking for prose. Fix `[verdict].validity` and rerun `render`.
 
-## "`pi` is not on PATH"
+## "`pi` does not run on this machine"
 
 ```text
-error: 'pi' is not on PATH
+error: 'pi' does not run on this machine
 ```
 
-The agent binary is what a run launches, so a run without it refuses before writing
-anything. A `--dry-run` does not refuse - it has nothing to launch - but it says the
-same thing as a warning, which is where you want to find out:
+The agent binary is what a run launches, so a run refuses before writing anything when
+`pi --version` does not answer where runs happen: on PATH under `backend = "none"`, in
+the scenario's image under `docker` (`'pi' does not run in image '...'`). A `--dry-run`
+does not refuse - it has nothing to launch - but it says the same thing as a warning,
+which is where you want to find out:
 
 ```text
-  ! 'pi' is not on PATH: a real run will refuse
+  ! 'pi' does not run on this machine: a real run will refuse
 ```
+
+The docker backend refuses for its own reasons first, each named: no image declared in
+`[agent]`, an image docker cannot find (pull or build it), a variable `[isolation] env`
+names that is unset.
 
 Everything else in this tool is offline: loading, scoring, aggregation, verdicts,
 `render`, `replay`, `compare` and `parity` all work without the binary.
@@ -429,7 +435,8 @@ A list on one side, such as `0.87.1, 1.0.2`, means that experiment was resumed a
 upgrade. Measure both sides again under one version.
 
 `refused: different isolations, none against docker` is the same refusal for the
-backend each run executed inside: see `[isolation]` in the config reference.
+backend each run executed inside, and `refused: different images` for the image it ran
+from: see `[isolation]` in the config reference.
 
 ## No progress bar appears
 

@@ -180,9 +180,13 @@ See {doc}`../guide/validators`.
 * - `thinking`
   - **yes**
   - Reasoning level. Never inherited, and never omitted.
+* - `image`
+  - with docker
+  - The container image every run executes in. Its tools are the agent's tools, so it
+    belongs to the experiment rather than to the machine.
 ```
 
-All three raise when absent:
+The first three raise when absent:
 
 ```text
 [agent].provider is required in the scenario and is never inherited: a value that
@@ -199,6 +203,11 @@ declared level differs from the machine's `defaultThinkingLevel`. A subagent's l
 cannot be declared anywhere, so what cannot be controlled is verified instead. See
 {doc}`../guide/troubleshooting`.
 :::
+
+`image` is read only when the machine's `[isolation]` backend is `docker`, which then
+refuses a scenario without one. Each run records the image id it ran from, and
+`compare` refuses two experiments measured from different images. Under `none` the
+launch says the image is not used.
 
 ## `[protocol]`
 

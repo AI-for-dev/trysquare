@@ -403,6 +403,21 @@ def ambient_thinking(settings: Path | None = None) -> str | None:
         return None
 
 
+def unrunnable(confinement: Confinement, image: str | None) -> str | None:
+    """Why no run could start where runs happen, or None when one can.
+
+    Asked of the agent itself rather than of PATH: under a container the operator's own
+    `pi` is irrelevant, and the one that matters is in the image.
+    """
+    try:
+        confinement.prepare(image)
+    except RuntimeError as e:
+        return str(e)
+    if not version(confinement):
+        return f"{PI!r} does not run {confinement.where}"
+    return None
+
+
 def available() -> bool:
     """Whether the agent binary is on PATH, for a clear message rather than a trace."""
     from shutil import which

@@ -421,13 +421,13 @@ def cmd_run(args) -> int:
             print(f"    {run_id}  {meta['cell']}  #{meta['repetition']}")
         if plan.runs > 12:
             print(f"    ... and {plan.runs - 12} more")
-        if not agent_mod.available():
-            print(f"  ! {agent_mod.PI!r} is not on PATH: a real run will refuse")
+        if problem := agent_mod.unrunnable(plan.confinement, scenario.agent.get("image")):
+            print(f"  ! {problem}: a real run will refuse")
         print("\n  dry run: nothing was spent")
         return 0
 
-    if not agent_mod.available():
-        print(f"error: {agent_mod.PI!r} is not on PATH", file=sys.stderr)
+    if problem := agent_mod.unrunnable(plan.confinement, scenario.agent.get("image")):
+        print(f"error: {problem}", file=sys.stderr)
         return 1
 
     # The bar opens here rather than above: the plan header, the dry run and the
@@ -663,8 +663,9 @@ def cmd_validate(args) -> int:
         validation_mod.blindness(scenario), len(scenario.cells)
     ):
         print(line)
-    if not agent_mod.available():
-        print(f"  ! {agent_mod.PI!r} is not on PATH: this validation holds, a run would refuse")
+    confinement = confine.backend(config.isolation)
+    if problem := agent_mod.unrunnable(confinement, scenario.agent.get("image")):
+        print(f"  ! {problem}: this validation holds, a run would refuse")
     print("ok: nothing this scenario references is missing")
     return 0
 
@@ -863,6 +864,8 @@ def isolation_lines(runs: list[Run]) -> list[str]:
     if not stated:
         return []
     line = f"- isolation {', '.join(f'`{name}`' for name in stated)}"
+    if images := sorted(_stated(runs, "image")):
+        line += f", image {', '.join(f'`{image}`' for image in images)}"
     if confine.NONE in stated:
         line += ": runs were not isolated, each agent could read the work of the runs beside it"
     return [line]
@@ -1270,6 +1273,7 @@ def cmd_compare(args) -> int:
     for key, field, plural in (
         ("agent", "agent_version", "agents"),
         ("isolation", "isolation", "isolations"),
+        ("image", "image", "images"),
     ):
         lhs, rhs = stated[key] = _stated(left_runs, field), _stated(right_runs, field)
         if len(lhs | rhs) > 1:
@@ -1288,6 +1292,7 @@ def cmd_compare(args) -> int:
             "thinking",
             "agent",
             "isolation",
+            "image",
             "repetitions",
             "concurrency",
             "timeout",

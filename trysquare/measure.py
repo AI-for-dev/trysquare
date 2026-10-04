@@ -54,6 +54,8 @@ class Run:
     # The confinement backend the agent ran inside, per run for the same reason: `none`
     # means it could read every neighbour's work, and a reader of the matrix must know.
     isolation: str = ""
+    # The id of the image it ran from, when it ran in one: the tools the agent had.
+    image: str = ""
 
     @property
     def is_valid(self) -> bool:

@@ -111,6 +111,11 @@ def resolve(
     for key, value in sorted(overrides.items()):
         declared = scenario.protocol.get(key, scenario.agent.get(key))
         notes.append(f"OVERRIDE: {key} {declared} -> {value}")
+    if scenario.agent.get("image") and confine.backend(config.isolation).name == confine.NONE:
+        notes.append(
+            f"UNCONFINED: [agent] image {scenario.agent['image']} is not used, the agent "
+            f"runs on this machine with its tools"
+        )
 
     repo_path, repo_source = settle_repo(scenario, config)
     refuse_unmeasurable(scenario)
@@ -805,7 +810,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
             writable=(clone, session_dir),
             readable=(*bricks["extensions"], *bricks["skills"]),
         )
-        run.isolation = plan.confinement.name
+        run.isolation, run.image = plan.confinement.name, plan.confinement.image
         run.agent_version = agent_mod.version(plan.confinement)
         with watching(board, run_id, cell.name, meta["repetition"]) as watch:
             outcome, tries = agent_mod.run_until_productive(
@@ -1082,6 +1087,7 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     refusal reaches the operator and the disk is as untouched as after a dry run.
     """
     prepare_source(plan.config, plan.scenario.task["repo"], plan.scenario.task["etalon"])
+    plan.confinement.prepare(plan.scenario.agent.get("image"))
     plan.output.prepare()
     # Before the ledger is loaded, because the carry writes one: from here on this matrix
     # holds the carried runs as its own, and everything below reads them like any other.
