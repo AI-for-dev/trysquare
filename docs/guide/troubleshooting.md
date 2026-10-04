@@ -147,7 +147,16 @@ which is where you want to find out:
 
 The docker backend refuses for its own reasons first, each named: no image declared in
 `[agent]`, an image docker cannot find (pull or build it), a variable `[isolation] env`
-names that is unset.
+names that is unset. And a secret of the scenario's provider in `~/.pi/agent/models.json`
+that the agent could read:
+
+```text
+error: the apiKey of provider 'ilaas' in ~/.pi/agent/models.json is written in the file,
+where the agent could read it. Put it in a variable, write $NAME, and add NAME to
+[isolation] env
+```
+
+The same refusal names a `!command`, and a variable `env` does not pass.
 
 Everything else in this tool is offline: loading, scoring, aggregation, verdicts,
 `render`, `replay`, `compare` and `parity` all work without the binary.

@@ -4,6 +4,7 @@ Nothing here spends a token. The backend is a spy that answers in place of the a
 docker running something that is not an agent.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -30,7 +31,7 @@ class Spy:
     def __init__(self) -> None:
         self.calls: list[tuple[list[str], confine.Scope, dict]] = []
 
-    def prepare(self, image) -> None:
+    def prepare(self, agent) -> None:
         pass
 
     def run(self, argv, scope, **kwargs) -> subprocess.CompletedProcess:
@@ -150,17 +151,86 @@ class TestTheDockerCommand:
 
     def test_no_image_declared_is_refused(self):
         with pytest.raises(RuntimeError, match=r"\[agent\] declares no image"):
-            confine.Docker().prepare(None)
+            confine.Docker().prepare({})
 
     def test_a_daemon_that_does_not_answer_is_said_as_such(self, monkeypatch):
         monkeypatch.setenv("PATH", "/nonexistent")
         with pytest.raises(RuntimeError, match="docker does not answer here"):
-            confine.Docker().prepare("alpine:3")
+            confine.Docker().prepare({"image": "alpine:3"})
 
     def test_a_variable_unset_here_is_refused(self, monkeypatch):
         monkeypatch.delenv("SOME_KEY", raising=False)
         with pytest.raises(RuntimeError, match="names SOME_KEY, unset here"):
-            confine.Docker(env=["SOME_KEY"]).prepare("alpine:3")
+            confine.Docker(env=["SOME_KEY"]).prepare({"image": "alpine:3"})
+
+
+class TestWhatTheHomeStartsWith:
+    """Only what the scenario's provider needs, and never a secret written in a file."""
+
+    def agent_dir(self, tmp_path, models: dict | None = None, settings: dict | None = None):
+        for name, content in (("models.json", models), ("settings.json", settings)):
+            if content is not None:
+                (tmp_path / name).write_text(json.dumps(content))
+        return tmp_path
+
+    def provider(self, **fields) -> dict:
+        return {"baseUrl": "https://llm.example/v1", "api": "openai-completions", **fields}
+
+    def test_only_the_scenario_s_provider_is_written(self, tmp_path):
+        """Another provider's key, even a literal one, is not the agent's business."""
+        models = {
+            "providers": {
+                "ilaas": self.provider(apiKey="$ILAAS_API_KEY"),
+                "other": self.provider(apiKey="sk-literal"),
+            }
+        }
+        seed = confine.seed("ilaas", ("ILAAS_API_KEY",), self.agent_dir(tmp_path, models))
+        assert seed["models.json"] == {"providers": {"ilaas": models["providers"]["ilaas"]}}
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"apiKey": "sk-literal"},
+            {"apiKey": "sk-$$literal"},
+            {"headers": {"Authorization": "Bearer sk-literal"}},
+            {"models": [{"id": "m", "headers": {"X-Key": "sk-literal"}}]},
+        ],
+    )
+    def test_a_secret_written_in_the_file_is_refused(self, tmp_path, fields):
+        models = {"providers": {"ilaas": self.provider(**fields)}}
+        with pytest.raises(
+            RuntimeError, match="models.json is written in the file, where the agent"
+        ):
+            confine.seed("ilaas", (), self.agent_dir(tmp_path, models))
+
+    def test_a_header_built_around_a_variable_is_kept(self, tmp_path):
+        models = {"providers": {"ilaas": self.provider(headers={"Authorization": "Bearer ${T}"})}}
+        seed = confine.seed("ilaas", ("T",), self.agent_dir(tmp_path, models))
+        assert seed["models.json"]["providers"]["ilaas"]["headers"] == {
+            "Authorization": "Bearer ${T}"
+        }
+
+    def test_a_command_is_refused(self, tmp_path):
+        """It would run inside the container, where it is not what the operator wrote."""
+        models = {"providers": {"ilaas": self.provider(apiKey="!pass show ilaas")}}
+        with pytest.raises(RuntimeError, match="runs a command"):
+            confine.seed("ilaas", (), self.agent_dir(tmp_path, models))
+
+    def test_a_variable_env_does_not_pass_is_refused(self, tmp_path):
+        """Otherwise every run comes back empty, with a provider error to decode."""
+        models = {"providers": {"ilaas": self.provider(apiKey="${ILAAS_API_KEY}")}}
+        with pytest.raises(RuntimeError, match=r"add ILAAS_API_KEY to \[isolation\] env"):
+            confine.seed("ilaas", (), self.agent_dir(tmp_path, models))
+
+    def test_a_built_in_provider_needs_no_file(self, tmp_path):
+        models = {"providers": {"ilaas": self.provider(apiKey="sk-literal")}}
+        assert confine.seed("anthropic", (), self.agent_dir(tmp_path, models)) == {}
+
+    def test_of_the_settings_only_the_subagent_thinking_level(self, tmp_path):
+        """The rest would be inherited from the operator's machine, which no scenario says."""
+        settings = {"defaultThinkingLevel": "high", "compaction": {"enabled": False}}
+        seed = confine.seed("ilaas", (), self.agent_dir(tmp_path, settings=settings))
+        assert seed == {"settings.json": {"defaultThinkingLevel": "high"}}
 
 
 IMAGE = "alpine:3"
@@ -178,7 +248,7 @@ class TestInsideDocker:
     @pytest.fixture
     def backend(self) -> confine.Docker:
         backend = confine.Docker()
-        backend.prepare(IMAGE)
+        backend.prepare({"image": IMAGE, "provider": "none-here"})
         return backend
 
     @pytest.fixture
@@ -226,4 +296,7 @@ class TestInsideDocker:
         assert left.stdout.strip() == ""
 
     def test_an_image_without_the_agent_is_refused_before_any_run(self, backend):
-        assert agent.unrunnable(backend, IMAGE) == f"'pi' does not run in image '{IMAGE}'"
+        assert (
+            agent.unrunnable(backend, {"image": IMAGE, "provider": "none-here"})
+            == f"'pi' does not run in image '{IMAGE}'"
+        )

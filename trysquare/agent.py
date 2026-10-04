@@ -403,14 +403,14 @@ def ambient_thinking(settings: Path | None = None) -> str | None:
         return None
 
 
-def unrunnable(confinement: Confinement, image: str | None) -> str | None:
+def unrunnable(confinement: Confinement, agent: dict) -> str | None:
     """Why no run could start where runs happen, or None when one can.
 
     Asked of the agent itself rather than of PATH: under a container the operator's own
     `pi` is irrelevant, and the one that matters is in the image.
     """
     try:
-        confinement.prepare(image)
+        confinement.prepare(agent)
     except RuntimeError as e:
         return str(e)
     if not version(confinement):

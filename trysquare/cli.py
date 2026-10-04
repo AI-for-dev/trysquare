@@ -421,12 +421,12 @@ def cmd_run(args) -> int:
             print(f"    {run_id}  {meta['cell']}  #{meta['repetition']}")
         if plan.runs > 12:
             print(f"    ... and {plan.runs - 12} more")
-        if problem := agent_mod.unrunnable(plan.confinement, scenario.agent.get("image")):
+        if problem := agent_mod.unrunnable(plan.confinement, scenario.agent):
             print(f"  ! {problem}: a real run will refuse")
         print("\n  dry run: nothing was spent")
         return 0
 
-    if problem := agent_mod.unrunnable(plan.confinement, scenario.agent.get("image")):
+    if problem := agent_mod.unrunnable(plan.confinement, scenario.agent):
         print(f"error: {problem}", file=sys.stderr)
         return 1
 
@@ -664,7 +664,7 @@ def cmd_validate(args) -> int:
     ):
         print(line)
     confinement = confine.backend(config.isolation)
-    if problem := agent_mod.unrunnable(confinement, scenario.agent.get("image")):
+    if problem := agent_mod.unrunnable(confinement, scenario.agent):
         print(f"  ! {problem}: this validation holds, a run would refuse")
     print("ok: nothing this scenario references is missing")
     return 0

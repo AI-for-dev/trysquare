@@ -17,8 +17,9 @@ scope exists for the agent to find.
 
 from __future__ import annotations
 
+import json
 import os
-import shutil
+import re
 import subprocess
 import tempfile
 import threading
@@ -51,10 +52,10 @@ class Confinement(Protocol):
     #: Where that is, for a refusal to name.
     where: str
 
-    def prepare(self, image: str | None) -> None:
+    def prepare(self, agent: dict) -> None:
         """Checks this machine can run the backend, or raises `RuntimeError` saying why.
 
-        `image` is what the scenario declares in `[agent] image`.
+        `agent` is the scenario's `[agent]` table: its image and its provider.
         """
         ...
 
@@ -73,7 +74,7 @@ class Unconfined:
     image = ""
     where = "on this machine"
 
-    def prepare(self, image: str | None) -> None:
+    def prepare(self, agent: dict) -> None:
         pass
 
     def run(self, argv: Sequence[str], scope: Scope, **kwargs) -> subprocess.CompletedProcess:
@@ -84,12 +85,78 @@ class Unconfined:
 #: one run leaves in it reaches the next.
 HOME = "/home/trysquare"
 
-#: What the agent's home starts with, copied from the operator's `~/.pi/agent`: the
-#: providers it may call and the settings a subagent inherits its thinking level from.
-#: Copied rather than mounted, because docker creates the directories above a mounted
-#: file as root and `pi` then cannot write its own. Never `auth.json`, whose tokens the
-#: agent could read and refresh.
-PI_CONFIG = ("models.json", "settings.json")
+#: The one setting the agent's home carries over from the operator's: the level a
+#: subagent thinks at, which nothing else can declare and `runner` checks against the
+#: scenario. Any other setting would be inherited from the machine, which no scenario says.
+SETTINGS = ("defaultThinkingLevel",)
+
+#: A reference to a variable inside a value, `$NAME` or `${NAME}`, as `pi` interpolates
+#: it: `Bearer ${TOKEN}` is a header whose secret comes from the environment. `$$` and
+#: `$!` are escapes, not references.
+REFERENCE = re.compile(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
+ESCAPE = re.compile(r"\$[$!]")
+
+
+def seed(provider: str, env: Sequence[str], agent_dir: Path) -> dict[str, dict]:
+    """What the agent's home starts with, by file name, read from the operator's `agent_dir`.
+
+    Written rather than copied. `models.json` describes every provider the operator uses,
+    and a key or a header in it may be written out in full: only the scenario's provider
+    goes in, and its secrets must be references to variables `[isolation] env` passes, or
+    the launch is refused. `auth.json` never goes in. A provider `models.json` does not
+    describe is one of `pi`'s own, which reads its key from the environment.
+    """
+    found = {}
+    models = _read(agent_dir / "models.json").get("providers", {})
+    if provider in models:
+        for where, value in _secrets(models[provider]):
+            _check(value, f"{where} of provider {provider!r} in {agent_dir / 'models.json'}", env)
+        found["models.json"] = {"providers": {provider: models[provider]}}
+    settings = _read(agent_dir / "settings.json")
+    if kept := {k: settings[k] for k in SETTINGS if k in settings}:
+        found["settings.json"] = kept
+    return found
+
+
+def _read(path: Path) -> dict:
+    return json.loads(path.read_text()) if path.is_file() else {}
+
+
+def _secrets(entry) -> Iterator[tuple[str, str]]:
+    """Every `apiKey` and header value in a provider entry, its models' included."""
+    if isinstance(entry, list):
+        for item in entry:
+            yield from _secrets(item)
+    elif isinstance(entry, dict):
+        for key, value in entry.items():
+            if key == "apiKey" and isinstance(value, str):
+                yield key, value
+            elif key == "headers" and isinstance(value, dict):
+                yield from ((f"header {k}", v) for k, v in value.items() if isinstance(v, str))
+            else:
+                yield from _secrets(value)
+
+
+def _check(value: str, where: str, env: Sequence[str]) -> None:
+    """Refuses a secret the agent could read in the file, or that `env` does not pass.
+
+    A value with no variable in it is a secret written out. One that mixes a literal and
+    a variable, like `Bearer ${TOKEN}`, is accepted: the literal part is the scheme.
+    """
+    if value.startswith("!"):
+        raise RuntimeError(
+            f"the {where} runs a command, which would run inside the container. Put the "
+            f"secret in a variable, write $NAME, and add NAME to [isolation] env"
+        )
+    names = [a or b for a, b in REFERENCE.findall(ESCAPE.sub("", value))]
+    if not names:
+        raise RuntimeError(
+            f"the {where} is written in the file, where the agent could read it. Put it "
+            f"in a variable, write $NAME, and add NAME to [isolation] env"
+        )
+    for name in names:
+        if name not in env:
+            raise RuntimeError(f"the {where} reads ${name}: add {name} to [isolation] env")
 
 
 class Docker:
@@ -109,10 +176,12 @@ class Docker:
         self.env = tuple(env)
         self.image = ""
         self.where = "in docker"
+        self._seed: dict[str, dict] = {}
         self._live: set[str] = set()
         self._lock = threading.Lock()
 
-    def prepare(self, image: str | None) -> None:
+    def prepare(self, agent: dict) -> None:
+        image = agent.get("image")
         if not image:
             raise RuntimeError(
                 "the docker backend runs the image the scenario declares, and [agent] "
@@ -121,6 +190,7 @@ class Docker:
         unset = [v for v in self.env if v not in os.environ]
         if unset:
             raise RuntimeError(f"[isolation] env names {', '.join(unset)}, unset here")
+        self._seed = seed(agent.get("provider", ""), self.env, Path.home() / ".pi" / "agent")
         running = _docker("version")
         if running.returncode != 0:
             raise RuntimeError(f"docker does not answer here: {running.stderr.strip()[:200]}")
@@ -174,7 +244,7 @@ class Docker:
         name = f"trysquare-{uuid.uuid4().hex[:12]}"
         with self._lock:
             self._live.add(name)
-        with _home() as home:
+        with _home(self._seed) as home:
             try:
                 command = self.argv(argv, scope, kwargs.pop("cwd", None), name, home)
                 return interrupt.run(command, **kwargs)
@@ -194,15 +264,17 @@ class Docker:
 
 
 @contextmanager
-def _home() -> Iterator[Path]:
-    """A home for one container, owned by the operator and seeded with `PI_CONFIG`."""
+def _home(files: dict[str, dict]) -> Iterator[Path]:
+    """A home for one container, owned by the operator, holding what `seed` decided.
+
+    A directory of the operator's rather than files mounted into the image: docker creates
+    the directories above a mounted file as root, and `pi` then cannot write its own.
+    """
     with tempfile.TemporaryDirectory(prefix="trysquare-home-") as home:
         agent_dir = Path(home) / ".pi" / "agent"
         agent_dir.mkdir(parents=True)
-        config = Path.home() / ".pi" / "agent"
-        for name in PI_CONFIG:
-            if (config / name).is_file():
-                shutil.copy(config / name, agent_dir / name)
+        for name, content in files.items():
+            (agent_dir / name).write_text(json.dumps(content, indent=2))
         yield Path(home)
 
 

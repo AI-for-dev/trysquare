@@ -152,12 +152,28 @@ env = ["ANTHROPIC_API_KEY"]
 `[agent] image`. The container sees the run's clone and session, read-write, and the
 bricks it loads, read-only, each at the path the host has it. Nothing else of the
 workdir, the sources or the output directory exists inside. It runs as your uid, so
-what the agent writes stays yours, and it gets a fresh home seeded with copies of
-`~/.pi/agent/models.json` and `settings.json`. Never `auth.json`.
+what the agent writes stays yours, and it gets a fresh home of its own.
 
-`env` lists the variables passed into the container, by name: a provider key reaches
-the agent that way, and **the agent can read it**. Nothing else of your environment
-does. A variable `env` names that is unset is refused before any run.
+That home holds what `pi` needs from your `~/.pi/agent` and nothing more:
+
+- `models.json` with the scenario's provider only. Its `apiKey` and header values must
+  read their secret from a variable (`$NAME`, `${NAME}`, or `Bearer ${NAME}`) that `env`
+  passes. A value written out in full, or a `!command`, is refused before any run,
+  because the agent could read the first and the second would run inside the container.
+  A provider `models.json` does not describe is one of `pi`'s own, which reads its key
+  from the environment.
+- `settings.json` with `defaultThinkingLevel` only, the level a subagent thinks at. The
+  rest of your settings would be inherited from the machine, which no scenario says.
+- never `auth.json`, the tokens of `/login`.
+
+`env` lists the variables passed into the container, by name. Nothing else of your
+environment goes in, and a variable `env` names that is unset is refused before any run.
+
+:::{warning}
+The provider key reaches the agent through `env`, so **the agent can read it**: it needs
+it to call the model. Keeping the key out of the agent's reach takes a proxy that adds it
+to requests outside the container, which this backend does not have.
+:::
 
 A launch refuses when docker is not running, when the image is not on the machine
 (nothing is pulled on a run's behalf), or when `pi --version` does not run in it. A
