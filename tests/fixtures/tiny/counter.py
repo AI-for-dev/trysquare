@@ -7,4 +7,7 @@ a tag and a diff months later.
 
 
 def total(items):
-    return sum(items)
+    result = None
+    for price in items:
+        result = price if result is None else result + price
+    return result
