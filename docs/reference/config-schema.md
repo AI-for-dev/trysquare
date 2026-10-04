@@ -177,6 +177,21 @@ it to call the model. Keeping the key out of the agent's reach takes a proxy tha
 to requests outside the container, which this backend does not have.
 :::
 
+trysquare ships `image/Dockerfile`: Ubuntu 24.04 pinned by digest, Node checked
+against its published checksum, pi at an exact version, and git, python3 and fd. Build
+it, extend it with what your repository's tests need, and name the result in the
+scenario:
+
+```bash
+docker build -t trysquare-agent image/
+```
+
+```dockerfile
+FROM trysquare-agent
+RUN apt-get update && apt-get install -y --no-install-recommends make \
+    && rm -rf /var/lib/apt/lists/*
+```
+
 `cpus` and `memory` hold each container to that much of the machine, swap included.
 They slow a run down, so like `concurrency` they are written in `state.json` and in the
 synthesis header, and `compare` prints them as a difference. Without them a container
