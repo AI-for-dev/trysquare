@@ -20,6 +20,7 @@ from trysquare.measure import Run
 from trysquare.scenario import parse
 
 from tests import gitrepo
+from tests.test_relay import Upstream
 from tests.test_scenario import MINIMAL
 
 
@@ -260,7 +261,27 @@ class TestTheDockerCommand:
 
 
 class TestWhatTheHomeStartsWith:
-    """Only what the scenario's provider needs, and never a secret written in a file."""
+    """Only what the scenario's provider needs, and never a secret: the key stays outside."""
+
+    REACH = confine.Reach(bind="127.0.0.1", host="relay.test")
+
+    @pytest.fixture(autouse=True)
+    def key(self, monkeypatch):
+        monkeypatch.setenv("ILAAS_API_KEY", "sk-the-real-key")
+        monkeypatch.setenv("T", "tok-the-real-token")
+
+    @pytest.fixture
+    def relays(self):
+        """Every relay a seed started, closed with the test."""
+        started = []
+        yield started
+        for relay in started:
+            relay.close()
+
+    def seed(self, relays, providers, env, agent_dir):
+        files, started = confine.seed(providers, env, agent_dir, self.REACH)
+        relays.extend(started)
+        return files, started
 
     def agent_dir(self, tmp_path, models: dict | None = None, settings: dict | None = None):
         for name, content in (("models.json", models), ("settings.json", settings)):
@@ -271,7 +292,7 @@ class TestWhatTheHomeStartsWith:
     def provider(self, **fields) -> dict:
         return {"baseUrl": "https://llm.example/v1", "api": "openai-completions", **fields}
 
-    def test_only_the_scenario_s_provider_is_written(self, tmp_path):
+    def test_only_the_scenario_s_provider_is_written(self, tmp_path, relays):
         """Another provider's key, even a literal one, is not the agent's business."""
         models = {
             "providers": {
@@ -279,20 +300,51 @@ class TestWhatTheHomeStartsWith:
                 "other": self.provider(apiKey="sk-literal"),
             }
         }
-        seed = confine.seed(["ilaas"], ("ILAAS_API_KEY",), self.agent_dir(tmp_path, models))
-        assert seed["models.json"] == {"providers": {"ilaas": models["providers"]["ilaas"]}}
+        files, _ = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
+        assert list(files["models.json"]["providers"]) == ["ilaas"]
 
-    def test_a_judge_on_another_provider_is_written_too(self, tmp_path):
+    def test_the_agent_gets_a_placeholder_and_the_relay_the_key(self, tmp_path, relays):
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        files, [relay] = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
+        written = files["models.json"]["providers"]["ilaas"]
+        assert "sk-the-real-key" not in json.dumps(files)
+        assert relay.reveal(written["apiKey"]) == ("sk-the-real-key", True)
+
+    def test_the_agent_calls_the_relay_which_calls_the_provider(self, tmp_path, relays):
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        files, [relay] = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
+        written = files["models.json"]["providers"]["ilaas"]
+        assert written["baseUrl"] == f"http://relay.test:{relay.port}/v1"
+        assert relay.origin == "https://llm.example"
+
+    def test_a_header_built_around_a_variable_keeps_its_scheme(self, tmp_path, relays):
+        models = {"providers": {"ilaas": self.provider(headers={"Authorization": "Bearer ${T}"})}}
+        files, [relay] = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
+        header = files["models.json"]["providers"]["ilaas"]["headers"]["Authorization"]
+        assert relay.reveal(header) == ("Bearer tok-the-real-token", True)
+
+    def test_a_provider_with_no_secret_needs_no_relay(self, tmp_path, relays):
+        models = {"providers": {"local": self.provider()}}
+        files, started = self.seed(relays, ["local"], (), self.agent_dir(tmp_path, models))
+        assert started == []
+        assert files["models.json"]["providers"]["local"] == self.provider()
+
+    def test_a_judge_on_another_provider_is_written_too(self, tmp_path, relays, monkeypatch):
         """Otherwise the judge finds no provider in its container and scores nothing."""
+        monkeypatch.setenv("A", "sk-agent")
+        monkeypatch.setenv("B", "sk-judge")
         models = {
             "providers": {
                 "ilaas": self.provider(apiKey="$A"),
-                "judging": self.provider(apiKey="$B"),
+                "judging": self.provider(baseUrl="https://judge.example/v1", apiKey="$B"),
                 "other": self.provider(apiKey="sk-literal"),
             }
         }
-        seed = confine.seed(["ilaas", "judging"], ("A", "B"), self.agent_dir(tmp_path, models))
-        assert sorted(seed["models.json"]["providers"]) == ["ilaas", "judging"]
+        files, started = self.seed(
+            relays, ["ilaas", "judging"], (), self.agent_dir(tmp_path, models)
+        )
+        assert sorted(files["models.json"]["providers"]) == ["ilaas", "judging"]
+        assert len(started) == 2, "one relay per provider: each sends its key to one host"
 
     @pytest.mark.parametrize(
         "fields",
@@ -303,41 +355,57 @@ class TestWhatTheHomeStartsWith:
             {"models": [{"id": "m", "headers": {"X-Key": "sk-literal"}}]},
         ],
     )
-    def test_a_secret_written_in_the_file_is_refused(self, tmp_path, fields):
+    def test_a_secret_written_in_the_file_is_refused(self, tmp_path, relays, fields):
         models = {"providers": {"ilaas": self.provider(**fields)}}
         with pytest.raises(
             RuntimeError, match="models.json is written in the file, where the agent"
         ):
-            confine.seed(["ilaas"], (), self.agent_dir(tmp_path, models))
+            self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
 
-    def test_a_header_built_around_a_variable_is_kept(self, tmp_path):
-        models = {"providers": {"ilaas": self.provider(headers={"Authorization": "Bearer ${T}"})}}
-        seed = confine.seed(["ilaas"], ("T",), self.agent_dir(tmp_path, models))
-        assert seed["models.json"]["providers"]["ilaas"]["headers"] == {
-            "Authorization": "Bearer ${T}"
-        }
-
-    def test_a_command_is_refused(self, tmp_path):
+    def test_a_command_is_refused(self, tmp_path, relays):
         """It would run inside the container, where it is not what the operator wrote."""
         models = {"providers": {"ilaas": self.provider(apiKey="!pass show ilaas")}}
         with pytest.raises(RuntimeError, match="runs a command"):
-            confine.seed(["ilaas"], (), self.agent_dir(tmp_path, models))
+            self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
 
-    def test_a_variable_env_does_not_pass_is_refused(self, tmp_path):
-        """Otherwise every run comes back empty, with a provider error to decode."""
+    def test_a_key_env_still_passes_in_is_refused(self, tmp_path, relays):
+        """Passed in, it would sit in the agent's environment beside the placeholder."""
         models = {"providers": {"ilaas": self.provider(apiKey="${ILAAS_API_KEY}")}}
-        with pytest.raises(RuntimeError, match=r"add ILAAS_API_KEY to \[isolation\] env"):
-            confine.seed(["ilaas"], (), self.agent_dir(tmp_path, models))
+        with pytest.raises(RuntimeError, match=r"drop ILAAS_API_KEY from \[isolation\] env"):
+            self.seed(relays, ["ilaas"], ("ILAAS_API_KEY",), self.agent_dir(tmp_path, models))
 
-    def test_a_built_in_provider_needs_no_file(self, tmp_path):
+    def test_a_key_unset_here_is_refused(self, tmp_path, relays, monkeypatch):
+        """Otherwise every run comes back empty, with a provider error to decode."""
+        monkeypatch.delenv("ILAAS_API_KEY")
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        with pytest.raises(RuntimeError, match=r"reads \$ILAAS_API_KEY, unset here"):
+            self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
+
+    def test_a_provider_on_two_hosts_is_refused(self, tmp_path, relays):
+        """One relay serves one provider host, and the key must reach no other."""
+        entry = self.provider(
+            apiKey="$ILAAS_API_KEY", models=[{"id": "m", "baseUrl": "https://elsewhere/v1"}]
+        )
+        with pytest.raises(RuntimeError, match="more than one host"):
+            self.seed(
+                relays, ["ilaas"], (), self.agent_dir(tmp_path, {"providers": {"ilaas": entry}})
+            )
+
+    def test_a_provider_without_an_address_is_refused(self, tmp_path, relays):
+        """An entry that only sets a built-in provider's key gives the relay nowhere to go."""
+        models = {"providers": {"anthropic": {"apiKey": "$ILAAS_API_KEY"}}}
+        with pytest.raises(RuntimeError, match="names no baseUrl"):
+            self.seed(relays, ["anthropic"], (), self.agent_dir(tmp_path, models))
+
+    def test_a_built_in_provider_needs_no_file(self, tmp_path, relays):
         models = {"providers": {"ilaas": self.provider(apiKey="sk-literal")}}
-        assert confine.seed(["anthropic"], (), self.agent_dir(tmp_path, models)) == {}
+        assert self.seed(relays, ["anthropic"], (), self.agent_dir(tmp_path, models)) == ({}, [])
 
-    def test_of_the_settings_only_the_subagent_thinking_level(self, tmp_path):
+    def test_of_the_settings_only_the_subagent_thinking_level(self, tmp_path, relays):
         """The rest would be inherited from the operator's machine, which no scenario says."""
         settings = {"defaultThinkingLevel": "high", "compaction": {"enabled": False}}
-        seed = confine.seed(["ilaas"], (), self.agent_dir(tmp_path, settings=settings))
-        assert seed == {"settings.json": {"defaultThinkingLevel": "high"}}
+        files, _ = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, settings=settings))
+        assert files == {"settings.json": {"defaultThinkingLevel": "high"}}
 
 
 IMAGE = "alpine:3"
@@ -541,3 +609,77 @@ class TestInsideTheShippedImage:
         page = agent.export_html(session, session.parent, backend)
         assert page.read_text().startswith("<!DOCTYPE html>")
         assert page.stat().st_uid == os.getuid()
+
+
+class KeyStaysOut:
+    """What a sandboxed agent can find of its provider's key: nothing, while its requests
+    still reach the provider with it. Shared by the backends that confine."""
+
+    SECRET = "sk-probe-the-real-key"
+
+    def made(self) -> confine.Confinement:
+        raise NotImplementedError
+
+    def fetch(self, url: str, authorization: str) -> list[str]:
+        raise NotImplementedError
+
+    @pytest.fixture
+    def provider(self, tmp_path, monkeypatch):
+        """A provider described in the operator's models.json, served by a local stand-in."""
+        upstream = Upstream()
+        agent_dir = tmp_path / "operator" / ".pi" / "agent"
+        agent_dir.mkdir(parents=True)
+        entry = {
+            "baseUrl": f"{upstream.origin}/v1",
+            "api": "openai-completions",
+            "apiKey": "$PROBE_KEY",
+        }
+        (agent_dir / "models.json").write_text(json.dumps({"providers": {"probe": entry}}))
+        monkeypatch.setenv("HOME", str(tmp_path / "operator"))
+        monkeypatch.setenv("PROBE_KEY", self.SECRET)
+        yield upstream
+        upstream.close()
+
+    @pytest.fixture
+    def backend(self, provider):
+        backend = self.made()
+        backend.prepare(IMAGE, ["probe"])
+        yield backend
+        for relay in backend._relays:
+            relay.close()
+
+    def inside(self, backend, *command) -> str:
+        return backend.run(command, confine.Scope(), capture_output=True, text=True).stdout
+
+    def test_the_key_is_neither_in_the_environment_nor_in_the_home(self, backend):
+        seen = self.inside(backend, "sh", "-c", "env; cat ~/.pi/agent/models.json")
+        assert '"probe"' in seen
+        assert self.SECRET not in seen
+
+    def test_a_request_with_the_placeholder_reaches_the_provider_with_the_key(
+        self, backend, provider
+    ):
+        written = backend._seed["models.json"]["providers"]["probe"]
+        said = self.inside(
+            backend, *self.fetch(f"{written['baseUrl']}/chat", f"Bearer {written['apiKey']}")
+        )
+        assert said == "ok"
+        assert provider.seen[0]["headers"]["Authorization"] == f"Bearer {self.SECRET}"
+
+
+@pytest.mark.skipif(not docker_runs(), reason=f"no docker daemon, or no {IMAGE} image")
+class TestInsideDockerTheKeyStaysOut(KeyStaysOut):
+    def made(self):
+        return confine.Docker()
+
+    def fetch(self, url, authorization):
+        return ["wget", "-q", "-O-", "--header", f"Authorization: {authorization}", url]
+
+
+@pytest.mark.skipif(not bwrap_runs(), reason="no working bwrap here")
+class TestInsideBwrapTheKeyStaysOut(KeyStaysOut):
+    def made(self):
+        return confine.Bwrap()
+
+    def fetch(self, url, authorization):
+        return ["curl", "-s", "--noproxy", "*", "-H", f"Authorization: {authorization}", url]

@@ -40,12 +40,13 @@
 # What each run executes inside. `none`: the agent sees whatever you see, the other
 # runs included, and every synthesis says so. `docker`: one container per run, from the
 # scenario's `[agent] image`, seeing its own clone and nothing else. `bwrap` (Linux): the
-# same boundary without docker, on this machine's tools. `env` names the variables
-# passed in - a provider key, which the agent can then read.
+# same boundary without docker, on this machine's tools. Under both, the provider's key
+# stays out: the agent gets a placeholder and a relay on this machine adds the key.
+# `env` names the variables passed in, for whatever else the agent needs.
 [isolation]
 backend = "none"
 # backend = "docker"
-# env = ["ANTHROPIC_API_KEY"]
+# env = []
 
 [defaults]
 # Clones live in the system temporary directory, which macOS purges on reboot.
