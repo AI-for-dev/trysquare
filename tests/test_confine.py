@@ -268,11 +268,14 @@ class TestWhatTheHomeStartsWith:
 
 IMAGE = "alpine:3"
 
+#: `image/Dockerfile`, under the tag its documentation builds it as.
+AGENT_IMAGE = "trysquare-agent"
 
-def docker_runs() -> bool:
+
+def docker_runs(image: str = IMAGE) -> bool:
     if not shutil.which("docker"):
         return False
-    found = subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True)
+    found = subprocess.run(["docker", "image", "inspect", image], capture_output=True)
     return found.returncode == 0
 
 
@@ -443,3 +446,27 @@ def running(command: str) -> bool:
         except OSError:
             continue
     return False
+
+
+@pytest.mark.skipif(not docker_runs(AGENT_IMAGE), reason=f"no {AGENT_IMAGE} image built here")
+class TestInsideTheShippedImage:
+    """`image/Dockerfile` gives the agent a `pi` that runs. Nothing here calls a provider."""
+
+    @pytest.fixture
+    def backend(self) -> confine.Docker:
+        backend = confine.Docker()
+        backend.prepare({"image": AGENT_IMAGE})
+        return backend
+
+    def test_the_agent_answers_in_it(self, backend):
+        assert agent.unrunnable(backend, {"image": AGENT_IMAGE}) is None
+
+    def test_a_session_renders_in_it(self, backend, tmp_path):
+        session = tmp_path / "session" / "trace.jsonl"
+        session.parent.mkdir()
+        session.write_bytes(
+            (Path(__file__).parent / "fixtures" / "session-minimal.jsonl").read_bytes()
+        )
+        page = agent.export_html(session, session.parent, backend)
+        assert page.read_text().startswith("<!DOCTYPE html>")
+        assert page.stat().st_uid == os.getuid()
