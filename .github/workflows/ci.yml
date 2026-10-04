@@ -64,8 +64,11 @@ jobs:
           if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
-      # The image the docker tests run in. Pulled here, never by the tests.
+      # The images the docker tests run in, made here and never by the tests: alpine
+      # for the boundary, and the image trysquare ships, so a pin that no longer builds
+      # or a `pi` that no longer runs in it is caught here rather than by a user.
       - run: docker pull alpine:3
+      - run: docker build -t trysquare-agent image/
       - shell: bash
         run: |
           uv run --group dev pytest tests/test_confine.py -k Inside -rs | tee pytest.log
