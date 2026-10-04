@@ -125,3 +125,11 @@ class TestTheArchiveIsReadable:
         light, dark = synthesis_page(SYNTHESIS).split("prefers-color-scheme: dark")
         assert "a { color:" in light
         assert "a { color:" in dark
+
+    def test_a_number_never_breaks_across_lines(self):
+        """`18 711 [18 711, 18 711]` is spaced for reading. On a phone a cell wrapped at
+        each space, five lines for one number, and its neighbour then ran off the screen."""
+        page = synthesis_page(SYNTHESIS)
+        assert "white-space: nowrap" in page
+        assert '<div class="table"><table>' in page
+        assert ".table { overflow-x: auto;" in page
