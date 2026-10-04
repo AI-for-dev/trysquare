@@ -154,11 +154,11 @@ def argv(
     return args
 
 
-#: The one event kind a trace does not keep. It carries the whole message accumulated
-#: so far, twice - once as `partial` and once as `message` - to deliver a delta of two
-#: characters, so a stream costs the square of what the agent says. Nothing reads it:
-#: every measurement comes off `message_end`, and the validator that once parsed these
-#: was reworked to read the session because parsing them was the defect.
+#: The one event kind a trace does not keep. Nothing reads it: every measurement comes
+#: off `message_end`, and the validator that once parsed these was reworked to read the
+#: session because parsing them was the defect. Since `pi` 1.0 an update carries only
+#: its delta. Before, it carried the whole message accumulated so far, twice, so a
+#: stream cost the square of what the agent said - and an older `pi` on PATH still does.
 #:
 #: Matched as a prefix rather than searched for, so a `message_end` whose text happens
 #: to quote this name cannot be dropped. Should `pi` ever reorder its keys the match
@@ -226,10 +226,10 @@ def run(
     """Runs the agent once through the sieve, and reads back what it says.
 
     Nothing here ever holds the stream: it passes line by line and only what an
-    event is lands in `trace`. That matters because the stream is quadratic in the
-    length of the answer - `pi` sends the whole accumulated message twice on every
-    update, to deliver two characters - so a 126 KB reply costs a gigabyte and a
-    1.5 MB one costs the 136 GB that started all this.
+    event is lands in `trace`. That mattered because before 1.0 the stream was
+    quadratic in the length of the answer - `pi` sent the whole accumulated message
+    twice on every update, to deliver two characters - so a 126 KB reply cost a
+    gigabyte and a 1.5 MB one cost the 136 GB that started all this.
 
     `ceiling` bounds what is **kept**, which is the honest quantity now. Bounding the
     raw stream would keep excluding the cells whose agent answers at length, and
@@ -344,10 +344,8 @@ def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
     that: a renderer written here would drift from the format it renders, silently, and
     the format is the agent's rather than ours.
 
-    `pi --export` takes no output path and writes `pi-session-<stem>.html` into the
-    current directory, so the target directory *is* the working directory. The file is
-    then renamed to `<stem>.html`, which puts the page beside the jsonl it came from under
-    the same stem - the archive stays readable by looking at it.
+    The page is `<stem>.html`, beside the jsonl it came from under the same stem - the
+    archive stays readable by looking at it.
 
     `--offline` because an export reads a file. A startup network call would make
     re-rendering an archive depend on the network being up, which is the opposite of what
@@ -357,10 +355,10 @@ def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
     catch and one session's failure need not cost the others.
     """
     target.mkdir(parents=True, exist_ok=True)
+    destination = target / f"{session.stem}.html"
     try:
         proc = interrupt.run(
-            [PI, "--offline", "--export", str(session.resolve())],
-            cwd=target,
+            [PI, "--offline", "--export", str(session.resolve()), str(destination)],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -372,12 +370,8 @@ def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
         raise RuntimeError(str(e)) from e
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout).strip()[:300] or f"exit {proc.returncode}")
-
-    produced = target / f"pi-session-{session.stem}.html"
-    if not produced.is_file():
-        raise RuntimeError(f"reported success but wrote no {produced.name}")
-    destination = target / f"{session.stem}.html"
-    produced.replace(destination)
+    if not destination.is_file():
+        raise RuntimeError(f"reported success but wrote no {destination.name}")
     return destination
 
 
