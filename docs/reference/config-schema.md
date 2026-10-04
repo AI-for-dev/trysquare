@@ -145,7 +145,6 @@ does not take, is refused when the file is loaded.
 ```toml
 [isolation]
 backend = "docker"
-env = ["ANTHROPIC_API_KEY"]
 cpus = 2          # optional
 memory = "4g"     # optional
 ```
@@ -159,23 +158,36 @@ what the agent writes stays yours, and it gets a fresh home of its own.
 That home holds what `pi` needs from your `~/.pi/agent` and nothing more:
 
 - `models.json` with only the providers the scenario calls: the agent's, and each
-  judge's. Their `apiKey` and header values must read their secret from a variable
-  (`$NAME`, `${NAME}`, or `Bearer ${NAME}`) that `env` passes. A value written out in
-  full, or a `!command`, is refused before any run, because the agent could read the
-  first and the second would run inside the container.
-  A provider `models.json` does not describe is one of `pi`'s own, which reads its key
-  from the environment.
+  judge's. Each holds a placeholder where its key was and a relay's address where the
+  provider's was. See below.
 - `settings.json` with `defaultThinkingLevel` only, the level a subagent thinks at. The
   rest of your settings would be inherited from the machine, which no scenario says.
 - never `auth.json`, the tokens of `/login`.
 
-`env` lists the variables passed into the container, by name. Nothing else of your
-environment goes in, and a variable `env` names that is unset is refused before any run.
+**The provider's key never enters the container.** Its `apiKey` and header values in
+your `models.json` must read the secret from a variable set where trysquare runs
+(`$NAME`, `${NAME}`, or `Bearer ${NAME}`). The agent gets a placeholder instead, and each
+provider's address becomes a relay of its own, which trysquare runs on your machine for
+the launch. A relay swaps the placeholder for the key on each request and sends it on, over HTTPS, to
+the provider's host and no other; a request without the placeholder is refused, and an
+error in which the provider quotes the key comes back with the placeholder in its place.
+Before any run, a launch refuses a key written out in the file, a `!command` (it would
+run inside the container), a variable that is unset, and a variable `env` still passes
+in, where the agent could read it beside the placeholder.
+
+The relay listens on docker's bridge, the address `host.docker.internal` reaches from a
+container, so nothing off the machine can call it. The agent needs no network of its own
+to reach its provider, so no proxy variable has to be passed in either.
+
+`env` lists the variables passed into the container, by name, for whatever else the
+agent needs. Nothing else of your environment goes in, and a variable `env` names that
+is unset is refused before any run.
 
 :::{warning}
-The provider key reaches the agent through `env`, so **the agent can read it**: it needs
-it to call the model. Keeping the key out of the agent's reach takes a proxy that adds it
-to requests outside the container, which this backend does not have.
+Only a provider your `models.json` describes, with its `baseUrl`, goes through the relay.
+One of `pi`'s own that it does not describe reads its key from the environment, so from
+`env`, and **the agent can read that key**. Describe the provider in `models.json` to
+keep it out.
 :::
 
 trysquare ships `image/Dockerfile`: Ubuntu 24.04 pinned by digest, Node checked
@@ -206,7 +218,6 @@ itself is not, and `docker ps --filter name=trysquare-` finds it.
 ```toml
 [isolation]
 backend = "bwrap"
-env = ["ANTHROPIC_API_KEY"]
 bind = ["~/.nvm"]   # optional
 ```
 
@@ -217,9 +228,10 @@ empty root and sees `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64` and `/etc` read-on
 run's clone and session read-write and its bricks read-only at the paths the host has
 them, and nothing else: no `/home`, no other run under `/tmp`. `bind` adds paths
 read-only, for a `pi` or a toolchain installed outside the system directories. The home,
-`env` and their refusals are the docker backend's, and a variable reaches the sandbox
-through its environment, never its command line. It runs as your uid, shares the network
-to reach the provider, and dies with trysquare, so no agent outlives an interrupt.
+the relay, `env` and their refusals are the docker backend's, with the relay on the
+loopback the sandbox shares, and a variable reaches the sandbox through its environment,
+never its command line. It runs as your uid and dies with trysquare, so no agent
+outlives an interrupt.
 
 A launch refuses when bwrap cannot make a sandbox here: bubblewrap missing, or
 unprivileged user namespaces forbidden, as some distributions and most containers do.

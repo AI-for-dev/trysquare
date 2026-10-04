@@ -20,6 +20,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
+import socket
 import subprocess
 import tempfile
 import threading
@@ -31,6 +33,7 @@ from pathlib import Path
 from typing import Protocol
 
 from . import interrupt
+from .relay import Relay
 
 NONE = "none"
 DOCKER = "docker"
@@ -102,35 +105,127 @@ SETTINGS = ("defaultThinkingLevel",)
 
 #: A reference to a variable inside a value, `$NAME` or `${NAME}`, as `pi` interpolates
 #: it: `Bearer ${TOKEN}` is a header whose secret comes from the environment. `$$` and
-#: `$!` are escapes, not references.
-REFERENCE = re.compile(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
-ESCAPE = re.compile(r"\$[$!]")
+#: `$!` are escapes, matched so they are never read as references.
+REFERENCE = re.compile(r"\$[$!]|\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
+
+#: The scheme and host of a URL, which is what a relay serves.
+ORIGIN = re.compile(r"^[a-z][a-z0-9+.-]*://[^/]+", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class Reach:
+    """Where a relay listens on this machine, and the host the sandbox calls it by."""
+
+    bind: str
+    host: str
+
 
 #: A memory size as docker reads it.
 MEMORY = re.compile(r"^\d+[bkmg]$")
 
 
-def seed(providers: Sequence[str], env: Sequence[str], agent_dir: Path) -> dict[str, dict]:
-    """What the agent's home starts with, by file name, read from the operator's `agent_dir`.
+def seed(
+    providers: Sequence[str], env: Sequence[str], agent_dir: Path, reach: Reach
+) -> tuple[dict[str, dict], list[Relay]]:
+    """What the agent's home starts with, by file name, and the relays that hold its keys.
 
-    Written rather than copied. `models.json` describes every provider the operator uses,
-    and a key or a header in it may be written out in full: only the providers the launch
-    calls go in, and their secrets must be references to variables `[isolation] env`
-    passes, or the launch is refused. `auth.json` never goes in. A provider `models.json`
-    does not describe is one of `pi`'s own, which reads its key from the environment.
+    Read from the operator's `agent_dir` and written rather than copied. `models.json`
+    describes every provider the operator uses, and only the providers the launch calls go
+    in. Their secrets must be references to variables set here, and none of them reaches
+    the sandbox: each is replaced by a placeholder, the provider's address by a relay's,
+    and the relay puts the secret back on the way out (see `relay`). One relay per
+    provider, since a relay sends its key to one host only. `auth.json` never goes in. A
+    provider `models.json` does not describe is one of `pi`'s own, which reads its key
+    from the environment - so from `env`, where the agent can read it too.
     """
-    found = {}
+    found: dict[str, dict] = {}
+    kept: dict[str, dict] = {}
+    relays: list[Relay] = []
     models = _read(agent_dir / "models.json").get("providers", {})
-    kept = {p: models[p] for p in providers if p in models}
-    for provider, entry in kept.items():
-        for where, value in _secrets(entry):
-            _check(value, f"{where} of provider {provider!r} in {agent_dir / 'models.json'}", env)
+    try:
+        for provider in providers:
+            if provider not in models:
+                continue
+            entry = models[provider]
+            where = f"provider {provider!r} in {agent_dir / 'models.json'}"
+            names = sorted(
+                {
+                    n
+                    for field, value in _secrets(entry)
+                    for n in _check(value, f"{field} of {where}", env)
+                }
+            )
+            if names:
+                entry, relay = _relayed(entry, names, where, reach)
+                relays.append(relay)
+            kept[provider] = entry
+    except BaseException:
+        # A provider refused after another was relayed must not leave that relay serving.
+        for relay in relays:
+            relay.close()
+        raise
     if kept:
         found["models.json"] = {"providers": kept}
     settings = _read(agent_dir / "settings.json")
-    if kept := {k: settings[k] for k in SETTINGS if k in settings}:
-        found["settings.json"] = kept
-    return found
+    if thinking := {k: settings[k] for k in SETTINGS if k in settings}:
+        found["settings.json"] = thinking
+    return found, relays
+
+
+def _relayed(entry: dict, names: list[str], where: str, reach: Reach) -> tuple[dict, Relay]:
+    """The entry the agent gets - placeholders and the relay's address - and the relay."""
+    origins = {ORIGIN.match(url)[0] for url in _addresses(entry) if ORIGIN.match(url)}
+    if not origins:
+        raise RuntimeError(
+            f"{where} names no baseUrl, so there is nowhere to send its key from outside "
+            f"the sandbox. Write the provider's address in it"
+        )
+    if len(origins) > 1:
+        raise RuntimeError(
+            f"{where} sends requests to more than one host ({', '.join(sorted(origins))}), "
+            f"and its key must reach one only"
+        )
+    placeholders = {n: f"trysquare-{n}-{secrets.token_hex(16)}" for n in names}
+    relay = Relay(origins.pop(), {placeholders[n]: os.environ[n] for n in names}, reach.bind)
+    return _rewritten(entry, placeholders, relay.origin, f"http://{reach.host}:{relay.port}"), relay
+
+
+def _addresses(entry) -> Iterator[str]:
+    """Every `baseUrl` in a provider entry, its models' included."""
+    if isinstance(entry, list):
+        for item in entry:
+            yield from _addresses(item)
+    elif isinstance(entry, dict):
+        for key, value in entry.items():
+            if key == "baseUrl" and isinstance(value, str):
+                yield value
+            else:
+                yield from _addresses(value)
+
+
+def _rewritten(entry, placeholders: dict[str, str], origin: str, relay: str):
+    """`entry` with each secret's variables replaced by placeholders and `origin` by `relay`."""
+    if isinstance(entry, list):
+        return [_rewritten(item, placeholders, origin, relay) for item in entry]
+    if not isinstance(entry, dict):
+        return entry
+    out = {}
+    for key, value in entry.items():
+        if key == "baseUrl" and isinstance(value, str):
+            out[key] = relay + value[len(origin) :]
+        elif key == "apiKey" and isinstance(value, str):
+            out[key] = _placed(value, placeholders)
+        elif key == "headers" and isinstance(value, dict):
+            out[key] = {
+                k: _placed(v, placeholders) if isinstance(v, str) else v for k, v in value.items()
+            }
+        else:
+            out[key] = _rewritten(value, placeholders, origin, relay)
+    return out
+
+
+def _placed(value: str, placeholders: dict[str, str]) -> str:
+    return REFERENCE.sub(lambda m: placeholders[m[1] or m[2]] if m[1] or m[2] else m[0], value)
 
 
 def _read(path: Path) -> dict:
@@ -152,8 +247,8 @@ def _secrets(entry) -> Iterator[tuple[str, str]]:
                 yield from _secrets(value)
 
 
-def _check(value: str, where: str, env: Sequence[str]) -> None:
-    """Refuses a secret the agent could read in the file, or that `env` does not pass.
+def _check(value: str, where: str, env: Sequence[str]) -> list[str]:
+    """The variables a secret reads, once it is one the relay can keep outside.
 
     A value with no variable in it is a secret written out. One that mixes a literal and
     a variable, like `Bearer ${TOKEN}`, is accepted: the literal part is the scheme.
@@ -161,17 +256,24 @@ def _check(value: str, where: str, env: Sequence[str]) -> None:
     if value.startswith("!"):
         raise RuntimeError(
             f"the {where} runs a command, which would run inside the container. Put the "
-            f"secret in a variable, write $NAME, and add NAME to [isolation] env"
+            f"secret in a variable set here and write $NAME"
         )
-    names = [a or b for a, b in REFERENCE.findall(ESCAPE.sub("", value))]
+    names = [a or b for _, a, b in (m.group(0, 1, 2) for m in REFERENCE.finditer(value)) if a or b]
     if not names:
         raise RuntimeError(
             f"the {where} is written in the file, where the agent could read it. Put it "
-            f"in a variable, write $NAME, and add NAME to [isolation] env"
+            f"in a variable set here and write $NAME"
         )
     for name in names:
-        if name not in env:
-            raise RuntimeError(f"the {where} reads ${name}: add {name} to [isolation] env")
+        if name in env:
+            raise RuntimeError(
+                f"the {where} reads ${name}, and [isolation] env would pass it into the "
+                f"sandbox, where the agent could read it: drop {name} from [isolation] "
+                f"env, trysquare adds it to the agent's requests from outside"
+            )
+        if name not in os.environ:
+            raise RuntimeError(f"the {where} reads ${name}, unset here")
+    return names
 
 
 def _variables(env: Sequence[str]) -> tuple[str, ...]:
@@ -181,12 +283,17 @@ def _variables(env: Sequence[str]) -> tuple[str, ...]:
     return tuple(env)
 
 
-def _settled(env: tuple[str, ...], providers: Sequence[str]) -> dict[str, dict]:
-    """The agent's home for this launch, once every variable `env` names is set."""
+def _settled(
+    env: tuple[str, ...], providers: Sequence[str], reach: Reach, previous: list[Relay]
+) -> tuple[dict[str, dict], list[Relay]]:
+    """The agent's home for this launch and its relays, once every variable `env` names is
+    set. A launch prepares more than once, and only the last relays serve its runs."""
+    for relay in previous:
+        relay.close()
     unset = [v for v in env if v not in os.environ]
     if unset:
         raise RuntimeError(f"[isolation] env names {', '.join(unset)}, unset here")
-    return seed(providers, env, Path.home() / ".pi" / "agent")
+    return seed(providers, env, Path.home() / ".pi" / "agent", reach)
 
 
 class Docker:
@@ -194,8 +301,8 @@ class Docker:
 
     The container sees the run's scope and nothing else, each path where the host has it.
     It runs as the operator's uid so what the agent writes in the clone stays the
-    operator's, and its environment is the variables `[isolation] env` names: a provider
-    key reaches the agent that way, and the agent can read it.
+    operator's, and its environment is the variables `[isolation] env` names. It calls
+    its provider through the relay on the host, as `host.docker.internal`.
     """
 
     name = DOCKER
@@ -215,6 +322,7 @@ class Docker:
         self.image = ""
         self.where = "in docker"
         self._seed: dict[str, dict] = {}
+        self._relays: list[Relay] = []
         self._live: set[str] = set()
         self._lock = threading.Lock()
 
@@ -224,10 +332,11 @@ class Docker:
                 "the docker backend runs the image the scenario declares, and [agent] "
                 "declares no image"
             )
-        self._seed = _settled(self.env, providers)
         running = _docker("version")
         if running.returncode != 0:
             raise RuntimeError(f"docker does not answer here: {running.stderr.strip()[:200]}")
+        reach = Reach(bind=_bridge(), host="host.docker.internal")
+        self._seed, self._relays = _settled(self.env, providers, reach, self._relays)
         found = _docker("image", "inspect", "--format", "{{.Id}}", image)
         if found.returncode != 0:
             raise RuntimeError(
@@ -258,6 +367,9 @@ class Docker:
             f"{home}:{HOME}:rw",
             "--env",
             f"HOME={HOME}",
+            # Where the relay listens, under the same name on Linux as Docker Desktop has.
+            "--add-host",
+            "host.docker.internal:host-gateway",
         ]
         if "cpus" in self.limits:
             args += ["--cpus", str(self.limits["cpus"])]
@@ -315,8 +427,9 @@ class Bwrap:
     network to reach the provider, and dies with trysquare, so no run outlives a kill.
 
     Its environment is `PATH`, `HOME` and the variables `[isolation] env` names, handed
-    to bwrap as its own environment rather than as `--setenv` arguments: a key never sits
-    in an argv, where `ps` would show it.
+    to bwrap as its own environment rather than as `--setenv` arguments: a variable never
+    sits in an argv, where `ps` would show it. The relay listens on the loopback, which
+    the sandbox shares.
     """
 
     name = BWRAP
@@ -331,9 +444,11 @@ class Bwrap:
             raise ValueError(f"bind = {bind!r} is not a list of paths")
         self.bind = tuple(Path(os.path.expanduser(p)) for p in bind)
         self._seed: dict[str, dict] = {}
+        self._relays: list[Relay] = []
 
     def prepare(self, image: str | None, providers: Sequence[str]) -> None:
-        self._seed = _settled(self.env, providers)
+        reach = Reach(bind="127.0.0.1", host="127.0.0.1")
+        self._seed, self._relays = _settled(self.env, providers, reach, self._relays)
         probe = _run("bwrap", "--ro-bind", "/", "/", "true")
         if probe.returncode != 0:
             raise RuntimeError(
@@ -370,6 +485,26 @@ class Bwrap:
         with _home(self._seed) as home:
             command = self.argv(argv, scope, kwargs.pop("cwd", None), home)
             return interrupt.run(command, env=self.environment(), **kwargs)
+
+
+def _bridge() -> str:
+    """Where a relay containers can call listens: on docker's bridge, the address
+    `host-gateway` resolves to, so nothing outside this machine reaches it. Under Docker
+    Desktop that address is inside its VM rather than here, and Desktop forwards
+    `host.docker.internal` to the loopback instead."""
+    found = _docker(
+        "network", "inspect", "bridge", "--format", "{{range .IPAM.Config}}{{.Gateway}}{{end}}"
+    )
+    gateway = found.stdout.strip()
+    if not gateway:
+        # An empty address would bind every interface, and offer the key to the network.
+        return "127.0.0.1"
+    try:
+        with socket.socket() as probe:
+            probe.bind((gateway, 0))
+    except (OSError, ValueError):
+        return "127.0.0.1"
+    return gateway
 
 
 def _create(scope: Scope) -> None:

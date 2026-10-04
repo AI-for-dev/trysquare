@@ -148,15 +148,18 @@ which is where you want to find out:
 The docker backend refuses for its own reasons first, each named: no image declared in
 `[agent]`, an image docker cannot find (pull or build it), a variable `[isolation] env`
 names that is unset. And a secret of the scenario's provider in `~/.pi/agent/models.json`
-that the agent could read:
+that would reach the agent:
 
 ```text
-error: the apiKey of provider 'ilaas' in ~/.pi/agent/models.json is written in the file,
-where the agent could read it. Put it in a variable, write $NAME, and add NAME to
-[isolation] env
+error: the apiKey of provider 'ilaas' in ~/.pi/agent/models.json reads $ILAAS_API_KEY,
+and [isolation] env would pass it into the sandbox, where the agent could read it: drop
+ILAAS_API_KEY from [isolation] env, trysquare adds it to the agent's requests from
+outside
 ```
 
-The same refusal names a `!command`, and a variable `env` does not pass. The bwrap
+The same refusal names a key written out in the file, a `!command`, a variable unset
+where trysquare runs, a provider entry with no `baseUrl`, and one that sends requests to
+more than one host. The bwrap
 backend shares those refusals, and adds its own when it cannot make a sandbox at all:
 `bwrap cannot make a sandbox here`, with bubblewrap's own reason - usually unprivileged
 user namespaces, which some distributions and most containers forbid.
