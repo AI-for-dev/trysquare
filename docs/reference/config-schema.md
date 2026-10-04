@@ -146,6 +146,8 @@ does not take, is refused when the file is loaded.
 [isolation]
 backend = "docker"
 env = ["ANTHROPIC_API_KEY"]
+cpus = 2          # optional
+memory = "4g"     # optional
 ```
 
 `docker` runs each run in its own container, from the image the scenario declares in
@@ -174,6 +176,11 @@ The provider key reaches the agent through `env`, so **the agent can read it**: 
 it to call the model. Keeping the key out of the agent's reach takes a proxy that adds it
 to requests outside the container, which this backend does not have.
 :::
+
+`cpus` and `memory` hold each container to that much of the machine, swap included.
+They slow a run down, so like `concurrency` they are written in `state.json` and in the
+synthesis header, and `compare` prints them as a difference. Without them a container
+may use all of the machine.
 
 A launch refuses when docker is not running, when the image is not on the machine
 (nothing is pulled on a run's behalf), or when `pi --version` does not run in it. A

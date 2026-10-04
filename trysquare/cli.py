@@ -685,7 +685,7 @@ def cmd_render(args) -> int:
     # writing anything when the matrix is incomplete, and an incomplete matrix is
     # exactly when somebody wants to read the traces.
     if args.html:
-        code = _export_sessions(output, runs, no_progress=args.no_progress)
+        code = _export_sessions(output, runs, *_load(args), no_progress=args.no_progress)
         if code:
             return code
 
@@ -698,7 +698,9 @@ def cmd_render(args) -> int:
     return _write_synthesis(output, scenario, runs, suffix)
 
 
-def _export_sessions(output: Output, runs: list[Run], no_progress: bool = False) -> int:
+def _export_sessions(
+    output: Output, runs: list[Run], scenario, config, no_progress: bool = False
+) -> int:
     """Rebuilds one HTML page per archived session, in the run's own directory.
 
     Costs no tokens: it reads jsonl already on disk. A session that will not render is
@@ -709,11 +711,11 @@ def _export_sessions(output: Output, runs: list[Run], no_progress: bool = False)
     before sessions were archived would otherwise produce a silence that reads as
     success.
     """
-    if not agent_mod.available():
-        print(
-            f"error: {agent_mod.PI!r} is not on PATH, so no session can be exported",
-            file=sys.stderr,
-        )
+    # Where the runs ran, with the image they ran from, but neither a variable nor a
+    # provider: an export reads a file and calls nothing, so it must not need the key.
+    confinement = confine.backend({k: v for k, v in config.isolation.items() if k != "env"})
+    if problem := agent_mod.unrunnable(confinement, {"image": scenario.agent.get("image")}):
+        print(f"error: {problem}, so no session can be exported", file=sys.stderr)
         return 1
 
     written = bare = 0
@@ -729,7 +731,7 @@ def _export_sessions(output: Output, runs: list[Run], no_progress: bool = False)
                 continue
             for session in sessions:
                 try:
-                    path = agent_mod.export_html(session, session.parent)
+                    path = agent_mod.export_html(session, session.parent, confinement)
                 except RuntimeError as e:
                     bar.warn(f"  !! {run.id}/{session.name}: {e}")
                     continue
@@ -844,7 +846,7 @@ def _write_synthesis(
         )
     if state.get("overrides"):
         header.append(f"- overrides: {json.dumps(state['overrides'])}")
-    header += isolation_lines(runs)
+    header += isolation_lines(runs, state.get("limits") or {})
     header.append("")
     warning = table_mod.retry_warning(by_cell) + carried_note(state)
     path = output.write_synthesis("\n".join([*header, text, warning, ""]), suffix)
@@ -858,17 +860,21 @@ def _write_synthesis(
     return 0
 
 
-def isolation_lines(runs: list[Run]) -> list[str]:
-    """What the agents ran inside, and a warning when nothing kept them apart."""
+def isolation_lines(runs: list[Run], limits: dict) -> list[str]:
+    """What the agents ran inside, a warning when nothing kept them apart, and what each
+    run could use of the machine."""
     stated = sorted(_stated(runs, "isolation"))
-    if not stated:
-        return []
-    line = f"- isolation {', '.join(f'`{name}`' for name in stated)}"
-    if images := sorted(_stated(runs, "image")):
-        line += f", image {', '.join(f'`{image}`' for image in images)}"
-    if confine.NONE in stated:
-        line += ": runs were not isolated, each agent could read the work of the runs beside it"
-    return [line]
+    lines = []
+    if stated:
+        line = f"- isolation {', '.join(f'`{name}`' for name in stated)}"
+        if images := sorted(_stated(runs, "image")):
+            line += f", image {', '.join(f'`{image}`' for image in images)}"
+        if confine.NONE in stated:
+            line += ": runs were not isolated, each agent could read the work of the runs beside it"
+        lines.append(line)
+    if limits:
+        lines.append(f"- limits per run: {', '.join(f'{k} {v}' for k, v in limits.items())}")
+    return lines
 
 
 # --- watch -----------------------------------------------------------------
@@ -1292,6 +1298,7 @@ def cmd_compare(args) -> int:
             "thinking",
             "agent",
             "isolation",
+            "limits",
             "image",
             "repetitions",
             "concurrency",

@@ -348,7 +348,9 @@ def version(confinement: Confinement = UNCONFINED, timeout: int = 30) -> str:
     return proc.stdout.strip() if proc.returncode == 0 else ""
 
 
-def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
+def export_html(
+    session: Path, target: Path, confinement: Confinement = UNCONFINED, timeout: int = 120
+) -> Path:
     """Renders one archived session as a standalone page, by the agent itself.
 
     The agent already knows how to read its own sessions, so nothing here reimplements
@@ -362,14 +364,19 @@ def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
     re-rendering an archive depend on the network being up, which is the opposite of what
     an archive is for.
 
+    Through the backend the runs used, so the `pi` that renders a session is the one
+    that wrote it.
+
     Raises `RuntimeError` on anything that went wrong, so a caller has one exception to
     catch and one session's failure need not cost the others.
     """
+    target = target.resolve()
     target.mkdir(parents=True, exist_ok=True)
-    destination = target / f"{session.stem}.html"
+    session, destination = session.resolve(), target / f"{session.stem}.html"
     try:
-        proc = interrupt.run(
-            [PI, "--offline", "--export", str(session.resolve()), str(destination)],
+        proc = confinement.run(
+            [PI, "--offline", "--export", str(session), str(destination)],
+            Scope(writable=(target,), readable=(session,)),
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -416,10 +423,3 @@ def unrunnable(confinement: Confinement, agent: dict) -> str | None:
     if not version(confinement):
         return f"{PI!r} does not run {confinement.where}"
     return None
-
-
-def available() -> bool:
-    """Whether the agent binary is on PATH, for a clear message rather than a trace."""
-    from shutil import which
-
-    return which(PI) is not None
