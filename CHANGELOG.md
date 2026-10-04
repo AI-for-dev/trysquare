@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/AI-for-dev/trysquare/compare/v0.2.1...v0.3.0) (2026-10-04)
+
+
+### Features
+
+* record the agent each run ran under ([#79](https://github.com/AI-for-dev/trysquare/issues/79)) ([941cbe1](https://github.com/AI-for-dev/trysquare/commit/941cbe121f525ca4955081ce5f1e1ce4a075a303))
+* run on pi 1.0 ([#82](https://github.com/AI-for-dev/trysquare/issues/82)) ([da575c6](https://github.com/AI-for-dev/trysquare/commit/da575c6a3a07834970390f90a65e2a7db3c73d4e))
+
+
+### Bug Fixes
+
+* establish no gap from fewer than four runs a side ([#84](https://github.com/AI-for-dev/trysquare/issues/84)) ([41b08e3](https://github.com/AI-for-dev/trysquare/commit/41b08e3a7b92cfb0f120ae8bf1757e3dd35c55f5))
+* keep a number on one line in the synthesis page ([#83](https://github.com/AI-for-dev/trysquare/issues/83)) ([6906a3d](https://github.com/AI-for-dev/trysquare/commit/6906a3de972921305fd593c61398645101ac55b2))
+
 ## [0.2.1](https://github.com/AI-for-dev/trysquare/compare/v0.2.0...v0.2.1) (2026-09-29)
 
 
