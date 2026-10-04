@@ -37,8 +37,10 @@ h2 { font-size: 1.7rem; }
 h3 { font-size: 1.45rem; }
 h4 { font-size: 1.15rem; }
 a { color: #0b57d0; }
-table { border-collapse: collapse; margin: 1rem 0; }
-th, td { border: 1px solid #b5b5b5; padding: 0.35rem 0.7rem; text-align: left; }
+.table { overflow-x: auto; margin: 1rem 0; }
+table { border-collapse: collapse; }
+th, td { border: 1px solid #b5b5b5; padding: 0.35rem 0.7rem; text-align: left;
+         white-space: nowrap; }
 th { background: #efefef; }
 code { font-family: ui-monospace, monospace; background: #efefef;
        padding: 0.05rem 0.3rem; border-radius: 3px; }
@@ -94,7 +96,11 @@ def _blocks(markdown: str) -> list[str]:
                 "<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in cells) + "</tr>"
                 for cells in body
             )
-            out.append(f"<table><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>")
+            # A table wider than the screen scrolls on its own rather than the page.
+            out.append(
+                f'<div class="table"><table><thead><tr>{head}</tr></thead>'
+                f"<tbody>{rows}</tbody></table></div>"
+            )
             continue
         if stripped.startswith("- "):
             items = []
