@@ -125,8 +125,8 @@ class TestTheStreamIsNeverHeld:
 class TestTheSieve:
     """What no reader wants never reaches the disk.
 
-    `pi` sends the whole accumulated message twice on every update to deliver a delta
-    of two characters, so the stream costs the square of the answer. Measured on the
+    `pi` before 1.0 sent the whole accumulated message twice on every update to deliver
+    a delta of two characters, so the stream cost the square of the answer. Measured on the
     campaign that found this: 1.001 GiB of `message_update` against 84 KB of
     everything else, and every measurement comes off that 84 KB.
     """

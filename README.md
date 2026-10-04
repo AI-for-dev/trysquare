@@ -29,9 +29,9 @@ Python >= 3.11, because TOML parsing is `tomllib` from the standard library.
 uv run --group dev pytest     # no network
 ```
 
-Measuring anything also needs the agent binary (`pi`) on PATH and a provider you
-have access to. Everything else - loading, scoring, aggregation, verdicts, parity -
-runs offline.
+Measuring anything also needs the agent binary (`pi` 1.0 or later) on PATH and a
+provider you have access to. Everything else - loading, scoring, aggregation,
+verdicts, parity - runs offline.
 
 ## Getting started
 
