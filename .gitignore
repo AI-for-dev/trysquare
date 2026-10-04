@@ -21,3 +21,6 @@ docs/_build/
 # runtime, has never tracked a lock file, and one arrived here by accident rather than by
 # decision - which is the only reason this line exists.
 uv.lock
+
+# Local working notes, never part of the project.
+.scratch/
