@@ -794,6 +794,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         # The live entry exists only for as long as the agent does: what the run
         # produced is `measures.json`'s to say, and saying it twice is how two records
         # of one run come to disagree.
+        run.agent_version = agent_mod.version()
         with watching(board, run_id, cell.name, meta["repetition"]) as watch:
             outcome, tries = agent_mod.run_until_productive(
                 clone, args, timeout, attempts, trace, ceiling, watch

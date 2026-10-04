@@ -402,8 +402,9 @@ refused: different etalons, etalon-v1 against etalon-v2
 
 `compare` puts two experiments side by side, and a different etalon is a different
 baseline - the two matrices did not measure the same thing, so there is nothing to
-compare. Everything else that differs is *reported* rather than refused, because
-comparing two providers or two models is the point of the command.
+compare. Apart from the agent (see below), everything else that differs is *reported*
+rather than refused, because comparing two providers or two models is the point of the
+command.
 
 Cost columns are a separate matter, and not a refusal either:
 
@@ -414,6 +415,18 @@ Cost columns are a separate matter, and not a refusal either:
 
 One retry on either side is enough to set them aside. Durations only compare within one
 matrix, and a retry replays the turn with the whole accumulated context.
+
+## "refused: different agents"
+
+```text
+refused: different agents, 0.87.1 against 1.0.2
+```
+
+Each run records the `pi --version` it ran under, and `compare` refuses two experiments
+measured by different versions. A new version can change the tools, the system prompt and
+the stream, so the gap would mix the agent with the configuration you meant to compare.
+A list on one side, such as `0.87.1, 1.0.2`, means that experiment was resumed after an
+upgrade. Measure both sides again under one version.
 
 ## No progress bar appears
 

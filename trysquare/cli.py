@@ -1248,15 +1248,30 @@ def cmd_compare(args) -> int:
         )
         return 1
 
+    # A different agent is a different harness: tools, system prompt and stream all move
+    # with a version. Runs that do not say which one ran predate the record and are
+    # named as unknown rather than refused.
+    left_runs, right_runs = measures_in(args.left), measures_in(args.right)
+    left_agent, right_agent = _agent(left_runs), _agent(right_runs)
+    if len(left_agent | right_agent) > 1:
+        print(
+            f"refused: different agents, {_said(left_agent)} against {_said(right_agent)}",
+            file=sys.stderr,
+        )
+        return 1
+    left["agent"], right["agent"] = _said(left_agent), _said(right_agent)
+
     print(f"comparing {args.left.name} against {args.right.name}")
     differing = [
         k
-        for k in ("provider", "model", "thinking", "repetitions", "concurrency", "timeout")
+        for k in ("provider", "model", "thinking", "agent", "repetitions", "concurrency", "timeout")
         if left.get(k) != right.get(k)
     ]
     same = [
         k for k in ("etalon", "provider", "model", "repetitions") if left.get(k) == right.get(k)
     ]
+    if left_agent and left_agent == right_agent:
+        same.append("agent")
     print(
         f"  declared differences: {', '.join(f'{k} ({left.get(k)} / {right.get(k)})' for k in differing) or 'none'}"
     )
@@ -1271,7 +1286,6 @@ def cmd_compare(args) -> int:
             f"    -> tokens and durations would reflect our own load"
         )
 
-    left_runs, right_runs = measures_in(args.left), measures_in(args.right)
     if not left_runs or not right_runs:
         sides = [d.name for d, r in ((args.left, left_runs), (args.right, right_runs)) if not r]
         print(f"  no measures.json in {', '.join(sides)}: nothing to tabulate")
@@ -1307,6 +1321,15 @@ def _read_experiment(directory: Path) -> dict | None:
     data = json.loads(state.read_text())
     data["_dir"] = directory
     return data
+
+
+def _agent(runs: list[Run]) -> set[str]:
+    """The agent versions these runs say they ran, leaving out those that say nothing."""
+    return {r.agent_version for r in runs if r.agent_version}
+
+
+def _said(versions: set[str]) -> str:
+    return ", ".join(sorted(versions)) or "unknown"
 
 
 def _retries(experiment: dict) -> int:

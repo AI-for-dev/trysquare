@@ -1715,7 +1715,9 @@ class TestInstalledCommand:
 
 
 class TestCompare:
-    def experiment(self, root, name, etalon="v1", cells=("base", "rule"), hit=True) -> Path:
+    def experiment(
+        self, root, name, etalon="v1", cells=("base", "rule"), hit=True, agents=("",)
+    ) -> Path:
         directory = root / name
         directory.mkdir(parents=True)
         (directory / "state.json").write_text(json.dumps({"etalon": etalon, "runs": {}}))
@@ -1727,6 +1729,7 @@ class TestCompare:
                 "usage": {"input": 1, "output": 1, "turns": 1},
                 "metrics": {"overflow": hit},
                 "state": "valid",
+                "agent_version": agents[i % len(agents)],
             }
             for c in cells
             for i in range(2)
@@ -1750,6 +1753,35 @@ class TestCompare:
         code, said = self.compared(["compare", str(left), str(right)])
         assert code == 1
         assert "different etalons" in said
+
+    def test_different_agents_refuse(self, tmp_path):
+        left = self.experiment(tmp_path, "left_n2", agents=("0.87.1",))
+        right = self.experiment(tmp_path, "right_n2", agents=("1.0.2",))
+        code, said = self.compared(["compare", str(left), str(right)])
+        assert code == 1
+        assert "different agents, 0.87.1 against 1.0.2" in said
+
+    def test_a_side_measured_by_two_agents_refuses(self, tmp_path):
+        """A resume across an upgrade: neither version alone is what that side measured."""
+        left = self.experiment(tmp_path, "left_n2", agents=("0.87.1", "1.0.2"))
+        right = self.experiment(tmp_path, "right_n2", agents=("1.0.2",))
+        code, said = self.compared(["compare", str(left), str(right)])
+        assert code == 1
+        assert "0.87.1, 1.0.2 against 1.0.2" in said
+
+    def test_the_same_agent_is_said_identical(self, tmp_path):
+        left = self.experiment(tmp_path, "left_n2", agents=("1.0.2",))
+        right = self.experiment(tmp_path, "right_n2", agents=("1.0.2",))
+        code, said = self.compared(["compare", str(left), str(right)])
+        assert code == 0
+        assert "identical: etalon, provider, model, repetitions, agent" in said
+
+    def test_an_archive_that_predates_the_record_is_named_unknown(self, tmp_path):
+        left = self.experiment(tmp_path, "left_n2")
+        right = self.experiment(tmp_path, "right_n2", agents=("1.0.2",))
+        code, said = self.compared(["compare", str(left), str(right)])
+        assert code == 0
+        assert "agent (unknown / 1.0.2)" in said
 
     def test_a_side_without_measures_is_said(self, tmp_path):
         left = self.experiment(tmp_path, "left_n2")

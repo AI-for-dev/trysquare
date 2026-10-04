@@ -318,6 +318,25 @@ def run_until_productive(
     return outcome, attempts
 
 
+def version(timeout: int = 30) -> str:
+    """What the agent says it is, or empty when it cannot say.
+
+    Asked of the binary about to run rather than read from a package manifest: `pi` is
+    whatever PATH resolves, and only the binary knows which one that is.
+    """
+    try:
+        proc = interrupt.run(
+            [PI, "--version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
 def export_html(session: Path, target: Path, timeout: int = 120) -> Path:
     """Renders one archived session as a standalone page, by the agent itself.
 
