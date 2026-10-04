@@ -359,7 +359,7 @@ which is exactly what a single harness exists to prevent.
 
 What it may and may not touch:
 
-`usage`, `duration`, `attempts`, `agent_version`
+`usage`, `duration`, `attempts`, `agent_version`, `isolation`
 : never. They are facts about the run, not about the scoring. In particular `attempts` is
   what leaves an abusive resume visible in `state.json`, and a re-scoring must not spend
   that.
@@ -439,6 +439,10 @@ are not of the same thing.
 new version of `pi` can change its tools, its system prompt and its stream, so it is a
 different harness. Runs that do not record a version are shown as `unknown` and are not
 refused.
+
+**Hard refusal** on different isolations, on the same terms. An agent run with
+`backend = "none"` had the operator's machine under it, its tools and its neighbours'
+work, so it is not the agent measured inside a boundary.
 
 **Cost columns set aside** unless retries are near zero on both sides, with the counts
 shown.

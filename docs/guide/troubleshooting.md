@@ -428,6 +428,9 @@ the stream, so the gap would mix the agent with the configuration you meant to c
 A list on one side, such as `0.87.1, 1.0.2`, means that experiment was resumed after an
 upgrade. Measure both sides again under one version.
 
+`refused: different isolations, none against docker` is the same refusal for the
+backend each run executed inside: see `[isolation]` in the config reference.
+
 ## No progress bar appears
 
 By design, in three of the four cases: output is not a terminal (piped, redirected, or

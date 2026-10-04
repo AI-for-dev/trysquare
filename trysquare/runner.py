@@ -17,10 +17,11 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 from . import agent as agent_mod
-from . import interrupt
+from . import confine, interrupt
 from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
@@ -65,6 +66,11 @@ class Plan:
     @property
     def runs(self) -> int:
         return len(self.todo)
+
+    @cached_property
+    def confinement(self) -> confine.Confinement:
+        """What every run of this launch executes inside, as the machine chose it."""
+        return confine.backend(self.config.isolation)
 
     def load(self, name: str):
         """What this launch actually runs `name` at: concurrency, timeout, attempts.
@@ -794,10 +800,16 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         # The live entry exists only for as long as the agent does: what the run
         # produced is `measures.json`'s to say, and saying it twice is how two records
         # of one run come to disagree.
-        run.agent_version = agent_mod.version()
+        # The clone and the session are the run's own; a brick is read, never written.
+        scope = confine.Scope(
+            writable=(clone, session_dir),
+            readable=(*bricks["extensions"], *bricks["skills"]),
+        )
+        run.isolation = plan.confinement.name
+        run.agent_version = agent_mod.version(plan.confinement)
         with watching(board, run_id, cell.name, meta["repetition"]) as watch:
             outcome, tries = agent_mod.run_until_productive(
-                clone, args, timeout, attempts, trace, ceiling, watch
+                clone, args, timeout, attempts, trace, ceiling, watch, plan.confinement, scope
             )
 
         run.usage = outcome.usage
