@@ -226,7 +226,7 @@ class TestTheCeiling:
         """Three runaways is the incident this ends, not the incident it triples."""
         calls = []
 
-        def overrunning(cwd, args, timeout, trace, ceiling=None, watch=None):  # noqa: ARG001
+        def overrunning(cwd, args, timeout, trace, *_):  # noqa: ARG001
             calls.append(trace)
             return agent.Outcome(
                 trace=trace,

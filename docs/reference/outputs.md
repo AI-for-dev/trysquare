@@ -180,7 +180,8 @@ One entry per run, and the raw material every table is rebuilt from.
     "reasons": { "overflow": "addressed without being asked: #1" },
     "state": "valid",
     "attempts": 1,
-    "agent_version": "1.0.2"
+    "agent_version": "1.0.2",
+    "isolation": "none"
   }
 ]
 ```
@@ -189,6 +190,10 @@ One entry per run, and the raw material every table is rebuilt from.
 recorded per run rather than per experiment because a `--resume` after an upgrade
 measures one matrix with two agents. It is empty when the binary could not say, and in
 archives that predate the field.
+
+`isolation` is the `[isolation]` backend the agent ran inside, per run for the
+same reason. When any run says `none`, the synthesis header says the runs were not
+isolated.
 
 Persisting **per-run** values rather than aggregates is what makes `render` possible.
 Keeping only medians would make a matrix permanently unusable for a verdict, and a

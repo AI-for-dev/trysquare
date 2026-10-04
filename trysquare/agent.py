@@ -24,9 +24,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import interrupt
+from .confine import Confinement, Scope, Unconfined
 from .measure import bounded, consumed_tokens, read_file
 
 PI = "pi"
+
+#: What runs the agent when the caller names no boundary.
+UNCONFINED = Unconfined()
 
 
 def resolves_to(declared: str, ran: str) -> bool:
@@ -222,6 +226,8 @@ def run(
     trace: Path,
     ceiling: int | None = None,
     watch=None,
+    confinement: Confinement = UNCONFINED,
+    scope: Scope = Scope(),
 ) -> Outcome:
     """Runs the agent once through the sieve, and reads back what it says.
 
@@ -248,8 +254,9 @@ def run(
         with trace.open("wb") as keep:
             sieve = _Sieve(keep, watch)
             with sieve.plumbed() as sink:
-                proc = interrupt.run(
+                proc = confinement.run(
                     [PI, *args],
+                    scope,
                     cwd=cwd,
                     stdin=subprocess.DEVNULL,
                     stdout=sink,
@@ -290,6 +297,8 @@ def run_until_productive(
     trace: Path,
     ceiling: int | None = None,
     watch=None,
+    confinement: Confinement = UNCONFINED,
+    scope: Scope = Scope(),
 ) -> tuple[Outcome, int]:
     """Retries only while nothing has been produced.
 
@@ -312,21 +321,23 @@ def run_until_productive(
     for attempt in range(1, attempts + 1):
         if watch:
             watch.attempt(attempt)
-        outcome = run(cwd, args, timeout, trace, ceiling, watch)
+        outcome = run(cwd, args, timeout, trace, ceiling, watch, confinement, scope)
         if outcome.produced_something or outcome.signalled or outcome.overflowed:
             return outcome, attempt
     return outcome, attempts
 
 
-def version(timeout: int = 30) -> str:
+def version(confinement: Confinement = UNCONFINED, timeout: int = 30) -> str:
     """What the agent says it is, or empty when it cannot say.
 
     Asked of the binary about to run rather than read from a package manifest: `pi` is
-    whatever PATH resolves, and only the binary knows which one that is.
+    whatever PATH resolves where the run happens, and only that binary knows which one
+    it is.
     """
     try:
-        proc = interrupt.run(
+        proc = confinement.run(
             [PI, "--version"],
+            Scope(),
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,

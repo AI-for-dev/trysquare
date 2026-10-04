@@ -32,6 +32,7 @@ from . import ask as ask_mod
 from . import assay as assay_mod
 from . import scaffold as scaffold_mod
 from . import config as config_mod
+from . import confine
 from . import measure as measure_mod
 from . import pages as pages_mod
 from . import parity as parity_mod
@@ -842,6 +843,7 @@ def _write_synthesis(
         )
     if state.get("overrides"):
         header.append(f"- overrides: {json.dumps(state['overrides'])}")
+    header += isolation_lines(runs)
     header.append("")
     warning = table_mod.retry_warning(by_cell) + carried_note(state)
     path = output.write_synthesis("\n".join([*header, text, warning, ""]), suffix)
@@ -853,6 +855,17 @@ def _write_synthesis(
     html_path.write_text(pages_mod.synthesis_page(path.read_text(), session_links(output, runs)))
     print(f"  written {html_path}")
     return 0
+
+
+def isolation_lines(runs: list[Run]) -> list[str]:
+    """What the agents ran inside, and a warning when nothing kept them apart."""
+    stated = sorted(_stated(runs, "isolation"))
+    if not stated:
+        return []
+    line = f"- isolation {', '.join(f'`{name}`' for name in stated)}"
+    if confine.NONE in stated:
+        line += ": runs were not isolated, each agent could read the work of the runs beside it"
+    return [line]
 
 
 # --- watch -----------------------------------------------------------------
@@ -1249,29 +1262,42 @@ def cmd_compare(args) -> int:
         return 1
 
     # A different agent is a different harness: tools, system prompt and stream all move
-    # with a version. Runs that do not say which one ran predate the record and are
+    # with a version. A different isolation is a different machine under the agent: what
+    # it can run and what it can read. Runs that do not say predate the record and are
     # named as unknown rather than refused.
     left_runs, right_runs = measures_in(args.left), measures_in(args.right)
-    left_agent, right_agent = _agent(left_runs), _agent(right_runs)
-    if len(left_agent | right_agent) > 1:
-        print(
-            f"refused: different agents, {_said(left_agent)} against {_said(right_agent)}",
-            file=sys.stderr,
-        )
-        return 1
-    left["agent"], right["agent"] = _said(left_agent), _said(right_agent)
+    stated = {}
+    for key, field, plural in (
+        ("agent", "agent_version", "agents"),
+        ("isolation", "isolation", "isolations"),
+    ):
+        lhs, rhs = stated[key] = _stated(left_runs, field), _stated(right_runs, field)
+        if len(lhs | rhs) > 1:
+            print(
+                f"refused: different {plural}, {_said(lhs)} against {_said(rhs)}", file=sys.stderr
+            )
+            return 1
+        left[key], right[key] = _said(lhs), _said(rhs)
 
     print(f"comparing {args.left.name} against {args.right.name}")
     differing = [
         k
-        for k in ("provider", "model", "thinking", "agent", "repetitions", "concurrency", "timeout")
+        for k in (
+            "provider",
+            "model",
+            "thinking",
+            "agent",
+            "isolation",
+            "repetitions",
+            "concurrency",
+            "timeout",
+        )
         if left.get(k) != right.get(k)
     ]
     same = [
         k for k in ("etalon", "provider", "model", "repetitions") if left.get(k) == right.get(k)
     ]
-    if left_agent and left_agent == right_agent:
-        same.append("agent")
+    same += [k for k, (lhs, rhs) in stated.items() if lhs and lhs == rhs]
     print(
         f"  declared differences: {', '.join(f'{k} ({left.get(k)} / {right.get(k)})' for k in differing) or 'none'}"
     )
@@ -1323,9 +1349,9 @@ def _read_experiment(directory: Path) -> dict | None:
     return data
 
 
-def _agent(runs: list[Run]) -> set[str]:
-    """The agent versions these runs say they ran, leaving out those that say nothing."""
-    return {r.agent_version for r in runs if r.agent_version}
+def _stated(runs: list[Run], field: str) -> set[str]:
+    """What these runs say about `field`, leaving out those that say nothing."""
+    return {getattr(r, field) for r in runs if getattr(r, field)}
 
 
 def _said(versions: set[str]) -> str:

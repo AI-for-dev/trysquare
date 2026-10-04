@@ -28,6 +28,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import confine
+
 CONFIG_NAME = "trysquare.toml"
 
 # A repository entry may name a directory on this machine or a git URL. These two
@@ -44,7 +46,7 @@ FORBIDDEN = ("provider", "model", "thinking", "etalon", "repetitions")
 # Both files are TOML and the config is the one lying at the root of the
 # repository under a guessable name, so handing one to the argument that wants
 # the other is the mix-up an operator actually makes - in both directions.
-CONFIG_SECTIONS = ("repos", "harness", "defaults")
+CONFIG_SECTIONS = ("repos", "harness", "defaults", "isolation")
 SCENARIO_SECTIONS = ("scenario", "task", "agent", "protocol", "verdict")
 
 BUILTIN_DEFAULTS = {
@@ -100,6 +102,9 @@ class Config:
     repos: dict = field(default_factory=dict)
     harness: dict = field(default_factory=dict)
     defaults: dict = field(default_factory=lambda: dict(BUILTIN_DEFAULTS))
+    # What keeps one run from reading another: a property of the machine, like the
+    # workdir, and written on every run it measured. See `confine.backend`.
+    isolation: dict = field(default_factory=dict)
     path: Path | None = None
 
     def repo(self, name: str) -> Path:
@@ -256,10 +261,17 @@ def load(path: str | Path | None = None, start: Path | None = None) -> Config:
             f"different on another machine"
         )
 
+    isolation = dict(raw.get("isolation", {}))
+    try:
+        confine.backend(isolation)
+    except ValueError as e:
+        raise ConfigError(f"{found}: [isolation] {e}") from None
+
     return Config(
         repos=dict(raw.get("repos", {})),
         harness=dict(raw.get("harness", {})),
         defaults=defaults,
+        isolation=isolation,
         path=found,
     )
 

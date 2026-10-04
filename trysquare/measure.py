@@ -51,6 +51,9 @@ class Run:
     # What `pi --version` answered when the run started. Per run rather than per
     # experiment, because a `--resume` after an upgrade measures one matrix with two.
     agent_version: str = ""
+    # The confinement backend the agent ran inside, per run for the same reason: `none`
+    # means it could read every neighbour's work, and a reader of the matrix must know.
+    isolation: str = ""
 
     @property
     def is_valid(self) -> bool:

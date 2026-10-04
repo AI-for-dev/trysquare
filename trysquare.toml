@@ -37,6 +37,11 @@
 [harness]
 # subagent = "https://github.com/me/my-extension.git"
 
+# What each run executes inside. `none` is the only backend so far: the agent sees
+# whatever you see, the other runs included, and every synthesis says so.
+[isolation]
+backend = "none"
+
 [defaults]
 # Clones live in the system temporary directory, which macOS purges on reboot.
 # That is intended: the durable archive keeps only sources, and `replay`

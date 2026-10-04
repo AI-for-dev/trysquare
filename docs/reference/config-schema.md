@@ -128,6 +128,20 @@ every cost column.
 `draws` and `seed` sit here because they are method constants rather than experiment
 variables: changing them changes how a conclusion is drawn, not what is measured.
 
+## `[isolation]`
+
+What each run executes inside. A property of the machine, like `workdir`, and recorded
+on every run it measured.
+
+```toml
+[isolation]
+backend = "none"
+```
+
+`backend` defaults to `none`, the only backend so far: the agent sees whatever the
+operator sees, the other runs included, and the synthesis header says so. An unknown
+backend, or a setting the backend does not take, is refused when the file is loaded.
+
 ## Absent config
 
 Not an error. A scenario that names no logical repository needs nothing resolved, and
