@@ -111,10 +111,11 @@ def resolve(
     for key, value in sorted(overrides.items()):
         declared = scenario.protocol.get(key, scenario.agent.get(key))
         notes.append(f"OVERRIDE: {key} {declared} -> {value}")
-    if scenario.agent.get("image") and confine.backend(config.isolation).name == confine.NONE:
+    confinement = confine.backend(config.isolation)
+    if scenario.agent.get("image") and not confinement.takes_image:
         notes.append(
-            f"UNCONFINED: [agent] image {scenario.agent['image']} is not used, the agent "
-            f"runs on this machine with its tools"
+            f"IMAGE UNUSED: [agent] image {scenario.agent['image']} is not used, "
+            f"[isolation] backend {confinement.name} runs the agent with this machine's tools"
         )
 
     repo_path, repo_source = settle_repo(scenario, config)

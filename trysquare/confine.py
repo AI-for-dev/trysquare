@@ -34,6 +34,7 @@ from . import interrupt
 
 NONE = "none"
 DOCKER = "docker"
+BWRAP = "bwrap"
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,9 @@ class Confinement(Protocol):
     #: What each run may use of the machine, as the config set it. Recorded with the
     #: load, because a run held to two CPUs is slower than one that was not.
     limits: dict
+    #: Whether the agent runs from the scenario's `[agent] image` rather than from this
+    #: machine's tools.
+    takes_image: bool
 
     def prepare(self, agent: dict) -> None:
         """Checks this machine can run the backend, or raises `RuntimeError` saying why.
@@ -77,6 +81,7 @@ class Unconfined:
     image = ""
     where = "on this machine"
     limits: dict = {}
+    takes_image = False
 
     def prepare(self, agent: dict) -> None:
         pass
@@ -166,6 +171,21 @@ def _check(value: str, where: str, env: Sequence[str]) -> None:
             raise RuntimeError(f"the {where} reads ${name}: add {name} to [isolation] env")
 
 
+def _variables(env: Sequence[str]) -> tuple[str, ...]:
+    """`[isolation] env`, refused unless it is a list of names."""
+    if isinstance(env, str) or not all(isinstance(v, str) for v in env):
+        raise ValueError(f"env = {env!r} is not a list of variable names")
+    return tuple(env)
+
+
+def _settled(env: tuple[str, ...], agent: dict) -> dict[str, dict]:
+    """The agent's home for this scenario, once every variable `env` names is set."""
+    unset = [v for v in env if v not in os.environ]
+    if unset:
+        raise RuntimeError(f"[isolation] env names {', '.join(unset)}, unset here")
+    return seed(agent.get("provider", ""), env, Path.home() / ".pi" / "agent")
+
+
 class Docker:
     """One container per run, from the image the scenario declares.
 
@@ -176,19 +196,18 @@ class Docker:
     """
 
     name = DOCKER
+    takes_image = True
 
     def __init__(
         self, env: Sequence[str] = (), cpus: float | None = None, memory: str | None = None
     ) -> None:
-        if isinstance(env, str) or not all(isinstance(v, str) for v in env):
-            raise ValueError(f"env = {env!r} is not a list of variable names")
         if cpus is not None and (
             isinstance(cpus, bool) or not isinstance(cpus, int | float) or cpus <= 0
         ):
             raise ValueError(f"cpus = {cpus!r} is not a positive number")
         if memory is not None and not (isinstance(memory, str) and MEMORY.match(memory)):
             raise ValueError(f'memory = {memory!r} is not a size such as "4g" or "512m"')
-        self.env = tuple(env)
+        self.env = _variables(env)
         self.limits = {k: v for k, v in (("cpus", cpus), ("memory", memory)) if v is not None}
         self.image = ""
         self.where = "in docker"
@@ -203,10 +222,7 @@ class Docker:
                 "the docker backend runs the image the scenario declares, and [agent] "
                 "declares no image"
             )
-        unset = [v for v in self.env if v not in os.environ]
-        if unset:
-            raise RuntimeError(f"[isolation] env names {', '.join(unset)}, unset here")
-        self._seed = seed(agent.get("provider", ""), self.env, Path.home() / ".pi" / "agent")
+        self._seed = _settled(self.env, agent)
         running = _docker("version")
         if running.returncode != 0:
             raise RuntimeError(f"docker does not answer here: {running.stderr.strip()[:200]}")
@@ -259,9 +275,7 @@ class Docker:
     def run(self, argv: Sequence[str], scope: Scope, **kwargs) -> subprocess.CompletedProcess:
         if not self.image:
             raise RuntimeError("the docker backend runs nothing before `prepare`")
-        for path in scope.writable:
-            # A missing source would be created by docker, as root.
-            path.mkdir(parents=True, exist_ok=True)
+        _create(scope)
         name = f"trysquare-{uuid.uuid4().hex[:12]}"
         with self._lock:
             self._live.add(name)
@@ -284,6 +298,85 @@ class Docker:
             self._remove(name)
 
 
+#: What a bwrap run sees of the system, read-only: the programs, their libraries and
+#: their configuration. Nothing under /home, /tmp or /var, so no other run and nothing
+#: of the operator's.
+SYSTEM = ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc")
+
+
+class Bwrap:
+    """One bubblewrap sandbox per run, on this machine's own tools. Linux only.
+
+    The sandbox has its own empty root: the system directories read-only, the run's scope
+    at the paths the host has them, `bind` read-only for tools installed elsewhere - a
+    `pi` under `~/.nvm`, say - and nothing else. It runs as the operator, shares the
+    network to reach the provider, and dies with trysquare, so no run outlives a kill.
+
+    Its environment is `PATH`, `HOME` and the variables `[isolation] env` names, handed
+    to bwrap as its own environment rather than as `--setenv` arguments: a key never sits
+    in an argv, where `ps` would show it.
+    """
+
+    name = BWRAP
+    image = ""
+    where = "under bwrap"
+    limits: dict = {}
+    takes_image = False
+
+    def __init__(self, env: Sequence[str] = (), bind: Sequence[str] = ()) -> None:
+        self.env = _variables(env)
+        if isinstance(bind, str) or not all(isinstance(p, str) for p in bind):
+            raise ValueError(f"bind = {bind!r} is not a list of paths")
+        self.bind = tuple(Path(os.path.expanduser(p)) for p in bind)
+        self._seed: dict[str, dict] = {}
+
+    def prepare(self, agent: dict) -> None:
+        self._seed = _settled(self.env, agent)
+        probe = _run("bwrap", "--ro-bind", "/", "/", "true")
+        if probe.returncode != 0:
+            raise RuntimeError(
+                f"bwrap cannot make a sandbox here: {probe.stderr.strip()[:200]}. It needs "
+                f"bubblewrap installed and unprivileged user namespaces allowed"
+            )
+
+    def argv(self, argv: Sequence[str], scope: Scope, cwd: Path | None, home: Path) -> list[str]:
+        """The `bwrap` that executes `argv` in `scope`. Pure, so it can be asserted."""
+        args = ["bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--share-net"]
+        for path in SYSTEM:
+            args += ["--ro-bind-try", path, path]
+        args += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--bind", str(home), HOME]
+        for path in self.bind:
+            args += ["--ro-bind", str(path), str(path)]
+        for path in scope.writable:
+            args += ["--bind", str(path), str(path)]
+        for path in scope.readable:
+            args += ["--ro-bind", str(path), str(path)]
+        if cwd is not None:
+            args += ["--chdir", str(cwd)]
+        return [*args, "--", *argv]
+
+    def environment(self) -> dict[str, str]:
+        """What the sandbox inherits: enough to find the agent, and what `env` passes."""
+        return {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": HOME,
+            **{v: os.environ[v] for v in self.env},
+        }
+
+    def run(self, argv: Sequence[str], scope: Scope, **kwargs) -> subprocess.CompletedProcess:
+        _create(scope)
+        with _home(self._seed) as home:
+            command = self.argv(argv, scope, kwargs.pop("cwd", None), home)
+            return interrupt.run(command, env=self.environment(), **kwargs)
+
+
+def _create(scope: Scope) -> None:
+    """The scope's writable directories, made by the operator before the sandbox starts:
+    left to docker they would be created as root, and bwrap refuses a missing source."""
+    for path in scope.writable:
+        path.mkdir(parents=True, exist_ok=True)
+
+
 @contextmanager
 def _home(files: dict[str, dict]) -> Iterator[Path]:
     """A home for one container, owned by the operator, holding what `seed` decided.
@@ -303,13 +396,18 @@ def _docker(*args: str) -> subprocess.CompletedProcess:
     """Housekeeping around the containers, outside `interrupt.run` on purpose: taking a
     container down has to work after the operator has asked to stop, which is exactly
     when `interrupt.run` refuses to start anything."""
+    return _run("docker", *args)
+
+
+def _run(*argv: str) -> subprocess.CompletedProcess:
+    """A short command whose failure is an answer, never an exception."""
     try:
-        return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=60)
+        return subprocess.run(list(argv), capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired) as e:
-        return subprocess.CompletedProcess(args, 1, "", str(e))
+        return subprocess.CompletedProcess(argv, 1, "", str(e))
 
 
-BACKENDS = {NONE: Unconfined, DOCKER: Docker}
+BACKENDS = {NONE: Unconfined, DOCKER: Docker, BWRAP: Bwrap}
 
 
 def backend(settings: dict) -> Confinement:
