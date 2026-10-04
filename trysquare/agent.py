@@ -19,6 +19,7 @@ import os
 import subprocess
 import threading
 import time
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -410,14 +411,16 @@ def ambient_thinking(settings: Path | None = None) -> str | None:
         return None
 
 
-def unrunnable(confinement: Confinement, agent: dict) -> str | None:
+def unrunnable(
+    confinement: Confinement, image: str | None, providers: Sequence[str] = ()
+) -> str | None:
     """Why no run could start where runs happen, or None when one can.
 
     Asked of the agent itself rather than of PATH: under a container the operator's own
     `pi` is irrelevant, and the one that matters is in the image.
     """
     try:
-        confinement.prepare(agent)
+        confinement.prepare(image, providers)
     except RuntimeError as e:
         return str(e)
     if not version(confinement):

@@ -158,10 +158,11 @@ what the agent writes stays yours, and it gets a fresh home of its own.
 
 That home holds what `pi` needs from your `~/.pi/agent` and nothing more:
 
-- `models.json` with the scenario's provider only. Its `apiKey` and header values must
-  read their secret from a variable (`$NAME`, `${NAME}`, or `Bearer ${NAME}`) that `env`
-  passes. A value written out in full, or a `!command`, is refused before any run,
-  because the agent could read the first and the second would run inside the container.
+- `models.json` with only the providers the scenario calls: the agent's, and each
+  judge's. Their `apiKey` and header values must read their secret from a variable
+  (`$NAME`, `${NAME}`, or `Bearer ${NAME}`) that `env` passes. A value written out in
+  full, or a `!command`, is refused before any run, because the agent could read the
+  first and the second would run inside the container.
   A provider `models.json` does not describe is one of `pi`'s own, which reads its key
   from the environment.
 - `settings.json` with `defaultThinkingLevel` only, the level a subagent thinks at. The

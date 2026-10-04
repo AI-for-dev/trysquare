@@ -276,6 +276,12 @@ metrics = ["note_usable", "cites_paths", "says_what_is_missing"]
 
 A judge that is the model being judged is not a judge, so pin it separately.
 
+The judge is an agent with tools, like the one it scores, so it runs inside the same
+`[isolation]` backend. Its pieces are in its prompt, and that is all it needs: it writes
+its own dossier, reads its verdict tool, and sees nothing else - not the clone, not the
+other runs. Its provider reaches the container like the agent's, so a judge on another
+provider needs that provider's key in `[isolation] env` too.
+
 ### The verdict is a tool call, not parsed prose
 
 The agent offers no schema option and no response format, so prompt discipline plus

@@ -378,7 +378,7 @@ class TestTheJudgeStreamStaysOutOfTheArchive:
 
         seen = {}
 
-        def fake_run(cwd, args, timeout, trace, ceiling=None):  # noqa: ARG001
+        def fake_run(cwd, args, timeout, trace, ceiling=None, **_):  # noqa: ARG001
             seen["trace"] = trace
             return agent.Outcome(
                 trace=trace,

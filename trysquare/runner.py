@@ -977,6 +977,7 @@ def judge(
         work / "judge.jsonl",
         attempts,
         stream_ceiling(plan),
+        plan.confinement,
     )
 
 
@@ -1088,7 +1089,7 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     refusal reaches the operator and the disk is as untouched as after a dry run.
     """
     prepare_source(plan.config, plan.scenario.task["repo"], plan.scenario.task["etalon"])
-    plan.confinement.prepare(plan.scenario.agent)
+    plan.confinement.prepare(plan.scenario.agent.get("image"), plan.scenario.providers)
     plan.output.prepare()
     # Before the ledger is loaded, because the carry writes one: from here on this matrix
     # holds the carried runs as its own, and everything below reads them like any other.
