@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -47,7 +48,9 @@ class TestTheMachineChooses:
         return path
 
     def test_an_unknown_backend_is_refused_with_the_known_ones(self, tmp_path):
-        with pytest.raises(config.ConfigError, match=r"'nnoe' is not one \(known: none, docker\)"):
+        with pytest.raises(
+            config.ConfigError, match=r"'nnoe' is not one \(known: none, docker, bwrap\)"
+        ):
             config.load(self.write(tmp_path, 'backend = "nnoe"'))
 
     def test_a_setting_the_backend_does_not_take_is_refused(self, tmp_path):
@@ -330,3 +333,113 @@ class TestInsideDocker:
             agent.unrunnable(backend, {"image": IMAGE, "provider": "none-here"})
             == f"'pi' does not run in image '{IMAGE}'"
         )
+
+
+class TestTheBwrapCommand:
+    """What `bwrap` is asked, which needs no sandbox to check."""
+
+    def argv(self, tmp_path, **kwargs) -> list[str]:
+        scope = confine.Scope(writable=(tmp_path / "repo",), readable=(tmp_path / "brick.ts",))
+        backend = confine.Bwrap(**kwargs)
+        return backend.argv(["pi", "-p", "go"], scope, tmp_path / "repo", tmp_path / "h")
+
+    def pairs(self, args: list[str], flag: str) -> list[str]:
+        return [args[i + 1] for i, a in enumerate(args) if a == flag]
+
+    def test_the_run_s_scope_is_where_the_host_has_it(self, tmp_path):
+        args = self.argv(tmp_path)
+        assert str(tmp_path / "repo") in self.pairs(args, "--bind")
+        assert str(tmp_path / "brick.ts") in self.pairs(args, "--ro-bind")
+        assert args[args.index("--chdir") + 1] == str(tmp_path / "repo")
+
+    def test_the_system_is_read_only_and_nothing_else_of_the_machine_is_there(self, tmp_path):
+        args = self.argv(tmp_path)
+        assert set(self.pairs(args, "--ro-bind-try")) == set(confine.SYSTEM)
+        assert not {"/home", "/tmp", "/var", "/"} & set(self.pairs(args, "--ro-bind"))
+
+    def test_a_tool_installed_elsewhere_is_bound_read_only(self, tmp_path):
+        args = self.argv(tmp_path, bind=["~/.nvm"])
+        assert str(Path.home() / ".nvm") in self.pairs(args, "--ro-bind")
+
+    def test_the_sandbox_dies_with_trysquare(self, tmp_path):
+        assert "--die-with-parent" in self.argv(tmp_path)
+
+    def test_a_key_reaches_the_sandbox_through_its_environment_and_never_its_argv(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("SOME_KEY", "secret")
+        backend = confine.Bwrap(env=["SOME_KEY"])
+        args = backend.argv(["pi"], confine.Scope(), None, tmp_path)
+        assert not any("secret" in a for a in args)
+        assert backend.environment()["SOME_KEY"] == "secret"
+        assert set(backend.environment()) == {"PATH", "HOME", "SOME_KEY"}
+
+
+def bwrap_runs() -> bool:
+    return (
+        shutil.which("bwrap") is not None
+        and confine._run("bwrap", "--ro-bind", "/", "/", "true").returncode == 0
+    )
+
+
+@pytest.mark.skipif(not bwrap_runs(), reason="no working bwrap here")
+class TestInsideBwrap:
+    @pytest.fixture
+    def backend(self) -> confine.Bwrap:
+        backend = confine.Bwrap()
+        backend.prepare({"provider": "none-here"})
+        return backend
+
+    @pytest.fixture
+    def work(self, tmp_path) -> Path:
+        for run in ("mine", "neighbour"):
+            (tmp_path / run / "repo").mkdir(parents=True)
+            (tmp_path / run / "repo" / "secret.txt").write_text(run)
+        return tmp_path
+
+    def inside(self, backend, work, *command, **kwargs) -> str:
+        scope = confine.Scope(writable=(work / "mine" / "repo",))
+        done = backend.run(
+            command, scope, cwd=work / "mine" / "repo", capture_output=True, text=True, **kwargs
+        )
+        return done.stdout
+
+    def test_a_run_sees_no_neighbour(self, backend, work):
+        assert self.inside(backend, work, "ls", str(work)).split() == ["mine"]
+        said = self.inside(backend, work, "sh", "-c", f"cat {work}/neighbour/repo/secret.txt 2>&1")
+        assert "No such file" in said
+
+    def test_nothing_of_the_operator_s_home_is_there(self, backend, work):
+        assert self.inside(backend, work, "ls", "/home").split() == ["trysquare"]
+
+    def test_what_the_agent_writes_stays_the_operator_s(self, backend, work):
+        self.inside(backend, work, "touch", "written")
+        assert (work / "mine" / "repo" / "written").stat().st_uid == os.getuid()
+
+    def test_the_agent_can_write_its_own_home(self, backend, work):
+        said = self.inside(backend, work, "sh", "-c", "touch ~/.pi/agent/auth.json && echo ok")
+        assert said == "ok\n"
+
+    def test_a_timed_out_run_leaves_no_process(self, backend, work):
+        """bwrap puts the agent in a session of its own, out of reach of the group kill:
+        `--die-with-parent` is what takes it down with bwrap."""
+        with pytest.raises(subprocess.TimeoutExpired):
+            backend.run(["sleep", "4242"], confine.Scope(), timeout=2)
+        deadline = time.monotonic() + 5
+        while running("sleep 4242") and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not running("sleep 4242")
+
+
+def running(command: str) -> bool:
+    """Whether a process runs exactly `command`. Read from /proc rather than with
+    `pgrep -f`, which also matches any shell whose command line merely mentions it."""
+    for pid in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            if (Path("/proc") / pid / "cmdline").read_bytes() == command.replace(
+                " ", "\0"
+            ).encode() + b"\0":
+                return True
+        except OSError:
+            continue
+    return False

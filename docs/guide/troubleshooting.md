@@ -156,7 +156,10 @@ where the agent could read it. Put it in a variable, write $NAME, and add NAME t
 [isolation] env
 ```
 
-The same refusal names a `!command`, and a variable `env` does not pass.
+The same refusal names a `!command`, and a variable `env` does not pass. The bwrap
+backend shares those refusals, and adds its own when it cannot make a sandbox at all:
+`bwrap cannot make a sandbox here`, with bubblewrap's own reason - usually unprivileged
+user namespaces, which some distributions and most containers forbid.
 
 Everything else in this tool is offline: loading, scoring, aggregation, verdicts,
 `render`, `replay`, `compare` and `parity` all work without the binary.

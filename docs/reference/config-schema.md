@@ -202,6 +202,27 @@ A launch refuses when docker is not running, when the image is not on the machin
 container whose client was killed is removed; one left by a `kill -9` of trysquare
 itself is not, and `docker ps --filter name=trysquare-` finds it.
 
+```toml
+[isolation]
+backend = "bwrap"
+env = ["ANTHROPIC_API_KEY"]
+bind = ["~/.nvm"]   # optional
+```
+
+`bwrap` runs each run in a [bubblewrap](https://github.com/containers/bubblewrap)
+sandbox, on Linux only, with no daemon and no image: the agent uses this machine's
+tools, so `[agent] image` is not read and the launch says so. The sandbox starts from an
+empty root and sees `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64` and `/etc` read-only, the
+run's clone and session read-write and its bricks read-only at the paths the host has
+them, and nothing else: no `/home`, no other run under `/tmp`. `bind` adds paths
+read-only, for a `pi` or a toolchain installed outside the system directories. The home,
+`env` and their refusals are the docker backend's, and a variable reaches the sandbox
+through its environment, never its command line. It runs as your uid, shares the network
+to reach the provider, and dies with trysquare, so no agent outlives an interrupt.
+
+A launch refuses when bwrap cannot make a sandbox here: bubblewrap missing, or
+unprivileged user namespaces forbidden, as some distributions and most containers do.
+
 ## Absent config
 
 Not an error. A scenario that names no logical repository needs nothing resolved, and
