@@ -116,73 +116,81 @@ def is_commit(etalon: str) -> bool:
     return bool(COMMIT.match(etalon))
 
 
-def clone_argv(source: str, etalon: str, target: Path, keep_tags: bool = False) -> list[str]:
-    """The flags a clone is made with, separated so they can be asserted.
+def clone_argv(source: str, etalon: str, target: Path) -> list[str]:
+    """The flags a pinned source is cloned with, separated so they can be asserted.
 
-    `--single-branch --branch <etalon>` is the reproducibility guarantee: the clone is
-    the pinned state and nothing else.
-
-    `--no-tags` is right for a run's clone, where nothing needs the tag ref once HEAD is
-    detached on it. A pinned source keeps its tags, because every run clones *from* that
-    directory **by tag name**.
-
-    Measured rather than assumed: git does in fact keep the tag named by `--branch` even
-    under `--no-tags`, so a pinned source would probably work either way. Nothing
-    documents that interaction, though, and the pinned source's whole job is to answer a
-    clone by tag - so it does not rest on undocumented behaviour. The cost is the tag
-    refs of one branch.
+    `--single-branch --branch <etalon>` keeps the clone to the etalon's history, and the
+    tags stay, because every run fetches *from* this directory **by tag name**.
 
     **A commit takes none of that.** `--branch` refuses anything that is not a ref, so a
-    commit etalon is fetched whole and reached by the checkout `clone` runs next. That
-    also settles the two flags: `--single-branch` would keep only the default branch, and
-    `--no-tags` only the branch refs, either of which can leave the wanted commit
-    unreachable in a clone that otherwise looks complete. Fetching everything is the
-    price of an etalon that cannot move.
+    commit etalon is cloned whole and reached by the checkout `pin` runs next:
+    `--single-branch` would keep only the default branch, which can leave the wanted
+    commit out of a clone that otherwise looks complete.
     """
-    args = ["clone", "--quiet"]
     if is_commit(etalon):
-        return [*args, source, str(target)]
-    if not keep_tags:
-        args.append("--no-tags")
-    return [*args, "--single-branch", "--branch", etalon, source, str(target)]
+        return ["clone", "--quiet", source, str(target)]
+    return ["clone", "--quiet", "--single-branch", "--branch", etalon, source, str(target)]
 
 
-def clone(source: Path | str, etalon: str, target: Path, keep_tags: bool = False) -> Path:
-    """Clones `source` at `etalon` into `target`, tag or commit.
+def fetch_argv(source: str, etalon: str) -> list[str]:
+    """How a run's clone receives the etalon: that revision and its ancestors, no more.
 
-    `source` may be a local directory or a git URL. A URL is handed to git verbatim:
-    `resolve()` would turn it into a path, which is the defect `config.is_remote`
-    exists to prevent.
+    A fetch rather than a clone, because a clone from a local directory hardlinks its
+    whole object store. The commits after the etalon then sit in the run's clone with no
+    ref pointing at them, and `git cat-file --batch-all-objects` reads the fix the agent
+    is asked to write. A fetch sends only what the etalon reaches, tag or commit alike.
+    """
+    return ["fetch", "--quiet", "--no-tags", source, etalon]
 
-    The `exists()` check stays as a backstop. `runner.prepare_source` checks earlier
-    and says more, but a caller that reaches here with nothing on disk should still be
-    told, not left with a bare git error.
 
-    A commit etalon leaves HEAD detached on it, which is where a tag etalon already
-    leaves it: everything downstream - `commit_of`, `etalon_file`, `etalon_files`, the
-    diff a run is scored on - reads the etalon as a revision and cannot tell the two
-    apart.
+def _located(source: Path | str) -> str:
+    """Where git is to read `source` from. A URL is handed over verbatim: `resolve()`
+    would turn it into a path, which is the defect `config.is_remote` exists to prevent.
+
+    The `exists()` check stays as a backstop. `runner.prepare_source` checks earlier and
+    says more, but a caller that reaches here with nothing on disk should still be told,
+    not left with a bare git error.
     """
     if is_remote(str(source)):
-        where = str(source)
-    else:
-        source = Path(source)
-        if not source.exists():
-            raise RepoError(f"repository not found: {source}")
-        where = str(source.resolve())
+        return str(source)
+    source = Path(source)
+    if not source.exists():
+        raise RepoError(f"repository not found: {source}")
+    return str(source.resolve())
+
+
+def _emptied(target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         shutil.rmtree(target)
-    git(clone_argv(where, etalon, target, keep_tags=keep_tags))
-    if is_commit(etalon):
-        try:
-            git(["checkout", "--quiet", "--detach", etalon], cwd=target)
-        except RepoError as e:
-            shutil.rmtree(target, ignore_errors=True)
-            raise RepoError(
-                f"commit {etalon} is not in {where}",
-                detail=e.detail or str(e),
-            ) from e
+
+
+def _missing(etalon: str, where: str, target: Path, e: RepoError) -> RepoError:
+    """A half-written clone reused later produces a plausible measurement, so the target
+    goes away with the error."""
+    shutil.rmtree(target, ignore_errors=True)
+    kind = "commit" if is_commit(etalon) else "etalon"
+    return RepoError(f"{kind} {etalon} is not in {where}", detail=e.detail or str(e))
+
+
+def clone(source: Path | str, etalon: str, target: Path) -> Path:
+    """A working tree of `source` at `etalon`, holding nothing the etalon does not reach.
+
+    HEAD is left detached on the etalon, tag or commit. A tag etalon also keeps its ref,
+    so `etalon` resolves in the clone as it does in the source: everything downstream -
+    `commit_of`, `etalon_file`, `etalon_files`, the diff a run is scored on - reads the
+    etalon as a revision and cannot tell the two apart.
+    """
+    where = _located(source)
+    _emptied(target)
+    git(["init", "--quiet", str(target)])
+    try:
+        git(fetch_argv(where, etalon), cwd=target)
+    except RepoError as e:
+        raise _missing(etalon, where, target, e) from e
+    git(["checkout", "--quiet", "--detach", "FETCH_HEAD"], cwd=target)
+    if not is_commit(etalon):
+        git(["update-ref", f"refs/tags/{etalon}", "FETCH_HEAD"], cwd=target)
     return target
 
 
@@ -195,8 +203,18 @@ def pin(url: str, etalon: str, target: Path) -> Path:
     and turns every comparison against the etalon into a plausible number about
     nothing. A bare mirror would have been smaller and would have measured nothing,
     silently.
+
+    No agent ever sees this directory: runs `clone` from it, which takes only what the
+    etalon reaches.
     """
-    return clone(url, etalon, target, keep_tags=True)
+    _emptied(target)
+    git(clone_argv(url, etalon, target))
+    if is_commit(etalon):
+        try:
+            git(["checkout", "--quiet", "--detach", etalon], cwd=target)
+        except RepoError as e:
+            raise _missing(etalon, url, target, e) from e
+    return target
 
 
 def commit_of(source: Path, etalon: str) -> str | None:
