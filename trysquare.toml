@@ -37,10 +37,14 @@
 [harness]
 # subagent = "https://github.com/me/my-extension.git"
 
-# What each run executes inside. `none` is the only backend so far: the agent sees
-# whatever you see, the other runs included, and every synthesis says so.
+# What each run executes inside. `none`: the agent sees whatever you see, the other
+# runs included, and every synthesis says so. `docker`: one container per run, from the
+# scenario's `[agent] image`, seeing its own clone and nothing else. `env` names the
+# variables passed in - a provider key, which the agent can then read.
 [isolation]
 backend = "none"
+# backend = "docker"
+# env = ["ANTHROPIC_API_KEY"]
 
 [defaults]
 # Clones live in the system temporary directory, which macOS purges on reboot.

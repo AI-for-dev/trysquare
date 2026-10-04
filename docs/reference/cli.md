@@ -359,7 +359,7 @@ which is exactly what a single harness exists to prevent.
 
 What it may and may not touch:
 
-`usage`, `duration`, `attempts`, `agent_version`, `isolation`
+`usage`, `duration`, `attempts`, `agent_version`, `isolation`, `image`
 : never. They are facts about the run, not about the scoring. In particular `attempts` is
   what leaves an abusive resume visible in `state.json`, and a re-scoring must not spend
   that.
@@ -442,7 +442,8 @@ refused.
 
 **Hard refusal** on different isolations, on the same terms. An agent run with
 `backend = "none"` had the operator's machine under it, its tools and its neighbours'
-work, so it is not the agent measured inside a boundary.
+work, so it is not the agent measured inside a boundary. Two different images refuse
+too: an image is the agent's tools.
 
 **Cost columns set aside** unless retries are near zero on both sides, with the counts
 shown.

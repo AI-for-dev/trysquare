@@ -181,7 +181,8 @@ One entry per run, and the raw material every table is rebuilt from.
     "state": "valid",
     "attempts": 1,
     "agent_version": "1.0.2",
-    "isolation": "none"
+    "isolation": "docker",
+    "image": "sha256:4fa007b0c5361cab766237e4df1aa9435dfbb88c516a6b8ffccec913ef2859e4"
   }
 ]
 ```
@@ -192,8 +193,8 @@ measures one matrix with two agents. It is empty when the binary could not say, 
 archives that predate the field.
 
 `isolation` is the `[isolation]` backend the agent ran inside, per run for the
-same reason. When any run says `none`, the synthesis header says the runs were not
-isolated.
+same reason, and `image` the id of the image it ran from, empty under `none`. When any
+run says `none`, the synthesis header says the runs were not isolated.
 
 Persisting **per-run** values rather than aggregates is what makes `render` possible.
 Keeping only medians would make a matrix permanently unusable for a verdict, and a

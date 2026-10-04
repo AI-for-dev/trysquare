@@ -1153,10 +1153,11 @@ class TestPreRunHonesty:
     def test_a_dry_run_names_the_missing_binary(self, monkeypatch, capsys):
         from trysquare import cli as cli_mod
 
-        monkeypatch.setattr(cli_mod.agent_mod, "available", lambda: False)
+        monkeypatch.setattr(cli_mod.agent_mod, "PI", "/nonexistent/pi")
         code = main(["run", SCENARIO, "-o", str(out()), "--config", str(MACHINE), "--dry-run"])
         assert code == 0
-        assert "is not on PATH: a real run will refuse" in capsys.readouterr().out
+        said = capsys.readouterr().out
+        assert "'/nonexistent/pi' does not run on this machine: a real run will refuse" in said
 
 
 class TestUntilComplete:
@@ -1205,7 +1206,7 @@ class TestUntilComplete:
         monkeypatch.setattr(
             cli_mod.runner_mod, "execute", self.fake_execute(passes, empty_on_first)
         )
-        monkeypatch.setattr(cli_mod.agent_mod, "available", lambda: True)
+        monkeypatch.setattr(cli_mod.agent_mod, "unrunnable", lambda *_: None)
         argv = [
             "run",
             SCENARIO,
