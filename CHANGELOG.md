@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/AI-for-dev/trysquare/compare/v0.3.0...v0.4.0) (2026-10-04)
+
+
+### Features
+
+* keep the provider's key out of the sandbox ([#96](https://github.com/AI-for-dev/trysquare/issues/96)) ([8883485](https://github.com/AI-for-dev/trysquare/commit/8883485e587a3ecef021e3455e3ff433b826a02b))
+
+
+### Bug Fixes
+
+* give the tiny fixture the bug its prompt describes ([#94](https://github.com/AI-for-dev/trysquare/issues/94)) ([5c0a98b](https://github.com/AI-for-dev/trysquare/commit/5c0a98bcd5f2f5b738299c84a549efd20e45f1a0))
+* run the judge inside the runs' isolation backend ([#95](https://github.com/AI-for-dev/trysquare/issues/95)) ([bd04931](https://github.com/AI-for-dev/trysquare/commit/bd04931735e837ae462a24194249e28355d507ba))
+
 ## [0.3.0](https://github.com/AI-for-dev/trysquare/compare/v0.2.1...v0.3.0) (2026-10-04)
 
 
