@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/AI-for-dev/trysquare/compare/v0.4.0...v0.5.0) (2026-10-05)
+
+
+### Features
+
+* read a relayed key from a .env file ([#99](https://github.com/AI-for-dev/trysquare/issues/99)) ([c6a541d](https://github.com/AI-for-dev/trysquare/commit/c6a541d89d9a0aa3b9e116b73ed55215cfe14382))
+* take the sandbox's providers from a models file of their own ([#100](https://github.com/AI-for-dev/trysquare/issues/100)) ([8f7b46c](https://github.com/AI-for-dev/trysquare/commit/8f7b46c9ba2d800282768bc752a8978a18fa4447))
+
 ## [0.4.0](https://github.com/AI-for-dev/trysquare/compare/v0.3.0...v0.4.0) (2026-10-04)
 
 
