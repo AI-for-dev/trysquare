@@ -137,6 +137,14 @@ class TestTheMachineChooses:
         with pytest.raises(config.ConfigError, match="secrets = 3 is not a path"):
             config.load(self.write(tmp_path, 'backend = "docker"\nsecrets = 3'))
 
+    def test_a_models_file_is_relative_to_the_config(self, tmp_path):
+        loaded = config.load(self.write(tmp_path, 'backend = "bwrap"\nmodels = "models.json"'))
+        assert loaded.isolation["models"] == str(tmp_path / "models.json")
+
+    def test_a_models_file_that_is_not_a_path_is_refused(self, tmp_path):
+        with pytest.raises(config.ConfigError, match="models = 3 is not a path"):
+            config.load(self.write(tmp_path, 'backend = "docker"\nmodels = 3'))
+
     def test_a_backend_with_no_relay_takes_no_secrets(self, tmp_path):
         with pytest.raises(config.ConfigError, match="'none' backend takes no secrets"):
             config.load(self.write(tmp_path, 'backend = "none"\nsecrets = "keys.env"'))
@@ -292,7 +300,9 @@ class TestWhatTheHomeStartsWith:
             relay.close()
 
     def seed(self, relays, providers, env, agent_dir, secrets=None):
-        files, started = confine.seed(providers, env, secrets or Secrets(), agent_dir, self.REACH)
+        models = agent_dir / "models.json"
+        secrets = secrets or Secrets()
+        files, started = confine.seed(providers, env, secrets, models, agent_dir, self.REACH)
         relays.extend(started)
         return files, started
 
@@ -457,6 +467,23 @@ class TestWhatTheHomeStartsWith:
     def test_a_built_in_provider_needs_no_file(self, tmp_path, relays):
         models = {"providers": {"ilaas": self.provider(apiKey="sk-literal")}}
         assert self.seed(relays, ["anthropic"], (), self.agent_dir(tmp_path, models)) == ({}, [])
+
+    def test_a_models_file_named_replaces_the_operator_s(self, tmp_path, relays, monkeypatch):
+        """The operator's own may hold a literal key or a `!command` for interactive use."""
+        home = tmp_path / "home" / ".pi" / "agent"
+        home.mkdir(parents=True)
+        self.agent_dir(home, {"providers": {"ilaas": self.provider(apiKey="sk-literal")}})
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        named = tmp_path / "bench-models.json"
+        named.write_text(json.dumps({"providers": {"ilaas": self.provider(apiKey="$T")}}))
+        files, started = confine._settled((), Secrets(), named, ["ilaas"], self.REACH, [])
+        relays.extend(started)
+        assert files["models.json"]["providers"]["ilaas"]["baseUrl"].startswith("http://relay")
+
+    def test_a_models_file_named_and_missing_is_refused(self, tmp_path):
+        backend = confine.Bwrap(models=str(tmp_path / "nowhere.json"))
+        with pytest.raises(RuntimeError, match="nowhere.json', no such file here"):
+            backend.prepare(None, ["ilaas"])
 
     def test_of_the_settings_only_the_subagent_thinking_level(self, tmp_path, relays):
         """The rest would be inherited from the operator's machine, which no scenario says."""

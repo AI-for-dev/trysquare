@@ -129,14 +129,15 @@ def seed(
     providers: Sequence[str],
     env: Sequence[str],
     secrets: Secrets,
+    models_file: Path,
     agent_dir: Path,
     reach: Reach,
 ) -> tuple[dict[str, dict], list[Relay]]:
     """What the agent's home starts with, by file name, and the relays that hold its keys.
 
-    Read from the operator's `agent_dir` and written rather than copied. `models.json`
-    describes every provider the operator uses, and only the providers the launch calls go
-    in. Their secrets must be references to variables `secrets` has a value for, and none
+    Read from `models_file` and the operator's `agent_dir`, and written rather than copied.
+    `models_file` describes the providers the operator uses, and only the providers the
+    launch calls go in. Their secrets must be references to variables `secrets` has a value for, and none
     of them reaches the sandbox: each is replaced by a placeholder, the provider's address
     by a relay's, and the relay puts the secret back on the way out (see `relay`). One relay per
     provider, since a relay sends its key to one host only. `auth.json` never goes in. A
@@ -146,13 +147,13 @@ def seed(
     found: dict[str, dict] = {}
     kept: dict[str, dict] = {}
     relays: list[Relay] = []
-    models = _read(agent_dir / "models.json").get("providers", {})
+    models = _read(models_file).get("providers", {})
     try:
         for provider in providers:
             if provider not in models:
                 continue
             entry = models[provider]
-            where = f"provider {provider!r} in {agent_dir / 'models.json'}"
+            where = f"provider {provider!r} in {models_file}"
             names = sorted(
                 {
                     n
@@ -268,7 +269,8 @@ def _check(value: str, where: str, env: Sequence[str], secrets: Secrets) -> list
     if not names:
         raise RuntimeError(
             f"the {where} is written in the file, where the agent could read it. Put it "
-            f"in a variable set here and write $NAME"
+            f"in a variable, set here or in the [isolation] secrets file, and write $NAME. "
+            f"If this models.json is yours, name one for the sandbox in [isolation] models"
         )
     for name in names:
         if name in env:
@@ -291,21 +293,34 @@ def _variables(env: Sequence[str]) -> tuple[str, ...]:
     return tuple(env)
 
 
+def _models(models: str | None) -> Path | None:
+    """`[isolation] models`, refused unless it is a path."""
+    if models is not None and not isinstance(models, str):
+        raise ValueError(f"models = {models!r} is not a path")
+    return Path(models) if models else None
+
+
 def _settled(
     env: tuple[str, ...],
     secrets: Secrets,
+    models: Path | None,
     providers: Sequence[str],
     reach: Reach,
     previous: list[Relay],
 ) -> tuple[dict[str, dict], list[Relay]]:
     """The agent's home for this launch and its relays, once every variable `env` names is
-    set. A launch prepares more than once, and only the last relays serve its runs."""
+    set and the `models` file, if one is named, exists. Without one, the providers are
+    the operator's own. A launch prepares more than once, and only the last relays serve
+    its runs."""
     for relay in previous:
         relay.close()
     unset = [v for v in env if v not in os.environ]
     if unset:
         raise RuntimeError(f"[isolation] env names {', '.join(unset)}, unset here")
-    return seed(providers, env, secrets, Path.home() / ".pi" / "agent", reach)
+    if models is not None and not models.is_file():
+        raise RuntimeError(f"[isolation] models = {str(models)!r}, no such file here")
+    agent_dir = Path.home() / ".pi" / "agent"
+    return seed(providers, env, secrets, models or agent_dir / "models.json", agent_dir, reach)
 
 
 class Docker:
@@ -324,6 +339,7 @@ class Docker:
         self,
         env: Sequence[str] = (),
         secrets: str | None = None,
+        models: str | None = None,
         cpus: float | None = None,
         memory: str | None = None,
     ) -> None:
@@ -335,6 +351,7 @@ class Docker:
             raise ValueError(f'memory = {memory!r} is not a size such as "4g" or "512m"')
         self.env = _variables(env)
         self.secrets = Secrets(secrets)
+        self.models = _models(models)
         self.limits = {k: v for k, v in (("cpus", cpus), ("memory", memory)) if v is not None}
         self.image = ""
         self.where = "in docker"
@@ -353,7 +370,9 @@ class Docker:
         if running.returncode != 0:
             raise RuntimeError(f"docker does not answer here: {running.stderr.strip()[:200]}")
         reach = Reach(bind=_bridge(), host="host.docker.internal")
-        self._seed, self._relays = _settled(self.env, self.secrets, providers, reach, self._relays)
+        self._seed, self._relays = _settled(
+            self.env, self.secrets, self.models, providers, reach, self._relays
+        )
         found = _docker("image", "inspect", "--format", "{{.Id}}", image)
         if found.returncode != 0:
             raise RuntimeError(
@@ -456,10 +475,15 @@ class Bwrap:
     takes_image = False
 
     def __init__(
-        self, env: Sequence[str] = (), secrets: str | None = None, bind: Sequence[str] = ()
+        self,
+        env: Sequence[str] = (),
+        secrets: str | None = None,
+        models: str | None = None,
+        bind: Sequence[str] = (),
     ) -> None:
         self.env = _variables(env)
         self.secrets = Secrets(secrets)
+        self.models = _models(models)
         if isinstance(bind, str) or not all(isinstance(p, str) for p in bind):
             raise ValueError(f"bind = {bind!r} is not a list of paths")
         self.bind = tuple(Path(os.path.expanduser(p)) for p in bind)
@@ -468,7 +492,9 @@ class Bwrap:
 
     def prepare(self, image: str | None, providers: Sequence[str]) -> None:
         reach = Reach(bind="127.0.0.1", host="127.0.0.1")
-        self._seed, self._relays = _settled(self.env, self.secrets, providers, reach, self._relays)
+        self._seed, self._relays = _settled(
+            self.env, self.secrets, self.models, providers, reach, self._relays
+        )
         probe = _run("bwrap", "--ro-bind", "/", "/", "true")
         if probe.returncode != 0:
             raise RuntimeError(

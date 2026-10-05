@@ -48,6 +48,7 @@
 backend = "none"
 # backend = "docker"
 # env = []
+# models = "models.json"   # the providers, instead of ~/.pi/agent/models.json
 # secrets = "~/.config/trysquare/secrets.env"
 
 [defaults]

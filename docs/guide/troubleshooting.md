@@ -147,8 +147,9 @@ which is where you want to find out:
 
 The docker backend refuses for its own reasons first, each named: no image declared in
 `[agent]`, an image docker cannot find (pull or build it), a variable `[isolation] env`
-names that is unset. And a secret of the scenario's provider in `~/.pi/agent/models.json`
-that would reach the agent:
+names that is unset, a file `[isolation] models` names that does not exist. And a secret
+of the scenario's provider in `~/.pi/agent/models.json` (or the `models` file) that would
+reach the agent:
 
 ```text
 error: the apiKey of provider 'ilaas' in ~/.pi/agent/models.json reads $ILAAS_API_KEY,
