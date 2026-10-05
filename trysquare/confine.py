@@ -20,7 +20,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import secrets
 import socket
 import subprocess
 import tempfile
@@ -30,10 +29,12 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from secrets import token_hex
 from typing import Protocol
 
 from . import interrupt
 from .relay import Relay
+from .secret import Secrets
 
 NONE = "none"
 DOCKER = "docker"
@@ -125,15 +126,19 @@ MEMORY = re.compile(r"^\d+[bkmg]$")
 
 
 def seed(
-    providers: Sequence[str], env: Sequence[str], agent_dir: Path, reach: Reach
+    providers: Sequence[str],
+    env: Sequence[str],
+    secrets: Secrets,
+    agent_dir: Path,
+    reach: Reach,
 ) -> tuple[dict[str, dict], list[Relay]]:
     """What the agent's home starts with, by file name, and the relays that hold its keys.
 
     Read from the operator's `agent_dir` and written rather than copied. `models.json`
     describes every provider the operator uses, and only the providers the launch calls go
-    in. Their secrets must be references to variables set here, and none of them reaches
-    the sandbox: each is replaced by a placeholder, the provider's address by a relay's,
-    and the relay puts the secret back on the way out (see `relay`). One relay per
+    in. Their secrets must be references to variables `secrets` has a value for, and none
+    of them reaches the sandbox: each is replaced by a placeholder, the provider's address
+    by a relay's, and the relay puts the secret back on the way out (see `relay`). One relay per
     provider, since a relay sends its key to one host only. `auth.json` never goes in. A
     provider `models.json` does not describe is one of `pi`'s own, which reads its key
     from the environment - so from `env`, where the agent can read it too.
@@ -152,11 +157,11 @@ def seed(
                 {
                     n
                     for field, value in _secrets(entry)
-                    for n in _check(value, f"{field} of {where}", env)
+                    for n in _check(value, f"{field} of {where}", env, secrets)
                 }
             )
             if names:
-                entry, relay = _relayed(entry, names, where, reach)
+                entry, relay = _relayed(entry, {n: secrets.value(n) for n in names}, where, reach)
                 relays.append(relay)
             kept[provider] = entry
     except BaseException:
@@ -172,8 +177,9 @@ def seed(
     return found, relays
 
 
-def _relayed(entry: dict, names: list[str], where: str, reach: Reach) -> tuple[dict, Relay]:
-    """The entry the agent gets - placeholders and the relay's address - and the relay."""
+def _relayed(entry: dict, values: dict[str, str], where: str, reach: Reach) -> tuple[dict, Relay]:
+    """The entry the agent gets - placeholders and the relay's address - and the relay
+    holding `values`, the secrets by variable name."""
     origins = {ORIGIN.match(url)[0] for url in _addresses(entry) if ORIGIN.match(url)}
     if not origins:
         raise RuntimeError(
@@ -185,8 +191,8 @@ def _relayed(entry: dict, names: list[str], where: str, reach: Reach) -> tuple[d
             f"{where} sends requests to more than one host ({', '.join(sorted(origins))}), "
             f"and its key must reach one only"
         )
-    placeholders = {n: f"trysquare-{n}-{secrets.token_hex(16)}" for n in names}
-    relay = Relay(origins.pop(), {placeholders[n]: os.environ[n] for n in names}, reach.bind)
+    placeholders = {n: f"trysquare-{n}-{token_hex(16)}" for n in values}
+    relay = Relay(origins.pop(), {placeholders[n]: v for n, v in values.items()}, reach.bind)
     return _rewritten(entry, placeholders, relay.origin, f"http://{reach.host}:{relay.port}"), relay
 
 
@@ -247,7 +253,7 @@ def _secrets(entry) -> Iterator[tuple[str, str]]:
                 yield from _secrets(value)
 
 
-def _check(value: str, where: str, env: Sequence[str]) -> list[str]:
+def _check(value: str, where: str, env: Sequence[str], secrets: Secrets) -> list[str]:
     """The variables a secret reads, once it is one the relay can keep outside.
 
     A value with no variable in it is a secret written out. One that mixes a literal and
@@ -255,8 +261,8 @@ def _check(value: str, where: str, env: Sequence[str]) -> list[str]:
     """
     if value.startswith("!"):
         raise RuntimeError(
-            f"the {where} runs a command, which would run inside the container. Put the "
-            f"secret in a variable set here and write $NAME"
+            f"the {where} runs a command, which would run inside the container. Write "
+            f"$NAME, and fetch NAME with a command in [isolation.secrets] instead"
         )
     names = [a or b for _, a, b in (m.group(0, 1, 2) for m in REFERENCE.finditer(value)) if a or b]
     if not names:
@@ -271,8 +277,10 @@ def _check(value: str, where: str, env: Sequence[str]) -> list[str]:
                 f"sandbox, where the agent could read it: drop {name} from [isolation] "
                 f"env, trysquare adds it to the agent's requests from outside"
             )
-        if name not in os.environ:
-            raise RuntimeError(f"the {where} reads ${name}, unset here")
+        if not secrets.known(name):
+            raise RuntimeError(
+                f"the {where} reads ${name}, unset here and not in [isolation.secrets]"
+            )
     return names
 
 
@@ -284,7 +292,11 @@ def _variables(env: Sequence[str]) -> tuple[str, ...]:
 
 
 def _settled(
-    env: tuple[str, ...], providers: Sequence[str], reach: Reach, previous: list[Relay]
+    env: tuple[str, ...],
+    secrets: Secrets,
+    providers: Sequence[str],
+    reach: Reach,
+    previous: list[Relay],
 ) -> tuple[dict[str, dict], list[Relay]]:
     """The agent's home for this launch and its relays, once every variable `env` names is
     set. A launch prepares more than once, and only the last relays serve its runs."""
@@ -293,7 +305,7 @@ def _settled(
     unset = [v for v in env if v not in os.environ]
     if unset:
         raise RuntimeError(f"[isolation] env names {', '.join(unset)}, unset here")
-    return seed(providers, env, Path.home() / ".pi" / "agent", reach)
+    return seed(providers, env, secrets, Path.home() / ".pi" / "agent", reach)
 
 
 class Docker:
@@ -309,7 +321,11 @@ class Docker:
     takes_image = True
 
     def __init__(
-        self, env: Sequence[str] = (), cpus: float | None = None, memory: str | None = None
+        self,
+        env: Sequence[str] = (),
+        secrets: dict | None = None,
+        cpus: float | None = None,
+        memory: str | None = None,
     ) -> None:
         if cpus is not None and (
             isinstance(cpus, bool) or not isinstance(cpus, int | float) or cpus <= 0
@@ -318,6 +334,7 @@ class Docker:
         if memory is not None and not (isinstance(memory, str) and MEMORY.match(memory)):
             raise ValueError(f'memory = {memory!r} is not a size such as "4g" or "512m"')
         self.env = _variables(env)
+        self.secrets = Secrets(secrets)
         self.limits = {k: v for k, v in (("cpus", cpus), ("memory", memory)) if v is not None}
         self.image = ""
         self.where = "in docker"
@@ -336,7 +353,7 @@ class Docker:
         if running.returncode != 0:
             raise RuntimeError(f"docker does not answer here: {running.stderr.strip()[:200]}")
         reach = Reach(bind=_bridge(), host="host.docker.internal")
-        self._seed, self._relays = _settled(self.env, providers, reach, self._relays)
+        self._seed, self._relays = _settled(self.env, self.secrets, providers, reach, self._relays)
         found = _docker("image", "inspect", "--format", "{{.Id}}", image)
         if found.returncode != 0:
             raise RuntimeError(
@@ -438,8 +455,11 @@ class Bwrap:
     limits: dict = {}
     takes_image = False
 
-    def __init__(self, env: Sequence[str] = (), bind: Sequence[str] = ()) -> None:
+    def __init__(
+        self, env: Sequence[str] = (), secrets: dict | None = None, bind: Sequence[str] = ()
+    ) -> None:
         self.env = _variables(env)
+        self.secrets = Secrets(secrets)
         if isinstance(bind, str) or not all(isinstance(p, str) for p in bind):
             raise ValueError(f"bind = {bind!r} is not a list of paths")
         self.bind = tuple(Path(os.path.expanduser(p)) for p in bind)
@@ -448,7 +468,7 @@ class Bwrap:
 
     def prepare(self, image: str | None, providers: Sequence[str]) -> None:
         reach = Reach(bind="127.0.0.1", host="127.0.0.1")
-        self._seed, self._relays = _settled(self.env, providers, reach, self._relays)
+        self._seed, self._relays = _settled(self.env, self.secrets, providers, reach, self._relays)
         probe = _run("bwrap", "--ro-bind", "/", "/", "true")
         if probe.returncode != 0:
             raise RuntimeError(

@@ -175,6 +175,23 @@ Before any run, a launch refuses a key written out in the file, a `!command` (it
 run inside the container), a variable that is unset, and a variable `env` still passes
 in, where the agent could read it beside the placeholder.
 
+A variable unset where trysquare runs can come from a command instead, so the key need
+not be exported before each launch:
+
+```toml
+[isolation.secrets]
+ILAAS_API_KEY = { command = ["security", "find-generic-password", "-ws", "ilaas"] }
+```
+
+The command runs on your machine, at most once per launch, when the relays are
+prepared, and the relay holds what it prints, trimmed. Any tool that prints a secret
+works: the macOS Keychain, `pass`, `op`, `bw`. A variable already set in the environment
+wins, and its command does not run. The value stays in memory: it is never written to
+disk, to `state.json` or to a log, and never reaches the sandbox. The command keeps your
+terminal's input and error output, so a tool can ask for a passphrase. A command that
+fails, or prints nothing, stops the launch with the variable's name and the exit code,
+never with what it printed.
+
 The relay listens on docker's bridge, the address `host.docker.internal` reaches from a
 container, so nothing off the machine can call it. The agent needs no network of its own
 to reach its provider, so no proxy variable has to be passed in either.

@@ -18,6 +18,7 @@ from trysquare import agent, config, confine, outputs, runner, validation
 from trysquare.cli import isolation_lines
 from trysquare.measure import Run
 from trysquare.scenario import parse
+from trysquare.secret import Secrets
 
 from tests import gitrepo
 from tests.test_relay import Upstream
@@ -127,6 +128,26 @@ class TestTheMachineChooses:
     def test_docker_takes_the_variables_it_passes_as_a_list(self, tmp_path):
         with pytest.raises(config.ConfigError, match="is not a list of variable names"):
             config.load(self.write(tmp_path, 'backend = "docker"\nenv = "ILAAS_API_KEY"'))
+
+    @pytest.mark.parametrize(
+        "secrets,refusal",
+        [
+            ('K = "pass show k"', "secrets.K = 'pass show k' is not { command"),
+            ('K = { command = "pass show k" }', "is not { command"),
+            ("K = { command = [] }", "is not { command"),
+            ('K = { command = ["pass"], shell = true }', "is not { command"),
+            ('"NOT A NAME" = { command = ["pass"] }', "secrets.NOT A NAME is not a variable"),
+        ],
+    )
+    def test_a_secret_with_no_command_to_fetch_it_is_refused(self, tmp_path, secrets, refusal):
+        isolation = f'backend = "docker"\n[isolation.secrets]\n{secrets}'
+        with pytest.raises(config.ConfigError, match=re.escape(refusal)):
+            config.load(self.write(tmp_path, isolation))
+
+    def test_a_backend_with_no_relay_takes_no_secrets(self, tmp_path):
+        isolation = 'backend = "none"\n[isolation.secrets]\nK = { command = ["pass"] }'
+        with pytest.raises(config.ConfigError, match="'none' backend takes no secrets"):
+            config.load(self.write(tmp_path, isolation))
 
 
 class TestOneRun:
@@ -278,8 +299,8 @@ class TestWhatTheHomeStartsWith:
         for relay in started:
             relay.close()
 
-    def seed(self, relays, providers, env, agent_dir):
-        files, started = confine.seed(providers, env, agent_dir, self.REACH)
+    def seed(self, relays, providers, env, agent_dir, secrets=None):
+        files, started = confine.seed(providers, env, secrets or Secrets(), agent_dir, self.REACH)
         relays.extend(started)
         return files, started
 
@@ -380,6 +401,52 @@ class TestWhatTheHomeStartsWith:
         models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
         with pytest.raises(RuntimeError, match=r"reads \$ILAAS_API_KEY, unset here"):
             self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
+
+    def test_a_key_unset_here_is_fetched_by_its_command(self, tmp_path, relays, monkeypatch):
+        monkeypatch.delenv("ILAAS_API_KEY")
+        secrets = Secrets({"ILAAS_API_KEY": {"command": ["printf", "  sk-fetched\\n"]}})
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        files, [relay] = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models), secrets)
+        written = files["models.json"]["providers"]["ilaas"]["apiKey"]
+        assert "sk-fetched" not in json.dumps(files)
+        assert relay.reveal(written) == ("sk-fetched", True)
+
+    def test_a_key_set_here_wins_over_its_command(self, tmp_path, relays):
+        """So CI, and a shell that already exports the key, behave as they did."""
+        secrets = Secrets({"ILAAS_API_KEY": {"command": ["false"]}})
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        files, [relay] = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models), secrets)
+        written = files["models.json"]["providers"]["ilaas"]["apiKey"]
+        assert relay.reveal(written) == ("sk-the-real-key", True)
+
+    def test_a_launch_runs_the_command_once(self, tmp_path, relays, monkeypatch):
+        """A launch prepares more than once, and a keychain may ask each time it is read."""
+        monkeypatch.delenv("ILAAS_API_KEY")
+        count = tmp_path / "count"
+        command = ["sh", "-c", f"echo >> {count}; echo sk-fetched"]
+        secrets = Secrets({"ILAAS_API_KEY": {"command": command}})
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        for _ in range(2):
+            self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models), secrets)
+        assert count.read_text() == "\n"
+
+    @pytest.mark.parametrize(
+        "command,refusal",
+        [
+            (["sh", "-c", "echo sk-leaked; exit 3"], "'sh' exited with 3"),
+            (["true"], "'true' printed nothing"),
+            (["no-such-program-here"], "'no-such-program-here' cannot run"),
+        ],
+    )
+    def test_a_command_that_fails_stops_the_launch_without_its_output(
+        self, tmp_path, relays, monkeypatch, capfd, command, refusal
+    ):
+        monkeypatch.delenv("ILAAS_API_KEY")
+        secrets = Secrets({"ILAAS_API_KEY": {"command": command}})
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        with pytest.raises(RuntimeError, match=rf"secrets\] ILAAS_API_KEY: {refusal}") as e:
+            self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models), secrets)
+        assert "sk-leaked" not in str(e.value) + capfd.readouterr().out
 
     def test_a_provider_on_two_hosts_is_refused(self, tmp_path, relays):
         """One relay serves one provider host, and the key must reach no other."""

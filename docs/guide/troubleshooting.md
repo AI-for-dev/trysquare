@@ -158,8 +158,15 @@ outside
 ```
 
 The same refusal names a key written out in the file, a `!command`, a variable unset
-where trysquare runs, a provider entry with no `baseUrl`, and one that sends requests to
-more than one host. The bwrap
+where trysquare runs and absent from `[isolation.secrets]`, a provider entry with no
+`baseUrl`, and one that sends requests to more than one host. A command in
+`[isolation.secrets]` that fails names its variable and exit code, and not its output:
+
+```text
+error: [isolation.secrets] ILAAS_API_KEY: 'security' exited with 44
+```
+
+The bwrap
 backend shares those refusals, and adds its own when it cannot make a sandbox at all:
 `bwrap cannot make a sandbox here`, with bubblewrap's own reason - usually unprivileged
 user namespaces, which some distributions and most containers forbid.

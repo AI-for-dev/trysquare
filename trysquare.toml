@@ -42,11 +42,15 @@
 # scenario's `[agent] image`, seeing its own clone and nothing else. `bwrap` (Linux): the
 # same boundary without docker, on this machine's tools. Under both, the provider's key
 # stays out: the agent gets a placeholder and a relay on this machine adds the key.
-# `env` names the variables passed in, for whatever else the agent needs.
+# `env` names the variables passed in, for whatever else the agent needs. A key unset
+# here can be fetched by a command in [isolation.secrets], run on this machine.
 [isolation]
 backend = "none"
 # backend = "docker"
 # env = []
+#
+# [isolation.secrets]
+# ILAAS_API_KEY = { command = ["security", "find-generic-password", "-ws", "ilaas"] }
 
 [defaults]
 # Clones live in the system temporary directory, which macOS purges on reboot.
