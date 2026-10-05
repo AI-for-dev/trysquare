@@ -262,6 +262,8 @@ def load(path: str | Path | None = None, start: Path | None = None) -> Config:
         )
 
     isolation = dict(raw.get("isolation", {}))
+    if isinstance(isolation.get("models"), str):
+        isolation["models"] = str(expand(isolation["models"], found))
     if isinstance(isolation.get("secrets"), str):
         isolation["secrets"] = str(expand(isolation["secrets"], found))
     try:

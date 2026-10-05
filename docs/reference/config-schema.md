@@ -164,8 +164,22 @@ That home holds what `pi` needs from your `~/.pi/agent` and nothing more:
   rest of your settings would be inherited from the machine, which no scenario says.
 - never `auth.json`, the tokens of `/login`.
 
+`models` names another file to take the providers from, relative to this config:
+
+```toml
+[isolation]
+backend = "docker"
+models = "models.json"   # optional, instead of ~/.pi/agent/models.json
+```
+
+Your own `models.json` serves `pi` when you use it yourself, where a key written out or
+a `!command` is fine. A file of its own for the sandbox holds only `$NAME` references, so
+it carries no secret and can sit in the repository beside this config. A file `models`
+names that does not exist is refused before any run. The `none` backend takes no
+`models`: there, `pi` reads your own.
+
 **The provider's key never enters the container.** Its `apiKey` and header values in
-your `models.json` must read the secret from a variable set where trysquare runs
+that `models.json` must read the secret from a variable set where trysquare runs
 (`$NAME`, `${NAME}`, or `Bearer ${NAME}`). The agent gets a placeholder instead, and each
 provider's address becomes a relay of its own, which trysquare runs on your machine for
 the launch. A relay swaps the placeholder for the key on each request and sends it on, over HTTPS, to
