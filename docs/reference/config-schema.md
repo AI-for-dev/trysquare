@@ -175,6 +175,24 @@ Before any run, a launch refuses a key written out in the file, a `!command` (it
 run inside the container), a variable that is unset, and a variable `env` still passes
 in, where the agent could read it beside the placeholder.
 
+A variable unset where trysquare runs can come from a `.env` file instead, so the key
+need not be exported before each launch:
+
+```toml
+[isolation]
+backend = "docker"
+secrets = "~/.config/trysquare/secrets.env"   # optional, relative to this config
+```
+
+A variable set in the environment wins over the file. The file holds one `NAME=value`
+per line, with an optional `export` prefix and optional quotes; blank lines and `#`
+comments are skipped, and nothing in it is expanded. It is read at most once per
+launch, when the relays are prepared, and its values stay in memory: never written to
+disk, to `state.json` or to a log. A file that is missing, a line that is not an
+assignment, or a variable it sets to nothing stops the launch, naming the file and the
+line number, never the line. Its variables only feed the relays: `env` does not read
+the file, so nothing in it enters the sandbox.
+
 The relay listens on docker's bridge, the address `host.docker.internal` reaches from a
 container, so nothing off the machine can call it. The agent needs no network of its own
 to reach its provider, so no proxy variable has to be passed in either.

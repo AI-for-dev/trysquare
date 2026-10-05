@@ -18,6 +18,7 @@ from trysquare import agent, config, confine, outputs, runner, validation
 from trysquare.cli import isolation_lines
 from trysquare.measure import Run
 from trysquare.scenario import parse
+from trysquare.secret import Secrets
 
 from tests import gitrepo
 from tests.test_relay import Upstream
@@ -127,6 +128,18 @@ class TestTheMachineChooses:
     def test_docker_takes_the_variables_it_passes_as_a_list(self, tmp_path):
         with pytest.raises(config.ConfigError, match="is not a list of variable names"):
             config.load(self.write(tmp_path, 'backend = "docker"\nenv = "ILAAS_API_KEY"'))
+
+    def test_a_secrets_file_is_relative_to_the_config(self, tmp_path):
+        loaded = config.load(self.write(tmp_path, 'backend = "docker"\nsecrets = "keys.env"'))
+        assert loaded.isolation["secrets"] == str(tmp_path / "keys.env")
+
+    def test_a_secrets_file_that_is_not_a_path_is_refused(self, tmp_path):
+        with pytest.raises(config.ConfigError, match="secrets = 3 is not a path"):
+            config.load(self.write(tmp_path, 'backend = "docker"\nsecrets = 3'))
+
+    def test_a_backend_with_no_relay_takes_no_secrets(self, tmp_path):
+        with pytest.raises(config.ConfigError, match="'none' backend takes no secrets"):
+            config.load(self.write(tmp_path, 'backend = "none"\nsecrets = "keys.env"'))
 
 
 class TestOneRun:
@@ -278,8 +291,8 @@ class TestWhatTheHomeStartsWith:
         for relay in started:
             relay.close()
 
-    def seed(self, relays, providers, env, agent_dir):
-        files, started = confine.seed(providers, env, agent_dir, self.REACH)
+    def seed(self, relays, providers, env, agent_dir, secrets=None):
+        files, started = confine.seed(providers, env, secrets or Secrets(), agent_dir, self.REACH)
         relays.extend(started)
         return files, started
 
@@ -378,8 +391,52 @@ class TestWhatTheHomeStartsWith:
         """Otherwise every run comes back empty, with a provider error to decode."""
         monkeypatch.delenv("ILAAS_API_KEY")
         models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
-        with pytest.raises(RuntimeError, match=r"reads \$ILAAS_API_KEY, unset here"):
+        with pytest.raises(RuntimeError, match=r"reads \$ILAAS_API_KEY, unset here and not"):
             self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models))
+
+    def test_a_key_unset_here_is_read_from_the_file(self, tmp_path, relays, monkeypatch):
+        monkeypatch.delenv("ILAAS_API_KEY")
+        monkeypatch.delenv("T")
+        keys = tmp_path / "keys.env"
+        keys.write_text('# keys\n\nexport ILAAS_API_KEY="sk-from-file"\nT=tok # note\n')
+        entry = self.provider(apiKey="$ILAAS_API_KEY", headers={"X-Token": "$T"})
+        models = {"providers": {"ilaas": entry}}
+        secrets = Secrets(str(keys))
+        files, [relay] = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models), secrets)
+        written = files["models.json"]["providers"]["ilaas"]
+        assert "sk-from-file" not in json.dumps(files)
+        assert relay.reveal(written["apiKey"]) == ("sk-from-file", True)
+        assert relay.reveal(written["headers"]["X-Token"]) == ("tok", True)
+
+    def test_a_key_set_here_wins_over_the_file(self, tmp_path, relays):
+        """So CI, and a shell that already exports the key, behave as they did."""
+        keys = tmp_path / "keys.env"
+        keys.write_text("ILAAS_API_KEY=sk-from-file\n")
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        secrets = Secrets(str(keys))
+        files, [relay] = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models), secrets)
+        written = files["models.json"]["providers"]["ilaas"]["apiKey"]
+        assert relay.reveal(written) == ("sk-the-real-key", True)
+
+    @pytest.mark.parametrize(
+        "content,refusal",
+        [
+            (None, "No such file"),
+            ("OK=1\nsk-leaked\n", "line 2: not NAME=value"),
+            ("ILAAS_API_KEY=\n", "sets ILAAS_API_KEY to nothing"),
+        ],
+    )
+    def test_a_file_that_cannot_be_read_stops_the_launch_without_its_content(
+        self, tmp_path, relays, monkeypatch, content, refusal
+    ):
+        monkeypatch.delenv("ILAAS_API_KEY")
+        keys = tmp_path / "keys.env"
+        if content is not None:
+            keys.write_text(content)
+        models = {"providers": {"ilaas": self.provider(apiKey="$ILAAS_API_KEY")}}
+        with pytest.raises(RuntimeError, match=refusal) as e:
+            self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, models), Secrets(str(keys)))
+        assert "sk-leaked" not in str(e.value)
 
     def test_a_provider_on_two_hosts_is_refused(self, tmp_path, relays):
         """One relay serves one provider host, and the key must reach no other."""
