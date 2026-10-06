@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/AI-for-dev/trysquare/compare/v0.7.0...v0.8.0) (2026-10-06)
+
+
+### Features
+
+* a GitHub Actions style matrix in [axes]: preset values, exclude and include ([#121](https://github.com/AI-for-dev/trysquare/issues/121)) ([1a75da1](https://github.com/AI-for-dev/trysquare/commit/1a75da1d66817df019c04f682029ad8c829a2190))
+* add up the bricks a cell takes from several presets or axes ([#120](https://github.com/AI-for-dev/trysquare/issues/120)) ([1bd98be](https://github.com/AI-for-dev/trysquare/commit/1bd98bed556a0d97d6b6a49f6cea8ad0c982e689))
+* declare shared cell lines once as named presets ([#116](https://github.com/AI-for-dev/trysquare/issues/116)) ([56a025a](https://github.com/AI-for-dev/trysquare/commit/56a025adb2f4c29c7f9e85906c5fcc285e6ad2df))
+
+
+### Bug Fixes
+
+* check that a setup script exists before the first run ([#117](https://github.com/AI-for-dev/trysquare/issues/117)) ([8400032](https://github.com/AI-for-dev/trysquare/commit/840003219f1bc2ed1e202ae3ff6824e94c23cef3))
+* refuse a cell or preset key that nothing reads ([#119](https://github.com/AI-for-dev/trysquare/issues/119)) ([ba5dea9](https://github.com/AI-for-dev/trysquare/commit/ba5dea9ad4bc9db8bad3ae10061cef6610ddb190))
+
 ## [0.7.0](https://github.com/AI-for-dev/trysquare/compare/v0.6.2...v0.7.0) (2026-10-06)
 
 
