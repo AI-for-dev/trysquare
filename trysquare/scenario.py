@@ -332,6 +332,29 @@ def _expand(axes: dict, values: dict, variants: dict, presets: dict) -> tuple[Ce
     return tuple(cells)
 
 
+# What a preset may set, and so what a cell may. Anything else is refused rather than
+# carried: a key nothing reads changes nothing, and `uses = [...]` written for `use`
+# would measure the baseline under a name that promises three levers.
+PRESET_KEYS = ("prompt", "context", "system", "thinking", "harness", "history", "setup")
+DELTA_KEYS = (*PRESET_KEYS, "use", "description")
+
+
+# Material a cell loads through a brick, written as if it were a key of its own.
+THROUGH_A_BRICK = {"skill", "skills", "agent", "agents", "extension", "extensions", "files"}
+
+
+def _check_keys(table: dict, known: tuple[str, ...], owner: str) -> None:
+    for key in table:
+        if key in known:
+            continue
+        hint = (
+            f". A {key} is loaded through a [harness.<name>] brick named in `harness`"
+            if key in THROUGH_A_BRICK
+            else closest(key, known)
+        )
+        raise ScenarioError(f"{owner}: unknown key {key!r}{hint}. Known keys: {', '.join(known)}")
+
+
 def _presets(presets: dict) -> dict:
     """The `[presets]` a scenario declares, each a delta a cell may `use`.
 
@@ -342,6 +365,7 @@ def _presets(presets: dict) -> dict:
         for key in ("use", "description"):
             if key in preset:
                 raise ScenarioError(f"[presets.{name}]: a preset cannot declare {key!r}")
+        _check_keys(preset, PRESET_KEYS, f"[presets.{name}]")
     return presets
 
 
@@ -353,6 +377,7 @@ def _using(delta: dict, presets: dict, owner: str) -> dict:
     settles it: which of the two the cell got is a question no reader of the scenario
     could answer.
     """
+    _check_keys(delta, DELTA_KEYS, owner)
     delta = dict(delta)
     names = delta.pop("use", [])
     if not isinstance(names, list):
