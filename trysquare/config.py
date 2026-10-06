@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 """The config file, and the hard rule about what it may not contain.
 
-There are no environment variables anywhere in this tool. Its predecessor had
+No environment variable changes what this tool measures. Its predecessor read
 ten, and an environment variable is invisible inheritance: the reader of a
 scenario cannot see it, the archive does not record it, and the value that
 actually ran is whatever the shell happened to hold.

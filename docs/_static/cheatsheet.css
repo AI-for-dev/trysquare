@@ -602,4 +602,12 @@ body[data-theme="dark"] .ts-sheet {
   .ts-aside {
     display: none;
   }
+  /* a flag column as wide as the longest flag leaves its gloss a few words wide */
+  .ts-sheet dl.ts-flags {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .ts-sheet dl.ts-flags dd {
+    margin-bottom: 8px;
+  }
 }

@@ -18,7 +18,7 @@ must not measure something different on another machine
 ```
 :::
 
-There are **no environment variables** in this tool. The previous one had ten, and one
+**No environment variable** changes what is measured. The previous tool read ten, and one
 of them silently decided the thinking level of every published measurement.
 
 ## `[repos]`
