@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/AI-for-dev/trysquare/compare/v0.6.0...v0.6.1) (2026-10-06)
+
+
+### Documentation
+
+* give each command of the cheat sheet its own flags ([#105](https://github.com/AI-for-dev/trysquare/issues/105)) ([af1f6cf](https://github.com/AI-for-dev/trysquare/commit/af1f6cf3d1b36f67ab60e372586f86af3d493844))
+* put isolation and the ninth invariant on the cheat sheet ([#106](https://github.com/AI-for-dev/trysquare/issues/106)) ([b640223](https://github.com/AI-for-dev/trysquare/commit/b640223e63513f2b055b8aae53a40e11d1849e35))
+
 ## [0.6.0](https://github.com/AI-for-dev/trysquare/compare/v0.5.0...v0.6.0) (2026-10-06)
 
 
