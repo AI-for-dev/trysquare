@@ -78,6 +78,15 @@ class TestParser:
             "pi",
         }
 
+    def test_version_is_the_installed_one(self, capsys):
+        """What a bug report starts with, read from the distribution as everywhere else."""
+        from trysquare import __version__
+
+        with pytest.raises(SystemExit) as exited:
+            main(["--version"])
+        assert exited.value.code == 0
+        assert capsys.readouterr().out == f"trysquare {__version__}\n"
+
     def test_the_three_answers_cannot_be_given_at_once(self):
         """They are the three answers to one question, so two of them says two things -
         refused by argparse rather than by a precedence rule nobody can see.
