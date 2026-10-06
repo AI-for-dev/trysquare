@@ -27,6 +27,7 @@ import textwrap
 import webbrowser
 from pathlib import Path
 
+from . import __version__
 from . import agent as agent_mod
 from . import ask as ask_mod
 from . import assay as assay_mod
@@ -96,6 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="trysquare",
         description="A scenario harness for measuring coding agents reproducibly.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     def with_common(p, output_required=True):
