@@ -308,7 +308,7 @@ def _refuse_a_config_file(raw: dict, where: str) -> None:
 
 # Keys of `[axes]` that are not axes but rules over their product, as in a GitHub
 # Actions matrix.
-AXES_RULES = ("exclude",)
+AXES_RULES = ("exclude", "include")
 
 
 def _expand(
@@ -335,6 +335,8 @@ def _expand(
                 declared = _value_delta(axis, value, axes, values, presets)
                 delta = _layer(delta, _using(declared, presets, f"[values.{axis}.{value}]"))
             cells.append(_cell(" / ".join(combo), delta))
+
+    cells += _included(rules.get("include", []), presets, cells)
 
     for name, delta in variants.items():
         cells.append(_cell(name, _using(delta, presets, f"[variants.{name}]")))
@@ -475,6 +477,48 @@ def _check_axes(axes: dict, values: dict, presets: dict) -> None:
                     f"preset{closest(value, known)}. Only the first value of an axis "
                     f"({declared[0]!r}) is the baseline. Deltas and presets: {known or 'none'}"
                 )
+
+
+def _included(entries: list, presets: dict, grid: list[Cell]) -> list[Cell]:
+    """The cells `include` adds beside the product, each a list of presets.
+
+    Named after its presets, `+thinking+blind`, so a name cannot promise a lever the
+    cell does not take. The presets are taken in the order `[presets]` declares them,
+    in the name and in the delta alike: listing the same ones in another order is the
+    same cell. An entry may be a table instead, to give a `name`, a `description` or
+    lines of its own; a name is required as soon as the presets alone do not say what
+    the cell is. A cell the grid already has is refused, rather than measured twice
+    under two names.
+    """
+    if not isinstance(entries, list):
+        raise ScenarioError(f"[axes].include must be a list - got {entries!r}")
+    order = list(presets)
+    cells: list[Cell] = []
+    for entry in entries:
+        if not isinstance(entry, (list, dict)):
+            raise ScenarioError(
+                f"[axes].include holds {entry!r}: an entry is a list of presets, as in "
+                f'["thinking", "blind"], or a table with `use` and a `name`'
+            )
+        table = {"use": entry} if isinstance(entry, list) else dict(entry)
+        own = table.pop("name", None)
+        used = table.get("use", [])
+        if isinstance(used, list) and all(n in presets for n in used):
+            table["use"] = sorted(dict.fromkeys(used), key=order.index)
+        delta = _using(table, presets, f"[axes].include {entry!r}")
+        bare = set(table) <= {"use", "description"} and table.get("use")
+        if own is None and not bare:
+            raise ScenarioError(
+                f"[axes].include {entry!r} needs a name: only a list of presets is named after them"
+            )
+        cell = _cell(own or "+" + "+".join(table["use"]), delta)
+        twin = next((c for c in [*grid, *cells] if c.delta == cell.delta), None)
+        if twin:
+            raise ScenarioError(
+                f"[axes].include {entry!r} is cell {twin.name!r} already, under another name"
+            )
+        cells.append(cell)
+    return cells
 
 
 def _excluded(rules: list, axes: dict) -> list[dict]:
