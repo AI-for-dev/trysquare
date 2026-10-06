@@ -467,7 +467,7 @@ class Output:
         self.repetitions = repetitions or scenario.protocol["repetitions"]
         # `root` is kept rather than re-derived from `directory.parent`: it is where the
         # other matrices of this same experiment live, and a carry has to look there.
-        self.root = Path(root)
+        self.root = Path(root).resolve()
         self.directory = self.root / experiment_name(scenario, self.repetitions)
         self.runs_dir = self.directory / RUNS
         self.cell_of = {i: meta["cell"] for i, meta in self.plan().items()}
