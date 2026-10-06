@@ -428,6 +428,11 @@ carry a `description`.
   - A list of preset names whose lines the cell takes. See [Presets](#presets).
 ```
 
+Any other key is refused when the scenario loads, in a cell as in a preset. A key that
+nothing reads would change nothing, and the cell would be measured as the baseline under
+a name that says otherwise. A skill, an agent or an extension is not a key of its own:
+it is loaded through a `[harness.<name>]` brick named in `harness`.
+
 ## `[harness.<name>]`
 
 Bricks, declared once and cited by name so the pinning lives in one place and cannot

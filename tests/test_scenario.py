@@ -605,3 +605,39 @@ class TestPresets:
     def test_a_preset_neither_uses_another_nor_describes_a_cell(self, key):
         with pytest.raises(ScenarioError, match=f"a preset cannot declare '{key}'"):
             self.deltas({"p": {key: ["x"]}}, none={})
+
+
+class TestDeltaKeys:
+    """A key nothing reads is refused, wherever a delta is declared."""
+
+    def test_a_misspelled_key_in_a_variant_is_named_with_the_likely_one(self):
+        variants = {"none": {}, "c": {"uses": ["x"]}}
+        with pytest.raises(
+            ScenarioError, match=r"\[variants.c\]: unknown key 'uses' \(did you mean 'use'"
+        ):
+            parse(MINIMAL | {"variants": variants})
+
+    def test_a_grid_value_is_checked_too(self):
+        values = GRID["values"] | {"thinking": {"high": {"thinkng": "high"}}}
+        with pytest.raises(ScenarioError, match=r"\[values.thinking.high\]: unknown key 'thinkng'"):
+            parse(GRID | {"values": values})
+
+    def test_material_a_brick_carries_points_at_harness(self):
+        presets = {"skill": {"skill": "SKILLS.md"}}
+        with pytest.raises(
+            ScenarioError, match=r"\[presets.skill\]: .*through a \[harness.<name>\] brick"
+        ):
+            parse(MINIMAL | {"presets": presets})
+
+    def test_every_documented_key_is_accepted(self):
+        delta = {
+            "prompt": "p.md",
+            "context": "c.md",
+            "system": "s.md",
+            "thinking": "high",
+            "harness": [],
+            "history": False,
+            "setup": "setup.sh",
+            "description": "why this cell",
+        }
+        assert parse(MINIMAL | {"variants": {"none": {}, "all": delta}}).cell("all")
