@@ -7,15 +7,17 @@ mode that exists precisely so wiring can be checked without paying for it.
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from tests.gitrepo import a_repo
 from tests.test_scenario import MINIMAL
 import pytest
 
-from trysquare import cli, parity, repo
+from trysquare import cli, confine, parity, repo
 from trysquare import assay
 from trysquare.assay import Assay, CannotJudge
 from trysquare.cli import build_parser, main
@@ -145,6 +147,41 @@ class TestValidate:
         assert code == 0
         assert "ok: nothing this scenario references is missing" in said
         assert list(tmp_path.iterdir()) == []
+
+    @pytest.fixture
+    def answering(self, monkeypatch):
+        """Runs go through a spy: `pi --version` answers, and every ping ends with `code`."""
+
+        def install(code: int):
+            def run(argv, scope, **kwargs):
+                said = ("1.0.2\n", "") if "--version" in argv else ("", "401: bad key\n")
+                return subprocess.CompletedProcess(argv, 0 if "--version" in argv else code, *said)
+
+            spy = mock.Mock(where="in a spy", image="", run=mock.Mock(side_effect=run))
+            monkeypatch.setitem(confine.BACKENDS, confine.NONE, lambda: spy)
+            return spy
+
+        return install
+
+    def test_without_ping_no_model_is_called(self, answering):
+        spy = answering(0)
+        code, _ = self.quietly(["validate", SCENARIO, "--config", str(MACHINE)])
+        assert code == 0
+        assert all("--version" in c.args[0] for c in spy.run.call_args_list)
+
+    def test_a_ping_answered_validates(self, answering):
+        answering(0)
+        code, said = self.quietly(["validate", SCENARIO, "--config", str(MACHINE), "--ping"])
+        assert code == 0
+        assert "test-provider/test-model in a spy: ok" in said
+        assert "ok: every model answered" in said
+
+    def test_a_ping_unanswered_is_a_refusal_that_says_why(self, answering):
+        answering(1)
+        code, said = self.quietly(["validate", SCENARIO, "--config", str(MACHINE), "--ping"])
+        assert code == 1
+        assert "! test-provider/test-model in a spy: 401: bad key" in said
+        assert "1 model did not answer" in said
 
     def test_a_missing_referenced_file_is_a_refusal(self, tmp_path):
         """The same preflight as `run`: a missing brick refuses before anything else."""

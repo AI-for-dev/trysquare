@@ -349,6 +349,38 @@ def version(confinement: Confinement = UNCONFINED, timeout: int = 30) -> str:
     return proc.stdout.strip() if proc.returncode == 0 else ""
 
 
+#: What `ping` asks a model, short enough to cost a handful of tokens.
+PING = "Reply with the single word OK."
+
+
+def ping(confinement: Confinement, provider: str, model: str, timeout: int = 120) -> str | None:
+    """Why `model` does not answer where runs happen, or None when it does.
+
+    One prompt, sent the way a run sends its own: from inside the boundary, through the
+    relay, with the provider `models.json` describes. Nothing is kept, so an answer
+    proves the whole path and leaves no session behind.
+    """
+    argv = [PI, "-p", "--provider", provider, "--model", model, "--thinking", "off"]
+    argv += ["--no-session", "-nc", "-ns", "-np", "-ne", PING]
+    try:
+        proc = confinement.run(
+            argv,
+            Scope(),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return f"no answer within {timeout}s"
+    except OSError as e:
+        return str(e)
+    if proc.returncode == 0:
+        return None
+    said = (proc.stderr.strip() or proc.stdout.strip()).splitlines()
+    return said[-1][:200] if said else f"{PI!r} exited with {proc.returncode}"
+
+
 def export_html(
     session: Path, target: Path, confinement: Confinement = UNCONFINED, timeout: int = 120
 ) -> Path:

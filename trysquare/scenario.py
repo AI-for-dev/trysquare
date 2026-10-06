@@ -157,6 +157,15 @@ class Scenario:
         return tuple(dict.fromkeys(p for p in named if p))
 
     @property
+    def models(self) -> tuple[tuple[str, str], ...]:
+        """Every model a launch calls, as `(provider, model)`: the agent's, and each judge's."""
+        named = [
+            (self.agent["provider"], self.agent["model"]),
+            *((v.config.get("provider"), v.config.get("model")) for v in self.validators),
+        ]
+        return tuple(dict.fromkeys((p, m) for p, m in named if p and m))
+
+    @property
     def manual_metrics(self) -> tuple[str, ...]:
         """The metrics a human fills in, and the reason an output tree stays blind."""
         return tuple(m for v in self.validators if v.mode == "form" for m in v.metrics)

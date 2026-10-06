@@ -207,6 +207,50 @@ class TestTheJudge:
     def test_a_launch_serves_the_judge_s_provider_as_well_as_the_agent_s(self):
         assert parse(self.JUDGED).providers == ("ilaas", "judging")
 
+    def test_a_launch_calls_the_judge_s_model_as_well_as_the_agent_s(self):
+        assert parse(self.JUDGED).models == (("ilaas", "gemma-4-31b"), ("judging", "m"))
+
+
+class Answering(Spy):
+    """A spy whose agent ends as `result` says: a returncode and what it printed."""
+
+    def __init__(self, result: subprocess.CompletedProcess | Exception) -> None:
+        super().__init__()
+        self.result = result
+
+    def run(self, argv, scope, **kwargs) -> subprocess.CompletedProcess:
+        super().run(argv, scope, **kwargs)
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+class TestAPing:
+    """One short prompt, sent from where runs happen, to tell a model that answers."""
+
+    def test_the_model_is_asked_once_from_inside_the_boundary(self):
+        spy = Answering(subprocess.CompletedProcess([], 0, "OK\n", ""))
+        assert agent.ping(spy, "ilaas", "gemma-4-31b") is None
+        [(argv, scope, _)] = spy.calls
+        assert argv[argv.index("--provider") + 1] == "ilaas"
+        assert argv[argv.index("--model") + 1] == "gemma-4-31b"
+        assert "--no-session" in argv and argv[-1] == agent.PING
+        assert scope == confine.Scope()
+
+    @pytest.mark.parametrize(
+        "result,reason",
+        [
+            (
+                subprocess.CompletedProcess([], 1, "", 'warning\n401: {"message":"bad key"}\n'),
+                "401",
+            ),
+            (subprocess.CompletedProcess([], 3, "", ""), "exited with 3"),
+            (subprocess.TimeoutExpired("pi", 120), "no answer within 120s"),
+        ],
+    )
+    def test_a_model_that_does_not_answer_says_why(self, result, reason):
+        assert reason in agent.ping(Answering(result), "ilaas", "gemma-4-31b")
+
 
 class TestTheSynthesisSays:
     def test_a_matrix_measured_without_a_boundary_is_warned_about(self):
