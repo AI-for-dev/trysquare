@@ -277,6 +277,21 @@ class TestRenderHtml:
                 assert page.is_file(), f"{page} should have been written"
 
     @needs_the_agent
+    def test_a_relative_output_gets_every_page(self, measured, session_dir, capsys, monkeypatch):
+        """The agent writes the page where its resolved target is, so the page has to be
+        named relative to a resolved output too."""
+        directory = measured("aaaa1111")
+        o = outputs.Output(directory, load(SCENARIO), repetitions=1)
+        o.archive_sessions("aaaa1111", session_dir("first.jsonl", "second.jsonl"))
+        monkeypatch.chdir(directory.parent)
+        code, text = rendered(
+            capsys,
+            ["render", SCENARIO, "-o", directory.name, "--repetitions", "1", "--html"],
+        )
+        assert code == 0
+        assert "2 session pages written" in text
+
+    @needs_the_agent
     def test_an_incomplete_matrix_still_gets_its_pages(self, measured, session_dir, capsys):
         """Which is the reason the export runs before the table rather than after it.
 
