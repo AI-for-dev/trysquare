@@ -283,6 +283,35 @@ error: 1 model did not answer
 
 When no run could start, it pings nothing and fails.
 
+## `pi`
+
+Runs `pi` for you to use, inside the `[isolation]` backend, in the current directory:
+to try a model, a prompt or an extension under the conditions a matrix will measure.
+
+```bash
+trysquare pi [--config <file>] [--image <image>] [-- <pi arguments>]
+```
+
+The current directory is mounted read-write, at the path it has here, and nothing else
+of the machine is there. The agent's home is the one a run gets, and every provider
+the sandbox's `models.json` describes (`[isolation] models`, or `~/.pi/agent/models.json`)
+goes through its own relay, with its key read from the environment or the
+`[isolation] secrets` file: the key stays outside, as for a run. Whatever follows `--`
+is passed to `pi`:
+
+```bash
+cd ~/my-project
+trysquare pi -- --provider ilaas --model gemma-4-31b
+```
+
+`--image` is the image docker runs `pi` from, `trysquare-agent` by default; bwrap uses
+this machine's `pi`. It spends whatever you ask the model.
+
+It refuses, before anything starts, under `backend = "none"` (there is no sandbox: run
+`pi` itself), and from a directory that holds your home, `~/.pi` (where `pi` keeps the
+tokens of `/login`) or the `[isolation] secrets` file. Every refusal of a run's
+preparation applies too.
+
 ## `render`
 
 Rebuilds tables from stored measures. Costs nothing.

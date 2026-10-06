@@ -245,6 +245,18 @@ def build_parser() -> argparse.ArgumentParser:
     parity.add_argument("--config", type=Path)
     parity.set_defaults(func=cmd_parity)
 
+    pi = sub.add_parser(
+        "pi", help="run pi here, inside the [isolation] backend, with its providers and keys"
+    )
+    pi.add_argument("--config", type=Path, help="config file (default: nearest trysquare.toml)")
+    pi.add_argument(
+        "--image",
+        default="trysquare-agent",
+        help="the image docker runs pi from (default: trysquare-agent)",
+    )
+    pi.add_argument("args", nargs=argparse.REMAINDER, help="passed to pi, after --")
+    pi.set_defaults(func=cmd_pi)
+
     watch = sub.add_parser("watch", help="follow a matrix directory in a browser")
     watch.add_argument("directory", type=Path, help="the matrix directory to follow")
     watch.add_argument("--port", type=int, default=0, help="default: a free one")
@@ -700,6 +712,47 @@ def _ping(scenario, confinement) -> int:
         return 1
     print("ok: every model answered")
     return 0
+
+
+# --- pi --------------------------------------------------------------------
+
+
+def cmd_pi(args) -> int:
+    """`pi` for a person to use, inside the boundary a run would have.
+
+    The current directory is the agent's, read-write, and nothing else of the machine
+    is there. Every provider the sandbox's `models.json` describes is relayed, so its
+    key stays outside, exactly as for a run. That is the point: trying a model, or a
+    prompt, under the conditions a matrix will measure.
+    """
+    config = config_mod.load(args.config, start=Path.cwd())
+    confinement = confine.backend(config.isolation)
+    here = Path.cwd().resolve()
+    if problem := _unexposable(confinement, here):
+        print(f"error: {problem}", file=sys.stderr)
+        return 1
+    try:
+        confinement.prepare(args.image, confine.described(confinement.models))
+    except RuntimeError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    passed = args.args[1:] if args.args[:1] == ["--"] else args.args
+    return confinement.attach([agent_mod.PI, *passed], confine.Scope(writable=(here,)), here)
+
+
+def _unexposable(confinement, here: Path) -> str | None:
+    """Why `here` cannot be handed to the agent, or None when it can."""
+    if confinement.name == confine.NONE:
+        return "[isolation] backend is none, so there is no sandbox to run pi in: run pi itself"
+    home = Path.home().resolve()
+    secrets = confinement.secrets.file
+    if home.is_relative_to(here):
+        return f"{here} holds your home directory, which the agent must not see"
+    if here.is_relative_to(home / ".pi") or (home / ".pi").is_relative_to(here):
+        return f"{here} holds {home / '.pi'}, where pi keeps your tokens"
+    if secrets is not None and secrets.resolve().is_relative_to(here):
+        return f"{here} holds the [isolation] secrets file, {secrets}"
+    return None
 
 
 # --- render ----------------------------------------------------------------

@@ -23,7 +23,7 @@ class Secrets:
     def __init__(self, file: str | None = None) -> None:
         if file is not None and not isinstance(file, str):
             raise ValueError(f"secrets = {file!r} is not a path")
-        self._file = Path(file) if file else None
+        self.file = Path(file) if file else None
         self._listed: dict[str, str] | None = None
 
     def known(self, name: str) -> bool:
@@ -35,12 +35,12 @@ class Secrets:
         if name in os.environ:
             return os.environ[name]
         if not (value := self._read()[name]):
-            raise RuntimeError(f"[isolation] secrets file {self._file} sets {name} to nothing")
+            raise RuntimeError(f"[isolation] secrets file {self.file} sets {name} to nothing")
         return value
 
     def _read(self) -> dict[str, str]:
         if self._listed is None:
-            self._listed = {} if self._file is None else _parse(self._file)
+            self._listed = {} if self.file is None else _parse(self.file)
         return self._listed
 
 

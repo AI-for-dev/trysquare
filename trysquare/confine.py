@@ -300,6 +300,21 @@ def _models(models: str | None) -> Path | None:
     return Path(models) if models else None
 
 
+def models_file(models: Path | None) -> Path:
+    """The `models.json` a sandbox takes its providers from: `[isolation] models`, or the
+    operator's own."""
+    return models or Path.home() / ".pi" / "agent" / "models.json"
+
+
+def described(models: Path | None) -> tuple[str, ...]:
+    """Every provider the `models.json` a sandbox reads describes."""
+    return tuple(_read(models_file(models)).get("providers", {}))
+
+
+#: What an interactive agent needs of the terminal it draws in. None of it is a secret.
+TERMINAL = ("TERM", "COLORTERM", "LANG")
+
+
 def _settled(
     env: tuple[str, ...],
     secrets: Secrets,
@@ -320,7 +335,7 @@ def _settled(
     if models is not None and not models.is_file():
         raise RuntimeError(f"[isolation] models = {str(models)!r}, no such file here")
     agent_dir = Path.home() / ".pi" / "agent"
-    return seed(providers, env, secrets, models or agent_dir / "models.json", agent_dir, reach)
+    return seed(providers, env, secrets, models_file(models), agent_dir, reach)
 
 
 class Docker:
@@ -387,9 +402,16 @@ class Docker:
         self.where = f"in image {image!r}"
 
     def argv(
-        self, argv: Sequence[str], scope: Scope, cwd: Path | None, name: str, home: Path
+        self,
+        argv: Sequence[str],
+        scope: Scope,
+        cwd: Path | None,
+        name: str,
+        home: Path,
+        tty: bool = False,
     ) -> list[str]:
-        """The `docker run` that executes `argv` in `scope`. Pure, so it can be asserted."""
+        """The `docker run` that executes `argv` in `scope`, attached to this terminal when
+        `tty` is set. Pure, so it can be asserted."""
         args = [
             "docker",
             "run",
@@ -412,7 +434,9 @@ class Docker:
         if "memory" in self.limits:
             # The same ceiling for swap: a limit the run can swap past is not one.
             args += ["--memory", self.limits["memory"], "--memory-swap", self.limits["memory"]]
-        for variable in self.env:
+        if tty:
+            args += ["--interactive", "--tty"]
+        for variable in (*self.env, *(TERMINAL if tty else ())):
             # By name only: docker copies the value, so a key never sits in an argv.
             args += ["--env", variable]
         mounts = [(p, "rw") for p in scope.writable] + [(p, "ro") for p in scope.readable]
@@ -423,6 +447,20 @@ class Docker:
         return [*args, self.image, *argv]
 
     def run(self, argv: Sequence[str], scope: Scope, **kwargs) -> subprocess.CompletedProcess:
+        with self._container(argv, scope, kwargs.pop("cwd", None)) as command:
+            return interrupt.run(command, **kwargs)
+
+    def attach(self, argv: Sequence[str], scope: Scope, cwd: Path) -> int:
+        """`argv` inside the boundary, in the foreground of this terminal, for a person to
+        use: what it reads and draws goes straight through. Its exit status."""
+        with self._container(argv, scope, cwd, tty=True) as command:
+            return subprocess.run(command).returncode
+
+    @contextmanager
+    def _container(
+        self, argv: Sequence[str], scope: Scope, cwd: Path | None, tty: bool = False
+    ) -> Iterator[list[str]]:
+        """The `docker run` of one container, taken down once the caller is done with it."""
         if not self.image:
             raise RuntimeError("the docker backend runs nothing before `prepare`")
         _create(scope)
@@ -431,8 +469,7 @@ class Docker:
             self._live.add(name)
         with _home(self._seed) as home:
             try:
-                command = self.argv(argv, scope, kwargs.pop("cwd", None), name, home)
-                return interrupt.run(command, **kwargs)
+                yield self.argv(argv, scope, cwd, name, home, tty)
             finally:
                 self._remove(name)
 
@@ -518,12 +555,14 @@ class Bwrap:
             args += ["--chdir", str(cwd)]
         return [*args, "--", *argv]
 
-    def environment(self) -> dict[str, str]:
-        """What the sandbox inherits: enough to find the agent, and what `env` passes."""
+    def environment(self, *extra: str) -> dict[str, str]:
+        """What the sandbox inherits: enough to find the agent, what `env` passes, and the
+        `extra` variables that are set here."""
         return {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "HOME": HOME,
             **{v: os.environ[v] for v in self.env},
+            **{v: os.environ[v] for v in extra if v in os.environ},
         }
 
     def run(self, argv: Sequence[str], scope: Scope, **kwargs) -> subprocess.CompletedProcess:
@@ -531,6 +570,14 @@ class Bwrap:
         with _home(self._seed) as home:
             command = self.argv(argv, scope, kwargs.pop("cwd", None), home)
             return interrupt.run(command, env=self.environment(), **kwargs)
+
+    def attach(self, argv: Sequence[str], scope: Scope, cwd: Path) -> int:
+        """As `Docker.attach`. `--new-session` stays: the agent draws in this terminal but
+        cannot type into it."""
+        _create(scope)
+        with _home(self._seed) as home:
+            command = self.argv(argv, scope, cwd, home)
+            return subprocess.run(command, env=self.environment(*TERMINAL)).returncode
 
 
 def _bridge() -> str:
