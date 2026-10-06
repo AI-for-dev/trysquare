@@ -17,11 +17,12 @@ from tests.gitrepo import a_repo
 from tests.test_scenario import MINIMAL
 import pytest
 
-from trysquare import cli, confine, parity, repo
+from trysquare import agent, cli, confine, parity, repo
 from trysquare import assay
 from trysquare.assay import Assay, CannotJudge
 from trysquare.cli import build_parser, main
 from trysquare.scenario import parse
+from trysquare.secret import Secrets
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO = str(ROOT / "tests" / "fixtures" / "matrix.toml")
@@ -74,6 +75,7 @@ class TestParser:
             "parity",
             "form",
             "watch",
+            "pi",
         }
 
     def test_the_three_answers_cannot_be_given_at_once(self):
@@ -2480,3 +2482,90 @@ class TestParityLayer2:
         code, said = self.parity(measures)
         assert code == 0
         assert "layer 2 needs --scenario" in said
+
+
+def quietly(argv) -> tuple[int, str]:
+    """What `main(argv)` returns, and everything it printed."""
+    import contextlib
+    import io
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        code = main(argv)
+    return code, stdout.getvalue() + stderr.getvalue()
+
+
+class Attached:
+    """A backend that records what it was asked to attach to this terminal."""
+
+    name = "attached"
+
+    def __init__(self, secrets=None, models=None) -> None:
+        self.secrets = Secrets(secrets)
+        self.models = models
+        self.prepared: tuple = ()
+        self.attached: tuple = ()
+
+    def prepare(self, image, providers) -> None:
+        self.prepared = (image, providers)
+
+    def attach(self, argv, scope, cwd) -> int:
+        self.attached = (argv, scope, cwd)
+        return 7
+
+
+class TestPi:
+    """`pi` inside the boundary, in the directory it is launched from and nothing else."""
+
+    @pytest.fixture
+    def launch(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        (home / ".pi" / "agent").mkdir(parents=True)
+        monkeypatch.setenv("HOME", str(home))
+        made = []
+
+        def factory(**settings):
+            made.append(Attached(**settings))
+            return made[-1]
+
+        monkeypatch.setitem(confine.BACKENDS, Attached.name, factory)
+        config_file = tmp_path / "trysquare.toml"
+        config_file.write_text('[isolation]\nbackend = "attached"\nsecrets = "project/keys.env"\n')
+
+        def run(here: Path, *argv: str) -> tuple[int, str, Attached | None]:
+            here.mkdir(parents=True, exist_ok=True)
+            monkeypatch.chdir(here)
+            code, said = quietly(["pi", "--config", str(config_file), *argv])
+            return code, said, made[-1] if made else None
+
+        return run
+
+    def test_pi_runs_here_with_what_follows_the_separator(self, tmp_path, launch):
+        here = tmp_path / "home" / "project"
+        code, _, backend = launch(here, "--", "--model", "m")
+        assert code == 7
+        argv, scope, cwd = backend.attached
+        assert argv == [agent.PI, "--model", "m"]
+        assert scope == confine.Scope(writable=(here.resolve(),)) and cwd == here.resolve()
+        assert backend.prepared[0] == "trysquare-agent"
+
+    @pytest.mark.parametrize(
+        "where,refusal",
+        [
+            ("home", "holds your home directory"),
+            ("home/.pi/agent", "where pi keeps your tokens"),
+            ("project", "holds the [isolation] secrets file"),
+        ],
+    )
+    def test_a_directory_holding_what_the_agent_must_not_see_is_refused(
+        self, tmp_path, launch, where, refusal
+    ):
+        code, said, backend = launch(tmp_path / where)
+        assert code == 1 and refusal in said
+        assert not backend.attached
+
+    def test_without_a_sandbox_there_is_nothing_to_attach(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "trysquare.toml").write_text('[isolation]\nbackend = "none"\n')
+        code, said = quietly(["pi"])
+        assert code == 1 and "no sandbox to run pi in" in said

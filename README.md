@@ -61,7 +61,7 @@ uv run trysquare run my-scenario.toml --output out
 `trysquare` is a console script, so `uv tool install .` - or `pip install -e .` in a
 virtual environment - puts the same command on PATH without `uv run` in front of it.
 `uv run trysquare --help` lists the subcommands, and `uv run trysquare <command>
---help` the flags of one. `python -m trysquare` runs the same nine subcommands from
+--help` the flags of one. `python -m trysquare` runs the same ten subcommands from
 an installed environment, which is what the tests use.
 
 ## Commands

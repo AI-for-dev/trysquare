@@ -3,7 +3,8 @@
   <header class="ts-masthead">
     
     <p class="ts-creed">
-      Eight subcommands. <em>One</em> of them spends tokens - everything else loads,
+      Ten subcommands. <em>One</em> of them measures and spends tokens; <code>pi</code>
+      and <code>validate --ping</code> spend what you ask them. Everything else loads,
       re-scores, compares and renders for free, which is the whole point of keeping
       measuring and scoring apart.
     </p>
@@ -64,6 +65,29 @@
           The same refusals <code>run</code> applies, shared with it: <b>validate cannot
           pass what run would refuse.</b> A missing <code>pi</code> on PATH is a note, not
           a failure.
+        </div>
+      </article>
+
+      <article class="ts-cmd" style="grid-column: 1 / -1">
+        <div class="ts-cmd-head">
+          <span class="ts-name">pi <span class="ts-arg">[-- args]</span></span>
+          <span class="ts-chip ts-spends">spends tokens</span>
+        </div>
+        <p>
+          Runs <code>pi</code> for you to use, <strong>inside the <code>[isolation]</code>
+          backend</strong>, with the current directory read-write and nothing else of the
+          machine. Every provider of the sandbox's <code>models.json</code> goes through a
+          relay, so its key stays outside, as for a run.
+        </p>
+        <dl class="ts-flags">
+          <dt>--config</dt>
+          <dd>config file; defaults to the nearest <code>trysquare.toml</code> walking up</dd>
+          <dt>--image</dt>
+          <dd>what docker runs <code>pi</code> from; default <code>trysquare-agent</code></dd>
+        </dl>
+        <div class="ts-note">
+          Refused under <code>backend = "none"</code>, and from a directory holding your
+          home, <code>~/.pi</code> or the secrets file.
         </div>
       </article>
 

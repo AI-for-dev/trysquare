@@ -274,13 +274,22 @@ class TestTheSynthesisSays:
 class TestTheDockerCommand:
     """What `docker run` is asked, which needs no daemon to check."""
 
-    def argv(self, tmp_path, **kwargs) -> list[str]:
+    def argv(self, tmp_path, tty: bool = False, **kwargs) -> list[str]:
         backend = confine.Docker(**kwargs)
         backend.image = "sha256:abc"
         scope = confine.Scope(writable=(tmp_path / "repo",), readable=(tmp_path / "brick.ts",))
         return backend.argv(
-            ["pi", "-p", "go"], scope, tmp_path / "repo", "trysquare-x", tmp_path / "h"
+            ["pi", "-p", "go"], scope, tmp_path / "repo", "trysquare-x", tmp_path / "h", tty
         )
+
+    def test_a_run_has_no_terminal(self, tmp_path):
+        args = self.argv(tmp_path)
+        assert "--tty" not in args and "TERM" not in args
+
+    def test_an_attached_agent_draws_in_this_terminal(self, tmp_path):
+        args = self.argv(tmp_path, tty=True)
+        assert "--interactive" in args and "--tty" in args
+        assert set(confine.TERMINAL) <= {args[i + 1] for i, a in enumerate(args) if a == "--env"}
 
     def test_each_path_is_where_the_host_has_it(self, tmp_path):
         args = self.argv(tmp_path)
@@ -529,6 +538,11 @@ class TestWhatTheHomeStartsWith:
         with pytest.raises(RuntimeError, match="nowhere.json', no such file here"):
             backend.prepare(None, ["ilaas"])
 
+    def test_an_attached_agent_is_served_every_provider_described(self, tmp_path):
+        models = tmp_path / "models.json"
+        models.write_text(json.dumps({"providers": {"ilaas": {}, "judging": {}}}))
+        assert confine.described(models) == ("ilaas", "judging")
+
     def test_of_the_settings_only_the_subagent_thinking_level(self, tmp_path, relays):
         """The rest would be inherited from the operator's machine, which no scenario says."""
         settings = {"defaultThinkingLevel": "high", "compaction": {"enabled": False}}
@@ -643,6 +657,12 @@ class TestTheBwrapCommand:
         assert not any("secret" in a for a in args)
         assert backend.environment()["SOME_KEY"] == "secret"
         assert set(backend.environment()) == {"PATH", "HOME", "SOME_KEY"}
+
+    def test_an_attached_agent_gets_the_terminal_it_draws_in(self, monkeypatch):
+        monkeypatch.setenv("TERM", "xterm-256color")
+        monkeypatch.delenv("COLORTERM", raising=False)
+        environment = confine.Bwrap().environment(*confine.TERMINAL)
+        assert environment["TERM"] == "xterm-256color" and "COLORTERM" not in environment
 
 
 def bwrap_runs() -> bool:
