@@ -255,9 +255,11 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
                 f"from whoever runs the tool"
             )
 
-    axes = raw.get("axes", {})
+    axes = {k: v for k, v in raw.get("axes", {}).items() if k not in AXES_RULES}
+    rules = {k: v for k, v in raw.get("axes", {}).items() if k in AXES_RULES}
     values = raw.get("values", {})
-    cells = _expand(axes, values, raw.get("variants", {}), _presets(raw.get("presets", {})))
+    presets = _presets(raw.get("presets", {}))
+    cells = _expand(axes, rules, values, raw.get("variants", {}), presets)
     if not cells:
         raise ScenarioError("no cells: declare [axes] or [variants]")
 
@@ -304,7 +306,14 @@ def _refuse_a_config_file(raw: dict, where: str) -> None:
     )
 
 
-def _expand(axes: dict, values: dict, variants: dict, presets: dict) -> tuple[Cell, ...]:
+# Keys of `[axes]` that are not axes but rules over their product, as in a GitHub
+# Actions matrix.
+AXES_RULES = ("exclude",)
+
+
+def _expand(
+    axes: dict, rules: dict, values: dict, variants: dict, presets: dict
+) -> tuple[Cell, ...]:
     """Grid cells then named variants, added rather than chosen between.
 
     A scenario may use both: a grid is concise for the regular part, named
@@ -314,12 +323,16 @@ def _expand(axes: dict, values: dict, variants: dict, presets: dict) -> tuple[Ce
     cells: list[Cell] = []
 
     if axes:
-        _check_axes(axes, values)
+        _check_axes(axes, values, presets)
+        excluded = _excluded(rules.get("exclude", []), axes)
         names = list(axes)  # declaration order fixes the order of the table
         for combo in itertools.product(*[axes[n] for n in names]):
+            chosen = dict(zip(names, combo))
+            if any(rule.items() <= chosen.items() for rule in excluded):
+                continue
             delta: dict = {}
-            for axis, value in zip(names, combo):
-                declared = values.get(axis, {}).get(value, {})
+            for axis, value in chosen.items():
+                declared = _value_delta(axis, value, axes, values, presets)
                 delta = _layer(delta, _using(declared, presets, f"[values.{axis}.{value}]"))
             cells.append(_cell(" / ".join(combo), delta))
 
@@ -419,7 +432,19 @@ def _cell(name: str, delta: dict) -> Cell:
     return Cell(name, delta, str(delta.pop("description", "") or ""))
 
 
-def _check_axes(axes: dict, values: dict) -> None:
+def _value_delta(axis: str, value: str, axes: dict, values: dict, presets: dict) -> dict:
+    """What one axis value changes: its `[values]` block, or else the preset it names.
+
+    The baseline names nothing, so a preset sharing its name stays out of it.
+    """
+    if value in values.get(axis, {}):
+        return values[axis][value]
+    if value in presets and value != axes[axis][0]:
+        return {"use": [value]}
+    return {}
+
+
+def _check_axes(axes: dict, values: dict, presets: dict) -> None:
     """The counterpart of leaving the baseline implicit.
 
     An axis value with no delta block *is* the baseline, which is concise and
@@ -428,20 +453,49 @@ def _check_axes(axes: dict, values: dict) -> None:
     baseline, published twice under two names.
 
     The rule that makes the typo loud without adding any syntax: the baseline of
-    an axis is its first value, and every other value must declare a delta. A
-    misspelled value is never the first one, so it has no block, so this raises.
+    an axis is its first value, and every other value must declare a delta, in
+    `[values]` or by naming a preset. A misspelled value is never the first one,
+    so it has neither, so this raises. A first value naming a preset is refused
+    for the opposite reason: it reads as a lever and would measure nothing.
     """
     for axis, declared in axes.items():
         if not declared:
             raise ScenarioError(f"axis {axis!r} has no values")
+        if declared[0] in presets:
+            raise ScenarioError(
+                f"axis {axis!r}: its first value is the baseline and changes nothing, "
+                f"yet {declared[0]!r} names a preset. Put the baseline first, as in "
+                f"{['none', *declared]!r}"
+            )
         for value in declared[1:]:
-            if not values.get(axis, {}).get(value):
-                known = sorted(values.get(axis, {}))
+            if not values.get(axis, {}).get(value) and value not in presets:
+                known = sorted({*values.get(axis, {}), *presets})
                 raise ScenarioError(
-                    f"axis {axis!r}: value {value!r} declares no delta. Only the "
-                    f"first value of an axis ({declared[0]!r}) is the baseline. "
-                    f"Deltas declared for this axis: {known or 'none'}"
+                    f"axis {axis!r}: value {value!r} declares no delta and names no "
+                    f"preset{closest(value, known)}. Only the first value of an axis "
+                    f"({declared[0]!r}) is the baseline. Deltas and presets: {known or 'none'}"
                 )
+
+
+def _excluded(rules: list, axes: dict) -> list[dict]:
+    """The combinations `exclude` removes, each a partial one: `{blind = "yes"}` removes
+    every cell with that value. An axis or a value the grid does not have is refused,
+    since a misspelled rule would otherwise remove nothing and say nothing."""
+    if not isinstance(rules, list) or not all(isinstance(r, dict) and r for r in rules):
+        raise ScenarioError(
+            f"[axes].exclude must be a list of tables, as in "
+            f'[{{ lever = "agents", blind = "yes" }}] - got {rules!r}'
+        )
+    for rule in rules:
+        for axis, value in rule.items():
+            if axis not in axes:
+                raise ScenarioError(f"[axes].exclude: no axis {axis!r}{closest(axis, axes)}")
+            if value not in axes[axis]:
+                raise ScenarioError(
+                    f"[axes].exclude: axis {axis!r} has no value {value!r}"
+                    f"{closest(value, axes[axis])}"
+                )
+    return rules
 
 
 # What a key deciding a cell's starting tree must be, and how to say so. A wrong type
