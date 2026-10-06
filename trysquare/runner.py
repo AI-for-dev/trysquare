@@ -558,6 +558,26 @@ def source_dir(config: Config, name: str, url: str, etalon: str) -> Path:
     return config.workdir() / "sources" / f"{slug(name)}-{digest}-{slug(etalon)}"
 
 
+#: How long a setup script may take, dependencies installed included.
+SETUP_TIMEOUT = 900
+
+
+def starting_tree(scenario: Scenario, cell: Cell, source: Path, target: Path, base: Path) -> Path:
+    """The tree a run of `cell` starts from: the etalon, set up, with or without history.
+
+    The one place it is built, because a run and its replay must start from the same
+    tree or the archived patch does not apply. The setup runs before the history goes,
+    so a cell without history keeps nothing of what the script deleted.
+    """
+    etalon = scenario.task["etalon"]
+    repo_mod.clone(source, etalon, target)
+    if setup := scenario.setup(cell):
+        repo_mod.set_up(target, (base / setup).resolve(), SETUP_TIMEOUT)
+    if not scenario.history(cell):
+        repo_mod.forget_history(target, etalon)
+    return target
+
+
 def prepare_source(config: Config, name: str, etalon: str) -> Path:
     """The local repository runs clone from, pinning a remote exactly once.
 
@@ -767,9 +787,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         source = prepare_source(plan.config, scenario.task["repo"], scenario.task["etalon"])
 
         work = plan.config.workdir() / plan.output.directory.name / run_id
-        clone = repo_mod.clone(
-            source, scenario.task["etalon"], work / "repo", history=scenario.history(cell)
-        )
+        clone = starting_tree(scenario, cell, source, work / "repo", base)
         prepared = repo_mod.Prepared(path=clone, etalon=scenario.task["etalon"])
         repo_mod.inject(
             prepared,
@@ -1038,6 +1056,7 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
             "model_id": recorded_model(plan.output.sessions(run_id)),
             "thinking": thinking,
             "history": plan.scenario.history(cell),
+            "setup": plan.scenario.setup(cell),
             "injected": prepared.injected,
             # What the task was handed, as opposed to what the harness hid from git.
             # A patch touching one of these paths is the agent editing material it was

@@ -17,7 +17,7 @@ from unittest import mock
 
 import pytest
 
-from trysquare import agent, config, outputs, repo, runner, validation
+from trysquare import agent, cli, config, outputs, repo, runner, validation
 from trysquare.measure import EMPTY, VALID, VALIDATOR_FAILED, Run
 from trysquare.scenario import Validator, parse
 from tests import gitrepo
@@ -190,6 +190,12 @@ class TestARunCloneHoldsNoFuture:
         ]
 
 
+def started(source: Path, target: Path, etalon: str = "etalon-v1", **task) -> Path:
+    """The tree a run starts from, for a scenario whose `[task]` adds `task`."""
+    s = parse(MINIMAL | {"task": MINIMAL["task"] | {"etalon": etalon} | task})
+    return runner.starting_tree(s, s.cells[0], source, target, Path.cwd())
+
+
 class TestACloneWithoutHistory:
     """`history = false`: the agent finds the etalon's tree and nothing that led to it."""
 
@@ -205,7 +211,7 @@ class TestACloneWithoutHistory:
     @pytest.mark.parametrize("by", ["tag", "commit"])
     def test_the_etalon_is_the_only_commit(self, source, tmp_path, by):
         etalon = "etalon-v1" if by == "tag" else repo.commit_of(source, "etalon-v1")
-        clone = repo.clone(source, etalon, tmp_path / "clone", history=False)
+        clone = started(source, tmp_path / "clone", etalon, history=False)
         assert gitrepo.git(clone, "rev-list", "--all", "--count").strip() == "1"
         assert "first draft" not in blobs(clone)
         assert "explains it all" not in gitrepo.git(clone, "log", "--all")
@@ -213,12 +219,12 @@ class TestACloneWithoutHistory:
     def test_the_tree_is_the_etalon_s_byte_for_byte(self, source, tmp_path):
         """Same tree, so the diff a run is scored on and the patch a replay applies are
         unchanged. The tracked file `.gitignore` matches is part of it."""
-        clone = repo.clone(source, "etalon-v1", tmp_path / "clone", history=False)
+        clone = started(source, tmp_path / "clone", history=False)
         tree = gitrepo.git(source, "rev-parse", "etalon-v1^{tree}")
         assert gitrepo.git(clone, "rev-parse", "HEAD^{tree}") == tree
 
     def test_the_tag_names_the_new_commit(self, source, tmp_path):
-        clone = repo.clone(source, "etalon-v1", tmp_path / "clone", history=False)
+        clone = started(source, tmp_path / "clone", history=False)
         assert repo.commit_of(clone, "etalon-v1") == repo.commit_of(clone, "HEAD")
 
     def test_a_run_of_the_cell_sees_one_commit_and_says_so(self, source, tmp_path, monkeypatch):
@@ -235,6 +241,77 @@ class TestACloneWithoutHistory:
             ("none", True),
             ("none", True),
         ]
+
+
+class TestASetupScript:
+    """`setup`: a script run in the clone before the agent, its changes committed."""
+
+    @pytest.fixture
+    def source(self):
+        return a_repo({"a.js": "one\n", "docs/answer.md": "the answer", ".gitignore": "deps/\n"})
+
+    @pytest.fixture
+    def script(self, tmp_path):
+        script = tmp_path / "setup.sh"
+        script.write_text("#!/bin/sh\nrm -r docs\nmkdir deps && echo lib > deps/lib\n")
+        script.chmod(0o755)
+        return script
+
+    def test_its_changes_are_not_the_agent_s(self, source, script, tmp_path):
+        clone = started(source, tmp_path / "clone", setup=str(script))
+        assert not (clone / "docs").exists()
+        assert repo.changed_files(clone) == []
+
+    def test_what_the_project_ignores_stays_out_of_the_commit(self, source, script, tmp_path):
+        """Installed dependencies are there to use, not part of the measured tree."""
+        clone = started(source, tmp_path / "clone", setup=str(script), history=False)
+        assert (clone / "deps" / "lib").is_file()
+        assert gitrepo.git(clone, "ls-files").split() == [".gitignore", "a.js"]
+
+    def test_with_the_history_what_it_deleted_can_still_be_read(self, source, script, tmp_path):
+        clone = started(source, tmp_path / "clone", setup=str(script))
+        assert "the answer" in blobs(clone)
+
+    def test_without_it_nothing_of_what_it_deleted_is_left(self, source, script, tmp_path):
+        clone = started(source, tmp_path / "clone", setup=str(script), history=False)
+        assert "the answer" not in blobs(clone)
+
+    def test_a_failing_script_names_itself(self, source, tmp_path):
+        script = tmp_path / "broken.sh"
+        script.write_text("#!/bin/sh\necho nope >&2\nexit 3\n")
+        script.chmod(0o755)
+        with pytest.raises(repo.RepoError, match=r"broken.sh exited with 3: nope"):
+            started(source, tmp_path / "clone", setup=str(script))
+
+    def test_a_run_and_its_replay_start_without_what_it_deleted(
+        self, source, script, tmp_path, monkeypatch
+    ):
+        scenario = SCENARIO_TOML + '[variants."+setup"]\nsetup = "setup.sh"\n'
+        seen = launch(tmp_path, monkeypatch, source, scenario)
+        assert sorted("docs/answer.md" in s["files"] for s in seen) == [False, False, True, True]
+
+        experiment = next((tmp_path / "out").iterdir())
+        config = str(tmp_path / "trysquare.toml")
+        assert (
+            cli.main(
+                [
+                    "replay",
+                    str(experiment),
+                    "--scenario",
+                    str(tmp_path / "s.toml"),
+                    "--config",
+                    config,
+                    "--no-progress",
+                ]
+            )
+            == 0
+        )
+        trees = {p.parent.name: p for p in tmp_path.glob("replay/*/repo")}
+        cells = {p.name: p.parent.name for p in experiment.glob("runs/*/*")}
+        assert trees.keys() == cells.keys() and len(trees) == 4
+        for run_id, tree in trees.items():
+            assert (tree / "docs").exists() == (cells[run_id] == "none")
+            assert (tree / "a.js").read_text() == "changed\n", "the patch applied"
 
 
 class TestACommitEtalon:

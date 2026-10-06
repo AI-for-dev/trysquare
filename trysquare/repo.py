@@ -47,6 +47,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -173,15 +174,13 @@ def _missing(etalon: str, where: str, target: Path, e: RepoError) -> RepoError:
     return RepoError(f"{kind} {etalon} is not in {where}", detail=e.detail or str(e))
 
 
-def clone(source: Path | str, etalon: str, target: Path, history: bool = True) -> Path:
+def clone(source: Path | str, etalon: str, target: Path) -> Path:
     """A working tree of `source` at `etalon`, holding nothing the etalon does not reach.
 
     HEAD is left detached on the etalon, tag or commit. A tag etalon also keeps its ref,
     so `etalon` resolves in the clone as it does in the source: everything downstream -
     `commit_of`, `etalon_file`, `etalon_files`, the diff a run is scored on - reads the
     etalon as a revision and cannot tell the two apart.
-
-    Without `history`, see `forget_history`.
     """
     where = _located(source)
     _emptied(target)
@@ -191,28 +190,54 @@ def clone(source: Path | str, etalon: str, target: Path, history: bool = True) -
     except RepoError as e:
         raise _missing(etalon, where, target, e) from e
     git(["checkout", "--quiet", "--detach", "FETCH_HEAD"], cwd=target)
-    if not history:
-        return forget_history(target, etalon)
     if not is_commit(etalon):
         git(["update-ref", f"refs/tags/{etalon}", "FETCH_HEAD"], cwd=target)
     return target
 
 
+def set_up(target: Path, script: Path, timeout: int) -> None:
+    """Runs a scenario's setup script in the clone, and commits what it changed.
+
+    Committed for the reason `give` commits: the diff a run is scored on is taken
+    against HEAD, so the script's changes are not counted as the agent's, and a replay
+    that runs the script again finds the same base for the patch. What the script leaves
+    that the project ignores, such as installed dependencies, stays in the tree and out
+    of the commit.
+
+    With the history kept, the commit below still holds whatever the script deleted.
+    `forget_history` is what takes it out of the agent's reach.
+    """
+    done = interrupt.run([str(script)], cwd=target, capture_output=True, text=True, timeout=timeout)
+    if done.returncode != 0:
+        detail = done.stderr.strip()
+        raise RepoError(f"setup {script} exited with {done.returncode}: {detail}", detail=detail)
+    git(["add", "--all"], cwd=target)
+    if git(["status", "--porcelain"], cwd=target).strip():
+        git([*GIVER, "commit", "--no-verify", "--quiet", "-m", SETUP_MESSAGE], cwd=target)
+
+
 def forget_history(target: Path, etalon: str) -> Path:
-    """Replaces the clone's repository with a new one holding the etalon's tree as its
-    only commit.
+    """Replaces the clone's repository with a new one whose only commit is HEAD's tree.
 
     The agent reads `git log` and `git show` as readily as the code, so a cell measuring
     the agent without the project's history must leave none to read: no ancestor, no
-    object an ancestor reached. The tree is the etalon's, byte for byte, so the diff a
-    run is scored on and the patch a replay applies are unchanged.
+    object an ancestor reached. The tree is HEAD's, byte for byte, so the diff a run is
+    scored on and the patch a replay applies are unchanged.
 
-    `--force` because the working tree holds exactly the tracked files, and a tracked
-    file matching the project's `.gitignore` is still part of the etalon.
+    Exactly the tracked files are added again, `--force` included: a tracked file the
+    project's `.gitignore` matches is still part of the tree, and an ignored one a setup
+    script left behind never was.
     """
+    tracked = git(["ls-files", "-z"], cwd=target)
     shutil.rmtree(target / ".git")
     git(["init", "--quiet"], cwd=target)
-    git(["add", "--all", "--force"], cwd=target)
+    with tempfile.NamedTemporaryFile("w") as paths:
+        paths.write(tracked)
+        paths.flush()
+        git(
+            ["add", "--force", f"--pathspec-from-file={paths.name}", "--pathspec-file-nul"],
+            cwd=target,
+        )
     git([*GIVER, "commit", "--no-verify", "--quiet", "-m", etalon], cwd=target)
     if not is_commit(etalon):
         git(["tag", etalon], cwd=target)
@@ -337,6 +362,8 @@ def _mark_pi(prepared: Prepared) -> None:
 GIVER = ("-c", "user.name=trysquare", "-c", "user.email=trysquare@localhost")
 
 GIVEN_MESSAGE = "harness: files given to the task before the agent ran"
+
+SETUP_MESSAGE = "harness: setup script run before the agent"
 
 
 def give(prepared: Prepared, files: dict[str, Path] | None) -> Prepared:

@@ -58,7 +58,7 @@ from .outputs import (
     prior,
     unmeasured_note,
 )
-from .scenario import ScenarioError, load as load_scenario
+from .scenario import Cell, ScenarioError, load as load_scenario
 
 # Overrides that change what is measured. They enter the directory name, so they
 # cannot overwrite another experiment's results.
@@ -1288,13 +1288,17 @@ def reconstitute(run_dir: Path, work: Path, source: Path, scenario, config, base
 
     Skipped entirely for a scenario that declares no `files` brick - the overwhelming
     majority - so nothing about an existing replay changes.
+
+    The tree itself starts as the run's did, setup script included: see
+    `runner.starting_tree`. A run that did not record its cell starts as `[task]`
+    declares.
     """
-    clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
-    if any(brick.get("kind") == "files" for brick in scenario.bricks.values()):
-        cell = archived_cell(run_dir)
-        if cell:
-            given = runner_mod.brick_paths(scenario, config, scenario.cell(cell), base)["files"]
-            repo_mod.give(repo_mod.Prepared(path=clone, etalon=scenario.task["etalon"]), given)
+    name = archived_cell(run_dir)
+    cell = scenario.cell(name) if name else Cell("")
+    clone = runner_mod.starting_tree(scenario, cell, source, work / "repo", base)
+    if name and any(brick.get("kind") == "files" for brick in scenario.bricks.values()):
+        given = runner_mod.brick_paths(scenario, config, cell, base)["files"]
+        repo_mod.give(repo_mod.Prepared(path=clone, etalon=scenario.task["etalon"]), given)
     patch = (run_dir / DIFF).read_text() if (run_dir / DIFF).is_file() else ""
     repo_mod.apply_diff(clone, patch, what=run_dir.name)
     return clone
