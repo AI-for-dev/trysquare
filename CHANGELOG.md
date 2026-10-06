@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/AI-for-dev/trysquare/compare/v0.5.0...v0.6.0) (2026-10-06)
+
+
+### Features
+
+* check that each model answers with validate --ping ([#102](https://github.com/AI-for-dev/trysquare/issues/102)) ([bc4e0b4](https://github.com/AI-for-dev/trysquare/commit/bc4e0b4b78d6964f86af04365972566c843268e8))
+* run pi inside the sandbox with trysquare pi ([#103](https://github.com/AI-for-dev/trysquare/issues/103)) ([6615eac](https://github.com/AI-for-dev/trysquare/commit/6615eac3f75430ebd346a10e5e2b4fdda8e575ea))
+
 ## [0.5.0](https://github.com/AI-for-dev/trysquare/compare/v0.4.0...v0.5.0) (2026-10-05)
 
 
