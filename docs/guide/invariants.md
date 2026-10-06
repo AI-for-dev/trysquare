@@ -33,8 +33,7 @@ nine cells this way before the rule existed.
 ## 2. Nothing that changes a measurement may be inherited
 
 `provider`, `model`, `thinking`, `etalon` and `repetitions` are mandatory in the
-scenario. A config file cannot supply them, and there are no environment variables
-anywhere in the tool.
+scenario. Neither a config file nor an environment variable can supply them.
 
 :::{admonition} The defect
 :class: danger

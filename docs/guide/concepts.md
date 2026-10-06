@@ -13,7 +13,7 @@ is measured* - provider, model, thinking level, etalon, repetitions - is mandato
 the scenario and can never be supplied by a config file, an environment variable, or
 a default.
 
-:::{admonition} There are no environment variables in this tool
+:::{admonition} No environment variable changes what is measured
 :class: warning
 
 The tool this one replaces had ten. An environment variable is invisible

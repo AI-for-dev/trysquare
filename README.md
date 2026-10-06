@@ -235,8 +235,8 @@ These are not style preferences. Each one is a defect that was paid for.
   records it as exemplary.
 - **Nothing that changes a measurement may be inherited.** Provider, model,
   thinking, etalon and repetitions are mandatory in the scenario and never come
-  from the config file or a default. There are no environment variables anywhere in
-  this tool: the predecessor had ten, one of which silently decided the thinking
+  from the config file, an environment variable or a default. The predecessor read
+  ten environment variables, one of which silently decided the thinking
   level of every measurement ever published.
 - **A validator that could not judge never yields a verdict.** A crash, a timeout,
   unreadable JSON or a missing declared metric makes the run invalid, not false.

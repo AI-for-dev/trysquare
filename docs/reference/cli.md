@@ -3,6 +3,7 @@
 ```bash
 uv run python -m trysquare <command> [options]
 trysquare <command> [options]              # if installed
+trysquare --version
 ```
 
 `--output` roots everything that writes. Ten commands.

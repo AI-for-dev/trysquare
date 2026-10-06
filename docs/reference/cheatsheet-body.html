@@ -13,6 +13,7 @@
       <span><b>uv run trysquare</b> &lt;cmd&gt;</span>
       <span><b>python -m trysquare</b> &lt;cmd&gt;</span>
       <span><b>uv tool install .</b> <span class="ts-hint">&rarr; trysquare on PATH</span></span>
+      <span><b>trysquare --version</b></span>
     </div>
   </header>
 
@@ -22,7 +23,7 @@
       <span class="ts-step">1</span>
       <h2>Set up</h2>
       <span class="ts-blade" aria-hidden="true"></span>
-      <span class="ts-aside">before a single token</span>
+      <span class="ts-aside">before the first run</span>
     </div>
 
     <div class="ts-cards ts-pair">
@@ -100,7 +101,7 @@
       <span class="ts-step">2</span>
       <h2>Measure</h2>
       <span class="ts-blade" aria-hidden="true"></span>
-      <span class="ts-aside">the only command that spends</span>
+      <span class="ts-aside">one command measures, another follows it</span>
     </div>
 
     <div class="ts-cards ts-solo">
@@ -135,7 +136,7 @@
             <dd>restrict to these cells, repeatable; <b>leaves the matrix incomplete</b>, so
               no synthesis is written and <code>--resume</code> finishes it later</dd>
 
-            <dt>--group-by-cell / --no-group-by-cell</dt>
+            <dt>--group-by-cell /<br>--no-group-by-cell</dt>
             <dd>file runs under <code>runs/&lt;cell&gt;/&lt;id&gt;/</code>, or keep
               <code>runs/&lt;id&gt;/</code> flat and opaque. <b>Grouped by default</b>, blind when
               a <code>form</code> validator says a human scores by hand</dd>
@@ -207,6 +208,31 @@
           </p>
         </div>
       </article>
+
+      <article class="ts-cmd">
+        <div class="ts-cmd-head">
+          <span class="ts-name">watch <span class="ts-arg">&lt;matrix dir&gt;</span></span>
+          <span class="ts-chip">free</span>
+        </div>
+        <p>
+          Follows a running matrix in a browser, on <code>127.0.0.1</code>. Reads the
+          directory a launch printed as its <code>output</code>, and writes nothing into
+          it. The runs in flight come from <code>live.json</code>, which
+          <code>run</code> refreshes every second.
+        </p>
+        <dl class="ts-flags">
+          <dt>--port &lt;n&gt;</dt>
+          <dd>default: a free one</dd>
+          <dt>--no-open</dt>
+          <dd>print the address, open nothing</dd>
+        </dl>
+        <div class="ts-note">
+          <b>Counts, never a verdict</b>, until the matrix is complete: runs are
+          interleaved by repetition, so every cell holds the same handful at any moment
+          and an interval over four runs swings at each one that lands. The verdict stays
+          <code>synthesis.md</code>'s, and the page links to it once there is one.
+        </div>
+      </article>
     </div>
   </section>
 
@@ -231,6 +257,10 @@
           scoring defect costs a render, not another hour of wall clock.
         </p>
         <dl class="ts-flags">
+          <dt><span class="ts-req">--output</span>, -o</dt>
+          <dd><b>Required.</b> The directory <code>run</code> wrote under</dd>
+          <dt>--config</dt>
+          <dd>config file</dd>
           <dt>--repetitions N</dt>
           <dd>which matrix to read</dd>
           <dt>--reference CELL</dt>
@@ -239,6 +269,8 @@
           <dt>--html</dt>
           <dd>also export each archived session to a standalone page, in the run's own
             directory. Opt-in: ~0.3 s per session, and needs <code>pi</code></dd>
+          <dt>--no-progress</dt>
+          <dd>never draw the live bar</dd>
         </dl>
         <div class="ts-note">
           <code>synthesis.html</code> is written whenever <code>synthesis.md</code> is, by
@@ -264,10 +296,13 @@
             <code>state.json</code> and the synthesis</dd>
           <dt>--config</dt>
           <dd>config file</dd>
+          <dt>--no-progress</dt>
+          <dd>never draw the live bar</dd>
         </dl>
         <ul class="ts-plain">
           <li><b>Never touched:</b> <code>usage</code>, <code>duration</code>,
-            <code>attempts</code> - facts about the run, not about the scoring.</li>
+            <code>attempts</code>, <code>agent_version</code>, <code>isolation</code>,
+            <code>image</code> - facts about the run, not about the scoring.</li>
           <li><b>A judge is never re-run</b>; the archived verdict is reused, because replay
             exists on the promise that it costs nothing.</li>
           <li>An <code>empty</code> run is <b>left alone</b>, and another scenario's
@@ -303,31 +338,6 @@
 
       <article class="ts-cmd">
         <div class="ts-cmd-head">
-          <span class="ts-name">watch <span class="ts-arg">&lt;matrix dir&gt;</span></span>
-          <span class="ts-chip">free</span>
-        </div>
-        <p>
-          Follows a running matrix in a browser, on <code>127.0.0.1</code>. Reads the
-          directory a launch printed as its <code>output</code>, and writes nothing into
-          it. The runs in flight come from <code>live.json</code>, which
-          <code>run</code> refreshes every second.
-        </p>
-        <dl class="ts-flags">
-          <dt>--port &lt;n&gt;</dt>
-          <dd>default: a free one</dd>
-          <dt>--no-open</dt>
-          <dd>print the address, open nothing</dd>
-        </dl>
-        <div class="ts-note">
-          <b>Counts, never a verdict</b>, until the matrix is complete: runs are
-          interleaved by repetition, so every cell holds the same handful at any moment
-          and an interval over four runs swings at each one that lands. The verdict stays
-          <code>synthesis.md</code>'s, and the page links to it once there is one.
-        </div>
-      </article>
-
-      <article class="ts-cmd">
-        <div class="ts-cmd-head">
           <span class="ts-name">form <span class="ts-arg">&lt;scenario&gt; -o &lt;dir&gt;</span></span>
           <span class="ts-chip">free</span>
         </div>
@@ -337,6 +347,10 @@
           id-to-cell mapping lives in <code>state.json</code>.
         </p>
         <dl class="ts-flags">
+          <dt><span class="ts-req">--output</span>, -o</dt>
+          <dd><b>Required.</b> The directory <code>run</code> wrote under</dd>
+          <dt>--config</dt>
+          <dd>config file</dd>
           <dt>--ingest &lt;form.toml&gt;</dt>
           <dd>merge a filled form back in</dd>
         </dl>
@@ -374,6 +388,8 @@
             <dd>default <code>base</code></dd>
             <dt>--criterion</dt>
             <dd>default <code>overflow</code></dd>
+            <dt>--config</dt>
+            <dd>config file, for its repositories and its workdir</dd>
           </dl>
         </div>
         <div class="ts-col">
@@ -546,8 +562,8 @@ memory = <span class="ts-k">"4g"</span></pre>
       </span></div>
       <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
         <b>Nothing that changes a measurement may be inherited.</b> Provider, model,
-        thinking, etalon and repetitions live in the scenario. There are <b>no environment
-        variables anywhere in this tool</b>.
+        thinking, etalon and repetitions live in the scenario. <b>No environment variable
+        changes what is measured</b>.
       </span></div>
       <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
         <b>A validator that could not judge never yields a verdict.</b> A crash, a timeout,
