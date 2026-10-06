@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.2](https://github.com/AI-for-dev/trysquare/compare/v0.6.1...v0.6.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* resolve the output directory so render --html accepts a relative path ([#111](https://github.com/AI-for-dev/trysquare/issues/111)) ([895fa78](https://github.com/AI-for-dev/trysquare/commit/895fa782e1ec2de11bdba01359b16ed8045b0501))
+* start each launch with an empty session directory ([#110](https://github.com/AI-for-dev/trysquare/issues/110)) ([50e8e26](https://github.com/AI-for-dev/trysquare/commit/50e8e26375c7145d5396f92412987a151ab72056))
+
 ## [0.6.1](https://github.com/AI-for-dev/trysquare/compare/v0.6.0...v0.6.1) (2026-10-06)
 
 
