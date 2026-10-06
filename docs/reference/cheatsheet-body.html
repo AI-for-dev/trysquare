@@ -177,6 +177,11 @@
               prompt path once became the literal string sent to the agent as its task.</li>
             <li><b>A thinking mismatch</b> when the scenario uses subagents.</li>
             <li><b>An agent with no model</b>, from neither its file nor an override.</li>
+            <li><b>A sandbox that cannot start</b>: docker not running, the image not on the
+              machine, or bubblewrap unable to make one here.</li>
+            <li><b>A key the agent could read</b>: written out or behind a
+              <code>!command</code> in <code>models.json</code>, unset, or passed in
+              through <code>env</code>.</li>
           </ul>
 
           <span class="ts-label">Overrides are announced and stamped</span>
@@ -285,7 +290,10 @@
           <li><b>Hard refusal on different agents</b> - each run records the version of
             <code>pi</code> it ran under, and a new version is a different harness.</li>
           <li><b>Hard refusal on different isolations</b> - an agent run without a
-            boundary had the operator's machine under it.</li>
+            boundary had the operator's machine under it. Two images refuse too: an image
+            is the agent's tools.</li>
+          <li><code>cpus</code> and <code>memory</code> slow a run down, so they are
+            printed as a difference.</li>
           <li><b>Cost columns are set aside</b> unless retries are near zero on both sides,
             with the counts shown.</li>
           <li>Rates only, and no verdict: a certified gap needs both cells measured in one
@@ -397,6 +405,8 @@
 
     <div class="ts-panels">
 
+      <div class="ts-stack">
+
       <div class="ts-panel">
         <h3>A scenario, minimally</h3>
 <pre>[scenario]
@@ -412,6 +422,7 @@ prompt = <span class="ts-k">"tickets/vague.md"</span>
 provider = <span class="ts-k">"ilaas"</span>   <span class="ts-c">#*</span>
 model = <span class="ts-k">"gemma-4-31b"</span> <span class="ts-c">#*</span>
 thinking = <span class="ts-k">"off"</span>      <span class="ts-c">#*</span>
+image = <span class="ts-k">"trysquare-agent"</span>  <span class="ts-c"># docker</span>
 
 [protocol]
 repetitions = 10        <span class="ts-c">#*</span>
@@ -439,14 +450,28 @@ reference = { context = <span class="ts-k">"nothing"</span> }</pre>
         </p>
       </div>
 
+      <div class="ts-panel">
+        <h3>A validator, in one line</h3>
+<pre>score.py &lt;context.json&gt;
+  &rarr; {<span class="ts-k">"metrics"</span>: {&hellip;}, <span class="ts-k">"reasons"</span>: {&hellip;}}
+    on stdout, exit 0</pre>
+        <p>
+          A bool aggregates as a rate, a number as a median, anything else is diagnostic.
+          A declared metric the validator omits makes the <strong>run</strong> invalid;
+          extras are stored but carry no verdict.
+        </p>
+      </div>
+
+      </div>
+
       <div class="ts-stack">
 
       <div class="ts-panel">
         <h3>One directory per experiment</h3>
 <pre>out/<span class="ts-b">rule-vs-ticket</span>_etalon-v1_ilaas_gemma-4-31b_<span class="ts-b">n10</span>/
-  state.json      <span class="ts-c">cells, runs, valid / empty / failed, attempts</span>
+  state.json      <span class="ts-c">cells, runs, states, attempts</span>
   measures.json   <span class="ts-c">one line per run</span>
-  synthesis.md    <span class="ts-c">scores, costs, gaps, verdicts - when complete</span>
+  synthesis.md    <span class="ts-c">scores, costs, verdicts, once complete</span>
   synthesis.html  <span class="ts-c">the same, standalone</span>
   runs/<span class="ts-b">&lt;cell&gt;</span>/&lt;id&gt;/ <span class="ts-c">context, configuration, diff, validation</span>
     session/*.jsonl   <span class="ts-c">the agent's own trace, one per attempt</span>
@@ -476,14 +501,27 @@ reference = { context = <span class="ts-k">"nothing"</span> }</pre>
           rendering failure says explicitly that the measures are intact and only
           <code>render</code> needs rerunning.
         </p>
-        <h3 style="margin-top:6px">A validator, in one line</h3>
-<pre>score.py &lt;context.json&gt;
-  &rarr; {<span class="ts-k">"metrics"</span>: {&hellip;}, <span class="ts-k">"reasons"</span>: {&hellip;}}
-    on stdout, exit 0</pre>
+      </div>
+
+      <div class="ts-panel">
+        <h3>The machine, in trysquare.toml</h3>
+<pre>[repos]
+my-repo = <span class="ts-k">"../my-repo"</span>   <span class="ts-c"># or a URL</span>
+
+[isolation]
+backend = <span class="ts-k">"docker"</span>       <span class="ts-c"># or "none", "bwrap"</span>
+models = <span class="ts-k">"models.json"</span>   <span class="ts-c"># $NAME keys only</span>
+secrets = <span class="ts-k">"secrets.env"</span>  <span class="ts-c"># NAME=value</span>
+env = [<span class="ts-k">"GH_TOKEN"</span>]       <span class="ts-c"># passed in by name</span>
+cpus = 2
+memory = <span class="ts-k">"4g"</span></pre>
         <p>
-          A bool aggregates as a rate, a number as a median, anything else is diagnostic.
-          A declared metric the validator omits makes the <strong>run</strong> invalid;
-          extras are stored but carry no verdict.
+          <strong>A provider's key never enters the sandbox.</strong> Each provider of
+          <code>models.json</code> goes through a relay on this machine, which swaps the
+          placeholder the agent holds for the key. <code>bwrap</code> uses this machine's
+          tools instead of an image, and takes <code>bind</code> for a toolchain outside
+          the system directories. Under <code>none</code> the agent sees what you see, and
+          the synthesis says so.
         </p>
       </div>
 
@@ -539,6 +577,11 @@ reference = { context = <span class="ts-k">"nothing"</span> }</pre>
       <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
         <b>Durations compare only within one matrix.</b> Runs are interleaved across cells
         so they see the same provider load; across matrices they are not comparable.
+      </span></div>
+      <div class="ts-rule"><span class="ts-mark">&#9633;</span><span>
+        <b>A run that was cut short is not recorded at all.</b> It stays missing, so the
+        next <code>--resume</code> relaunches it; recorded as measured, it would be out of
+        reach for good. Every run that did finish is kept.
       </span></div>
     </div>
   </section>
