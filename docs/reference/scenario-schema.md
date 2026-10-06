@@ -386,6 +386,11 @@ thinking = "off"
 `use` works in `[variants.*]` and in `[values.<axis>.<value>]`. The presets apply in the
 order `use` lists them, and a key the cell declares itself wins over all of them.
 
+`harness` is the exception: its lists add up. A cell that uses a preset loading a skill
+and another loading a probe gets both bricks, and a `harness` the cell declares itself
+adds to them. A brick named twice is loaded once. The same holds between the axes of a
+grid.
+
 Two presets that set the same key to different values are refused, unless the cell
 sets that key itself:
 

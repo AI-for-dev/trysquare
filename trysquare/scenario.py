@@ -320,7 +320,7 @@ def _expand(axes: dict, values: dict, variants: dict, presets: dict) -> tuple[Ce
             delta: dict = {}
             for axis, value in zip(names, combo):
                 declared = values.get(axis, {}).get(value, {})
-                delta.update(_using(declared, presets, f"[values.{axis}.{value}]"))
+                delta = _layer(delta, _using(declared, presets, f"[values.{axis}.{value}]"))
             cells.append(_cell(" / ".join(combo), delta))
 
     for name, delta in variants.items():
@@ -373,9 +373,9 @@ def _using(delta: dict, presets: dict, owner: str) -> dict:
     """A delta with the presets it names in `use` spelled out.
 
     The presets apply in the order `use` lists them, and the delta's own keys win over
-    all of them. Two presets setting one key differently are refused unless the delta
-    settles it: which of the two the cell got is a question no reader of the scenario
-    could answer.
+    all of them, bricks excepted: see `_layer`. Two presets setting one key differently
+    are refused unless the delta settles it: which of the two the cell got is a question
+    no reader of the scenario could answer.
     """
     _check_keys(delta, DELTA_KEYS, owner)
     delta = dict(delta)
@@ -387,14 +387,30 @@ def _using(delta: dict, presets: dict, owner: str) -> dict:
     for name in names:
         if name not in presets:
             raise ScenarioError(f"{owner}: unknown preset {name!r}{closest(name, presets)}")
-        for key, value in presets[name].items():
-            if key in merged and merged[key] != value and key not in delta:
+        preset = presets[name]
+        for key, value in preset.items():
+            if key in merged and merged[key] != value and key not in (*delta, *ADDITIVE):
                 raise ScenarioError(
                     f"{owner}: presets {origin[key]!r} and {name!r} set {key!r} differently. "
                     f"Set {key!r} in {owner} to choose."
                 )
-            merged[key], origin[key] = value, name
-    return merged | delta
+        origin |= dict.fromkeys(preset, name)
+        merged = _layer(merged, preset)
+    return _layer(merged, delta)
+
+
+# Keys whose lists add up rather than replace one another. A cell taking a skill from
+# one preset or axis and a probe from another loads both, which is what it says.
+ADDITIVE = ("harness",)
+
+
+def _layer(under: dict, over: dict) -> dict:
+    """`over` laid on `under`: its keys win, and the bricks of both are loaded, once."""
+    layered = under | over
+    for key in ADDITIVE:
+        if key in under and key in over:
+            layered[key] = list(dict.fromkeys([*under[key], *over[key]]))
+    return layered
 
 
 def _cell(name: str, delta: dict) -> Cell:

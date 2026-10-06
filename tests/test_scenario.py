@@ -641,3 +641,38 @@ class TestDeltaKeys:
             "description": "why this cell",
         }
         assert parse(MINIMAL | {"variants": {"none": {}, "all": delta}}).cell("all")
+
+
+class TestBricksAddUp:
+    """`harness` lists add up, where every other key is replaced: a cell taking a skill
+    and a probe loads both."""
+
+    PRESETS = {"skill": {"harness": ["skills", "extension"]}, "probe": {"harness": ["probe"]}}
+
+    def harness(self, delta: dict) -> list:
+        s = parse(MINIMAL | {"presets": self.PRESETS, "variants": {"none": {}, "c": delta}})
+        return s.cell("c").delta["harness"]
+
+    def test_from_two_presets(self):
+        assert self.harness({"use": ["skill", "probe"]}) == ["skills", "extension", "probe"]
+
+    def test_from_a_preset_and_the_cell(self):
+        assert self.harness({"use": ["probe"], "harness": ["extension"]}) == ["probe", "extension"]
+
+    def test_a_brick_named_twice_is_loaded_once(self):
+        assert self.harness({"use": ["skill"], "harness": ["extension"]}) == ["skills", "extension"]
+
+    def test_from_two_axes_of_a_grid(self):
+        s = parse(
+            MINIMAL
+            | {
+                "variants": {},
+                "axes": {"skill": ["no", "yes"], "probe": ["no", "yes"]},
+                "values": {
+                    "skill": {"yes": {"harness": ["skills"]}},
+                    "probe": {"yes": {"harness": ["probe"]}},
+                },
+                "verdict": {"criterion": "overflow", "reference": {"skill": "no", "probe": "no"}},
+            }
+        )
+        assert s.cell("yes / yes").delta["harness"] == ["skills", "probe"]
