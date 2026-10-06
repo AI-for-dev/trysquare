@@ -5,16 +5,17 @@ delete them: under a work directory the documentation itself calls disposable. S
 only durable evidence of what an agent did was the diff it left behind, while the output
 tree's own layout claimed to hold `runs/<id>/session/*.jsonl`.
 
-Two things are guarded here. That the archive keeps *this* launch's sessions and not a
-previous one's - the work directory is keyed by a stable run id, so the previous
-measurement's files are still sitting there. And that `render --html` says what it did,
-including when there was nothing to do.
+Three things are guarded here. That the archive keeps *this* launch's sessions and not a
+previous one's. That the agent never sees a previous launch's sessions either - the work
+directory is keyed by a stable run id, so they would sit where it writes its own. And
+that `render --html` says what it did, including when there was nothing to do.
 
 Nothing here spends a token. The one test that runs the agent runs it on a fixture, in
 `--export` mode, which reads a file and returns.
 """
 
 import itertools
+import json
 import re
 import shutil
 from pathlib import Path
@@ -26,6 +27,8 @@ from trysquare.cli import main
 from trysquare.measure import VALID, Run
 from trysquare.scenario import load, parse
 
+from tests.gitrepo import a_repo
+from tests.test_cli import SCENARIO_TOML, TREE_DEPENDENT
 from tests.test_scenario import GRID
 
 FIXTURE = Path(__file__).parent / "fixtures" / "session-minimal.jsonl"
@@ -111,19 +114,6 @@ class TestArchiving:
         copied = output.archive_sessions("abcd1234", session_dir("one.jsonl"))
         assert copied[0].read_bytes() == FIXTURE.read_bytes()
 
-    def test_an_earlier_launch_is_not_imported(self, output, session_dir):
-        """The work directory keeps a run's sessions across launches: the run id is
-        stable, so the path is. Copying whatever is there would mix a previous
-        measurement's traces into an archive whose measures.json does not describe them.
-        """
-        copied = output.archive_sessions(
-            "abcd1234",
-            session_dir("old.jsonl", "new.jsonl"),
-            exclude={"old.jsonl"},
-        )
-        assert [p.name for p in copied] == ["new.jsonl"]
-        assert [p.name for p in output.sessions("abcd1234")] == ["new.jsonl"]
-
     def test_a_relaunch_replaces_the_archive_rather_than_adding_to_it(self, output, session_dir):
         """Relaunching an experiment overwrites it, so the archive must overwrite too.
 
@@ -159,6 +149,54 @@ class TestArchiving:
 
     def test_sessions_of_a_run_that_has_none(self, output):
         assert output.sessions("abcd1234") == []
+
+
+# An agent that records what its session directory holds when it starts, then leaves a
+# session of its own and changes the tree, so the run counts as a measurement.
+SPYING_AGENT = """#!/usr/bin/env python3
+import json, os, sys, uuid
+args = sys.argv[1:]
+if "--version" in args:
+    sys.exit(print("0.0.0"))
+sessions = args[args.index("--session-dir") + 1]
+os.makedirs(sessions, exist_ok=True)
+with open(os.environ["SEEN"], "a") as f:
+    f.write(json.dumps(sorted(os.listdir(sessions))) + "\\n")
+open(os.path.join(sessions, f"{uuid.uuid4()}.jsonl"), "w").write("{}\\n")
+open("a.js", "w").write("changed\\n")
+usage = {"input": 10, "output": 1}
+print(json.dumps({"type": "message_end", "message": {"role": "assistant", "usage": usage}}))
+"""
+
+
+class TestALaunchStartsBlind:
+    """The work directory is keyed by a stable run id, so a relaunch finds the previous
+    launch's session where the agent writes its own. The agent can read it, and one did:
+    it found its predecessors' reasoning on the very task it was measured on.
+    """
+
+    def test_a_relaunch_hides_the_previous_session_from_the_agent(self, tmp_path, monkeypatch):
+        fake = tmp_path / "pi"
+        fake.write_text(SPYING_AGENT)
+        fake.chmod(0o755)
+        monkeypatch.setattr(agent, "PI", str(fake))
+        monkeypatch.setenv("SEEN", str(tmp_path / "seen"))
+
+        validator = tmp_path / "v.py"
+        validator.write_text(TREE_DEPENDENT)
+        validator.chmod(0o755)
+        source = a_repo({"a.js": "one\n"})
+        config = tmp_path / "trysquare.toml"
+        config.write_text(f'[repos]\nmy-repo = "{source}"\n[defaults]\nworkdir = "{tmp_path}"\n')
+        scenario = tmp_path / "s.toml"
+        scenario.write_text(SCENARIO_TOML)
+
+        argv = ["run", str(scenario), "-o", str(tmp_path / "out"), "--config", str(config)]
+        for _ in range(2):
+            main([*argv, "--no-progress", "--overwrite"])
+
+        seen = [json.loads(line) for line in (tmp_path / "seen").read_text().splitlines()]
+        assert seen == [[]] * 4, "two launches of two runs, each starting from nothing"
 
 
 @needs_the_agent

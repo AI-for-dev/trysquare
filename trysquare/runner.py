@@ -13,6 +13,7 @@ table, and the runs already paid for are the ones being protected.
 from __future__ import annotations
 
 import hashlib
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -779,12 +780,11 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         )
         repo_mod.check_agent_models(prepared.agents)
 
+        # Emptied, as the clone is. The run id is stable, so a relaunch would find the
+        # previous launch's sessions here, where the agent can read how earlier attempts
+        # handled the task it is measured on.
         session_dir = work / "session"
-        # What is already there belongs to an earlier launch: the work directory is
-        # keyed by the run id, which is stable, so a resume finds the previous
-        # measurement's sessions still in place. Noted now so the archive can keep this
-        # launch's and only this launch's.
-        earlier = {p.name for p in session_dir.glob("*.jsonl")} if session_dir.is_dir() else set()
+        shutil.rmtree(session_dir, ignore_errors=True)
 
         args = agent_mod.argv(
             prompt=prompt,
@@ -826,7 +826,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         # produced nothing leaves the session as its only evidence, and it is exactly the
         # run somebody will want to read. One file per attempt, so the count matches
         # `run.attempts`.
-        plan.output.archive_sessions(run_id, session_dir, exclude=earlier)
+        plan.output.archive_sessions(run_id, session_dir)
 
         if not outcome.produced_something:
             run.state = EMPTY

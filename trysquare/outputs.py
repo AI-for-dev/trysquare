@@ -834,18 +834,10 @@ class Output:
 
     # --- sessions -------------------------------------------------------
 
-    def archive_sessions(self, run_id_: str, session_dir: Path, exclude=frozenset()) -> list[Path]:
+    def archive_sessions(self, run_id_: str, session_dir: Path) -> list[Path]:
         """Makes a run's session archive equal to what this launch produced, as jsonl.
 
-        Two filters, and both exist to keep one launch's traces from being read as
-        another's.
-
-        `exclude` names session files the caller does not want, by file name. The work
-        directory keeps a run's session directory from one launch to the next - the run id
-        is stable, so the path is - so copying whatever is there would import a previous
-        measurement's traces.
-
-        And the archive is **replaced**, not added to. Relaunching an experiment overwrites
+        The archive is **replaced**, not added to. Relaunching an experiment overwrites
         it, so a session left by the previous launch would be attributed to this one: the
         file count would stop matching `attempts`, and a page rendered from the old trace
         would sit there looking current.
@@ -858,7 +850,7 @@ class Output:
             shutil.rmtree(target)
         if not session_dir.is_dir():
             return []
-        wanted = [p for p in sorted(session_dir.glob("*.jsonl")) if p.name not in exclude]
+        wanted = sorted(session_dir.glob("*.jsonl"))
         if not wanted:
             return []
         target = self.run_dir(run_id_) / SESSION
