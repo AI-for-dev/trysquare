@@ -19,8 +19,13 @@ if "--version" in args:
     sys.exit(print("0.0.0"))
 sessions = args[args.index("--session-dir") + 1]
 os.makedirs(sessions, exist_ok=True)
-commits = subprocess.run(["git", "rev-list", "--all", "--count"], capture_output=True, text=True)
-seen = {"sessions": sorted(os.listdir(sessions)), "commits": int(commits.stdout)}
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True).stdout
+seen = {
+    "sessions": sorted(os.listdir(sessions)),
+    "commits": int(git("rev-list", "--all", "--count")),
+    "files": git("ls-files").split(),
+}
 with open(os.environ["SEEN"], "a") as f:
     f.write(json.dumps(seen) + "\\n")
 open(os.path.join(sessions, f"{uuid.uuid4()}.jsonl"), "w").write("{}\\n")

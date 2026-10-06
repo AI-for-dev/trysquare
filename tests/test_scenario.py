@@ -496,29 +496,38 @@ class TestDeclaredArtefacts:
             parse(scoring_tests(test_command="npm test", artefacts=["  "]))
 
 
-class TestHistory:
-    """Whether a cell's clone keeps the project's git history."""
+class TestTheStartingTree:
+    """`history` and `setup`: how a cell's clone departs from the etalon's."""
 
-    def cells(self, task: dict | None = None, **variants) -> dict:
+    def cells(self, key: str, task: dict | None = None, **variants) -> dict:
         s = parse(MINIMAL | {"task": MINIMAL["task"] | (task or {}), "variants": variants})
-        return {c.name: s.history(c) for c in s.cells}
+        return {c.name: getattr(s, key)(c) for c in s.cells}
 
-    def test_kept_unless_declared(self):
-        assert self.cells(none={}) == {"none": True}
+    def test_the_history_is_kept_unless_declared(self):
+        assert self.cells("history", none={}) == {"none": True}
 
     def test_a_cell_may_go_without_it(self):
-        assert self.cells(none={}, bare={"history": False}) == {"none": True, "bare": False}
+        cells = self.cells("history", none={}, bare={"history": False})
+        assert cells == {"none": True, "bare": False}
 
     def test_the_task_sets_it_for_every_cell_and_a_cell_may_restore_it(self):
-        cells = self.cells({"history": False}, none={}, full={"history": True})
+        cells = self.cells("history", {"history": False}, none={}, full={"history": True})
         assert cells == {"none": False, "full": True}
 
-    def test_the_default_leaves_the_fingerprint_alone(self):
-        """A matrix measured before the key existed must still resume."""
-        s = parse(MINIMAL)
-        assert "history" not in s.declared(s.cells[0])
+    def test_a_cell_may_run_a_setup_script_or_replace_the_task_s(self):
+        cells = self.cells("setup", {"setup": "a.sh"}, none={}, other={"setup": "b.sh"})
+        assert cells == {"none": "a.sh", "other": "b.sh"}
 
-    def test_a_string_is_refused(self):
+    def test_the_default_leaves_the_fingerprint_alone(self):
+        """A matrix measured before the keys existed must still resume."""
+        s = parse(MINIMAL)
+        assert s.declared(s.cells[0]).keys().isdisjoint({"history", "setup"})
+
+    @pytest.mark.parametrize(
+        "key, value, shape",
+        [("history", "false", "true or false"), ("setup", "", "a path to a script")],
+    )
+    def test_a_value_of_the_wrong_kind_is_refused(self, key, value, shape):
         """`"false"` is truthy: the cell would keep the history it is named for lacking."""
-        with pytest.raises(ScenarioError, match="cell 'bare': history must be true or false"):
-            self.cells(none={}, bare={"history": "false"})
+        with pytest.raises(ScenarioError, match=f"cell 'bare': {key} must be {shape}"):
+            self.cells(key, none={}, bare={key: value})

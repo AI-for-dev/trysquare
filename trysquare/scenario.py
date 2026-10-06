@@ -195,14 +195,27 @@ class Scenario:
             "system": cell.delta.get("system"),
             "thinking": cell.delta.get("thinking") or self.agent["thinking"],
             "harness": {n: self.bricks.get(n) for n in cell.delta.get("harness", ())},
-            # Only when off, so the cells of a matrix measured before the key existed
-            # keep their fingerprint and can still be resumed.
-            **({} if self.history(cell) else {"history": False}),
+            **self._start(cell),
         }
+
+    def _start(self, cell: Cell) -> dict:
+        """How the tree a cell starts from departs from a plain clone of the etalon.
+
+        Empty when it does not, so the cells of a matrix measured before these keys
+        existed keep their fingerprint and can still be resumed.
+        """
+        start = {} if self.history(cell) else {"history": False}
+        if setup := self.setup(cell):
+            start["setup"] = setup
+        return start
 
     def history(self, cell: Cell) -> bool:
         """Whether the cell's clone keeps the project's git history."""
         return cell.delta.get("history", self.task.get("history", True))
+
+    def setup(self, cell: Cell) -> str | None:
+        """The script run in the cell's clone before the agent starts, if any."""
+        return cell.delta.get("setup", self.task.get("setup"))
 
     @property
     def reference(self) -> str:
@@ -252,7 +265,7 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
     verdict = dict(raw["verdict"])
     _check_verdict(verdict, validators, cells, axes)
     _check_test_command(raw["task"], validators, where)
-    _check_history(raw["task"], cells, where)
+    _check_start(raw["task"], cells, where)
     _check_bricks(raw.get("harness", {}), where)
 
     scenario = raw["scenario"]
@@ -348,14 +361,17 @@ def _check_axes(axes: dict, values: dict) -> None:
                 )
 
 
-def _check_history(task: dict, cells: tuple[Cell, ...], where: str) -> None:
-    """`history` is a switch. A string would be truthy whatever it says, so `"false"`
-    would measure the project with its history under a cell named for the opposite."""
+# What a key deciding a cell's starting tree must be, and how to say so. A wrong type
+# would not fail: `history = "false"` is truthy, and the cell would keep the history it
+# is named for lacking.
+START_KEYS = {"history": (bool, "true or false"), "setup": (str, "a path to a script")}
+
+
+def _check_start(task: dict, cells: tuple[Cell, ...], where: str) -> None:
     for owner, table in [("[task]", task), *((f"cell {c.name!r}", c.delta) for c in cells)]:
-        if not isinstance(table.get("history", True), bool):
-            raise ScenarioError(
-                f"{where}{owner}: history must be true or false - got {table['history']!r}"
-            )
+        for key, (kind, shape) in START_KEYS.items():
+            if key in table and not (isinstance(table[key], kind) and table[key] != ""):
+                raise ScenarioError(f"{where}{owner}: {key} must be {shape} - got {table[key]!r}")
 
 
 def _check_test_command(task: dict, validators: tuple[Validator, ...], where: str) -> None:

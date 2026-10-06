@@ -68,6 +68,9 @@ result publishable rather than quietly reframed.
 * - `history`
   - no
   - `false` gives the clone the etalon as its only commit. Default `true`.
+* - `setup`
+  - no
+  - A script run in the clone before the agent starts, its changes committed.
 ```
 
 `repo` being logical is what makes a scenario portable: it carries no author's
@@ -180,12 +183,44 @@ measure it without, turn it off for one cell:
 history = false
 ```
 
-The clone then holds a new repository whose only commit is the etalon's tree, with the
-etalon as its message and its tag. No earlier commit or file content is left in it. The
-tree is identical, so the diff a run is scored on and the patch `replay` applies do not
-change. `configuration.json` records `history` for each run.
+The clone then holds a new repository with a single commit, named after the etalon and
+tagged with it. No earlier commit or file content is left in it. The tree is unchanged,
+so the diff a run is scored on and the patch `replay` applies stay the same.
+`configuration.json` records `history` for each run.
 
 Set in `[task]`, it applies to every cell, and a cell may set it back to `true`.
+
+### `setup`
+
+A script to run before the agent starts, for instance to delete what it should not
+read:
+
+```toml
+[variants."no docs"]
+setup = "remove-docs.sh"
+history = false
+```
+
+```sh
+#!/bin/sh
+rm -r docs
+```
+
+The path is relative to the scenario, and the script must be executable. It runs with
+the clone as its working directory. A script that exits non-zero ends the run before
+the agent starts, with the script's error as the run's detail.
+
+Its changes are committed before the agent starts, so they do not count as the agent's
+work, and `replay` runs the script again before applying the patch. A file the project
+ignores, such as an installed dependency, stays in the tree but out of the commit.
+
+**To hide files, also set `history = false`.** With the history kept, the etalon's
+commit still holds what the script deleted, and `git show` reads it back. The history
+is removed after the script runs, so the single commit holds the tree as the script
+left it.
+
+Set in `[task]`, it applies to every cell, and a cell may name another script.
+`configuration.json` records `setup` for each run.
 
 ## `[agent]`
 
@@ -341,6 +376,8 @@ A cell name declared twice raises.
   - A list of brick names from `[harness.*]` to load.
 * - `history`
   - `false` hides the project's git history from this cell. See [`history`](#history).
+* - `setup`
+  - A script run in the clone before the agent starts. See [`setup`](#setup).
 ```
 
 ## `[harness.<name>]`
