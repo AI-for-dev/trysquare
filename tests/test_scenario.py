@@ -494,3 +494,31 @@ class TestDeclaredArtefacts:
         """It matches nothing an author meant, and reads as a line half deleted."""
         with pytest.raises(ScenarioError, match="path pattern"):
             parse(scoring_tests(test_command="npm test", artefacts=["  "]))
+
+
+class TestHistory:
+    """Whether a cell's clone keeps the project's git history."""
+
+    def cells(self, task: dict | None = None, **variants) -> dict:
+        s = parse(MINIMAL | {"task": MINIMAL["task"] | (task or {}), "variants": variants})
+        return {c.name: s.history(c) for c in s.cells}
+
+    def test_kept_unless_declared(self):
+        assert self.cells(none={}) == {"none": True}
+
+    def test_a_cell_may_go_without_it(self):
+        assert self.cells(none={}, bare={"history": False}) == {"none": True, "bare": False}
+
+    def test_the_task_sets_it_for_every_cell_and_a_cell_may_restore_it(self):
+        cells = self.cells({"history": False}, none={}, full={"history": True})
+        assert cells == {"none": False, "full": True}
+
+    def test_the_default_leaves_the_fingerprint_alone(self):
+        """A matrix measured before the key existed must still resume."""
+        s = parse(MINIMAL)
+        assert "history" not in s.declared(s.cells[0])
+
+    def test_a_string_is_refused(self):
+        """`"false"` is truthy: the cell would keep the history it is named for lacking."""
+        with pytest.raises(ScenarioError, match="cell 'bare': history must be true or false"):
+            self.cells(none={}, bare={"history": "false"})

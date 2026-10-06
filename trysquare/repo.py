@@ -173,13 +173,15 @@ def _missing(etalon: str, where: str, target: Path, e: RepoError) -> RepoError:
     return RepoError(f"{kind} {etalon} is not in {where}", detail=e.detail or str(e))
 
 
-def clone(source: Path | str, etalon: str, target: Path) -> Path:
+def clone(source: Path | str, etalon: str, target: Path, history: bool = True) -> Path:
     """A working tree of `source` at `etalon`, holding nothing the etalon does not reach.
 
     HEAD is left detached on the etalon, tag or commit. A tag etalon also keeps its ref,
     so `etalon` resolves in the clone as it does in the source: everything downstream -
     `commit_of`, `etalon_file`, `etalon_files`, the diff a run is scored on - reads the
     etalon as a revision and cannot tell the two apart.
+
+    Without `history`, see `forget_history`.
     """
     where = _located(source)
     _emptied(target)
@@ -189,8 +191,31 @@ def clone(source: Path | str, etalon: str, target: Path) -> Path:
     except RepoError as e:
         raise _missing(etalon, where, target, e) from e
     git(["checkout", "--quiet", "--detach", "FETCH_HEAD"], cwd=target)
+    if not history:
+        return forget_history(target, etalon)
     if not is_commit(etalon):
         git(["update-ref", f"refs/tags/{etalon}", "FETCH_HEAD"], cwd=target)
+    return target
+
+
+def forget_history(target: Path, etalon: str) -> Path:
+    """Replaces the clone's repository with a new one holding the etalon's tree as its
+    only commit.
+
+    The agent reads `git log` and `git show` as readily as the code, so a cell measuring
+    the agent without the project's history must leave none to read: no ancestor, no
+    object an ancestor reached. The tree is the etalon's, byte for byte, so the diff a
+    run is scored on and the patch a replay applies are unchanged.
+
+    `--force` because the working tree holds exactly the tracked files, and a tracked
+    file matching the project's `.gitignore` is still part of the etalon.
+    """
+    shutil.rmtree(target / ".git")
+    git(["init", "--quiet"], cwd=target)
+    git(["add", "--all", "--force"], cwd=target)
+    git([*GIVER, "commit", "--no-verify", "--quiet", "-m", etalon], cwd=target)
+    if not is_commit(etalon):
+        git(["tag", etalon], cwd=target)
     return target
 
 
