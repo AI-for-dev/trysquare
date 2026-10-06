@@ -65,6 +65,9 @@ result publishable rather than quietly reframed.
 * - `artefacts`
   - no
   - Path patterns for what running the task leaves behind and is not the agent's work.
+* - `history`
+  - no
+  - `false` gives the clone the etalon as its only commit. Default `true`.
 ```
 
 `repo` being logical is what makes a scenario portable: it carries no author's
@@ -163,6 +166,26 @@ work = run.touched - run.artefacts
 ```
 
 See {doc}`../guide/validators`.
+
+### `history`
+
+Whether the agent may read the project's git history. An agent uses `git log` and
+`git show` as readily as the code, so the history is part of what it is given. To
+measure it without, turn it off for one cell:
+
+```toml
+[variants.none]
+
+[variants."no history"]
+history = false
+```
+
+The clone then holds a new repository whose only commit is the etalon's tree, with the
+etalon as its message and its tag. No earlier commit or file content is left in it. The
+tree is identical, so the diff a run is scored on and the patch `replay` applies do not
+change. `configuration.json` records `history` for each run.
+
+Set in `[task]`, it applies to every cell, and a cell may set it back to `true`.
 
 ## `[agent]`
 
@@ -316,6 +339,8 @@ A cell name declared twice raises.
   - Overrides the reasoning level for this cell.
 * - `harness`
   - A list of brick names from `[harness.*]` to load.
+* - `history`
+  - `false` hides the project's git history from this cell. See [`history`](#history).
 ```
 
 ## `[harness.<name>]`

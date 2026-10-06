@@ -195,7 +195,14 @@ class Scenario:
             "system": cell.delta.get("system"),
             "thinking": cell.delta.get("thinking") or self.agent["thinking"],
             "harness": {n: self.bricks.get(n) for n in cell.delta.get("harness", ())},
+            # Only when off, so the cells of a matrix measured before the key existed
+            # keep their fingerprint and can still be resumed.
+            **({} if self.history(cell) else {"history": False}),
         }
+
+    def history(self, cell: Cell) -> bool:
+        """Whether the cell's clone keeps the project's git history."""
+        return cell.delta.get("history", self.task.get("history", True))
 
     @property
     def reference(self) -> str:
@@ -245,6 +252,7 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
     verdict = dict(raw["verdict"])
     _check_verdict(verdict, validators, cells, axes)
     _check_test_command(raw["task"], validators, where)
+    _check_history(raw["task"], cells, where)
     _check_bricks(raw.get("harness", {}), where)
 
     scenario = raw["scenario"]
@@ -338,6 +346,16 @@ def _check_axes(axes: dict, values: dict) -> None:
                     f"first value of an axis ({declared[0]!r}) is the baseline. "
                     f"Deltas declared for this axis: {known or 'none'}"
                 )
+
+
+def _check_history(task: dict, cells: tuple[Cell, ...], where: str) -> None:
+    """`history` is a switch. A string would be truthy whatever it says, so `"false"`
+    would measure the project with its history under a cell named for the opposite."""
+    for owner, table in [("[task]", task), *((f"cell {c.name!r}", c.delta) for c in cells)]:
+        if not isinstance(table.get("history", True), bool):
+            raise ScenarioError(
+                f"{where}{owner}: history must be true or false - got {table['history']!r}"
+            )
 
 
 def _check_test_command(task: dict, validators: tuple[Validator, ...], where: str) -> None:

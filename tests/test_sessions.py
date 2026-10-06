@@ -15,7 +15,6 @@ Nothing here spends a token. The one test that runs the agent runs it on a fixtu
 """
 
 import itertools
-import json
 import re
 import shutil
 from pathlib import Path
@@ -28,7 +27,7 @@ from trysquare.measure import VALID, Run
 from trysquare.scenario import load, parse
 
 from tests.gitrepo import a_repo
-from tests.test_cli import SCENARIO_TOML, TREE_DEPENDENT
+from tests.spy import launch
 from tests.test_scenario import GRID
 
 FIXTURE = Path(__file__).parent / "fixtures" / "session-minimal.jsonl"
@@ -153,22 +152,6 @@ class TestArchiving:
 
 # An agent that records what its session directory holds when it starts, then leaves a
 # session of its own and changes the tree, so the run counts as a measurement.
-SPYING_AGENT = """#!/usr/bin/env python3
-import json, os, sys, uuid
-args = sys.argv[1:]
-if "--version" in args:
-    sys.exit(print("0.0.0"))
-sessions = args[args.index("--session-dir") + 1]
-os.makedirs(sessions, exist_ok=True)
-with open(os.environ["SEEN"], "a") as f:
-    f.write(json.dumps(sorted(os.listdir(sessions))) + "\\n")
-open(os.path.join(sessions, f"{uuid.uuid4()}.jsonl"), "w").write("{}\\n")
-open("a.js", "w").write("changed\\n")
-usage = {"input": 10, "output": 1}
-print(json.dumps({"type": "message_end", "message": {"role": "assistant", "usage": usage}}))
-"""
-
-
 class TestALaunchStartsBlind:
     """The work directory is keyed by a stable run id, so a relaunch finds the previous
     launch's session where the agent writes its own. The agent can read it, and one did:
@@ -176,27 +159,10 @@ class TestALaunchStartsBlind:
     """
 
     def test_a_relaunch_hides_the_previous_session_from_the_agent(self, tmp_path, monkeypatch):
-        fake = tmp_path / "pi"
-        fake.write_text(SPYING_AGENT)
-        fake.chmod(0o755)
-        monkeypatch.setattr(agent, "PI", str(fake))
-        monkeypatch.setenv("SEEN", str(tmp_path / "seen"))
-
-        validator = tmp_path / "v.py"
-        validator.write_text(TREE_DEPENDENT)
-        validator.chmod(0o755)
         source = a_repo({"a.js": "one\n"})
-        config = tmp_path / "trysquare.toml"
-        config.write_text(f'[repos]\nmy-repo = "{source}"\n[defaults]\nworkdir = "{tmp_path}"\n')
-        scenario = tmp_path / "s.toml"
-        scenario.write_text(SCENARIO_TOML)
-
-        argv = ["run", str(scenario), "-o", str(tmp_path / "out"), "--config", str(config)]
-        for _ in range(2):
-            main([*argv, "--no-progress", "--overwrite"])
-
-        seen = [json.loads(line) for line in (tmp_path / "seen").read_text().splitlines()]
-        assert seen == [[]] * 4, "two launches of two runs, each starting from nothing"
+        launch(tmp_path, monkeypatch, source)
+        seen = launch(tmp_path, monkeypatch, source)
+        assert [s["sessions"] for s in seen] == [[]] * 4, "each run starts from nothing"
 
 
 @needs_the_agent

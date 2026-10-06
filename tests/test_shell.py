@@ -22,6 +22,8 @@ from trysquare.measure import EMPTY, VALID, VALIDATOR_FAILED, Run
 from trysquare.scenario import Validator, parse
 from tests import gitrepo
 from tests.gitrepo import a_repo
+from tests.spy import launch
+from tests.test_cli import SCENARIO_TOML
 from tests.test_scenario import GRID, MINIMAL
 
 
@@ -144,6 +146,13 @@ class TestCloneArgv:
         assert "https://h/x.git" in repo.clone_argv("https://h/x.git", "t", Path("/x"))
 
 
+def blobs(clone: Path) -> list[str]:
+    """Every file content the clone's object store holds, referenced or not."""
+    listed = gitrepo.git(clone, "cat-file", "--batch-all-objects", "--batch-check")
+    ids = [line.split()[0] for line in listed.splitlines() if line.split()[1] == "blob"]
+    return [gitrepo.git(clone, "cat-file", "-p", i) for i in ids]
+
+
 class TestARunCloneHoldsNoFuture:
     """The commits after the etalon hold the fix the agent is asked to write.
 
@@ -159,18 +168,12 @@ class TestARunCloneHoldsNoFuture:
         gitrepo.git(source, "commit", "-qam", "fix")
         return source
 
-    def blobs(self, clone: Path) -> list[str]:
-        """Every file content the clone's object store holds, referenced or not."""
-        listed = gitrepo.git(clone, "cat-file", "--batch-all-objects", "--batch-check")
-        ids = [line.split()[0] for line in listed.splitlines() if line.split()[1] == "blob"]
-        return [gitrepo.git(clone, "cat-file", "-p", i) for i in ids]
-
     @pytest.mark.parametrize("by", ["tag", "commit"])
     def test_nothing_after_the_etalon_is_in_the_clone(self, source, tmp_path, by):
         etalon = "etalon-v1" if by == "tag" else repo.commit_of(source, "etalon-v1")
         clone = repo.clone(source, etalon, tmp_path / "clone")
         assert (clone / "a.txt").read_text() == "bug"
-        assert self.blobs(clone) == ["bug"]
+        assert blobs(clone) == ["bug"]
         assert gitrepo.git(clone, "log", "--all", "--format=%s").split() == ["etalon"]
 
     def test_the_tag_still_names_the_etalon_in_the_clone(self, source, tmp_path):
@@ -184,6 +187,53 @@ class TestARunCloneHoldsNoFuture:
             "--no-tags",
             "/s",
             "etalon-v1",
+        ]
+
+
+class TestACloneWithoutHistory:
+    """`history = false`: the agent finds the etalon's tree and nothing that led to it."""
+
+    @pytest.fixture
+    def source(self):
+        source = a_repo({"a.txt": "first draft", ".gitignore": "*.log\n"}, tag="start")
+        gitrepo.write(source, {"a.txt": "etalon", "kept.log": "tracked anyway"})
+        gitrepo.git(source, "add", "--force", "a.txt", "kept.log")
+        gitrepo.git(source, "commit", "-qm", "the commit message that explains it all")
+        gitrepo.git(source, "tag", "etalon-v1")
+        return source
+
+    @pytest.mark.parametrize("by", ["tag", "commit"])
+    def test_the_etalon_is_the_only_commit(self, source, tmp_path, by):
+        etalon = "etalon-v1" if by == "tag" else repo.commit_of(source, "etalon-v1")
+        clone = repo.clone(source, etalon, tmp_path / "clone", history=False)
+        assert gitrepo.git(clone, "rev-list", "--all", "--count").strip() == "1"
+        assert "first draft" not in blobs(clone)
+        assert "explains it all" not in gitrepo.git(clone, "log", "--all")
+
+    def test_the_tree_is_the_etalon_s_byte_for_byte(self, source, tmp_path):
+        """Same tree, so the diff a run is scored on and the patch a replay applies are
+        unchanged. The tracked file `.gitignore` matches is part of it."""
+        clone = repo.clone(source, "etalon-v1", tmp_path / "clone", history=False)
+        tree = gitrepo.git(source, "rev-parse", "etalon-v1^{tree}")
+        assert gitrepo.git(clone, "rev-parse", "HEAD^{tree}") == tree
+
+    def test_the_tag_names_the_new_commit(self, source, tmp_path):
+        clone = repo.clone(source, "etalon-v1", tmp_path / "clone", history=False)
+        assert repo.commit_of(clone, "etalon-v1") == repo.commit_of(clone, "HEAD")
+
+    def test_a_run_of_the_cell_sees_one_commit_and_says_so(self, source, tmp_path, monkeypatch):
+        seen = launch(
+            tmp_path, monkeypatch, source, SCENARIO_TOML + "[variants.bare]\nhistory = false\n"
+        )
+        assert sorted(s["commits"] for s in seen) == [1, 1, 2, 2]
+        recorded = [
+            json.loads(p.read_text()) for p in tmp_path.glob("out/*/runs/*/*/configuration.json")
+        ]
+        assert sorted((c["cell"], c["history"]) for c in recorded) == [
+            ("bare", False),
+            ("bare", False),
+            ("none", True),
+            ("none", True),
         ]
 
 

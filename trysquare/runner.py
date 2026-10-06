@@ -767,7 +767,9 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         source = prepare_source(plan.config, scenario.task["repo"], scenario.task["etalon"])
 
         work = plan.config.workdir() / plan.output.directory.name / run_id
-        clone = repo_mod.clone(source, scenario.task["etalon"], work / "repo")
+        clone = repo_mod.clone(
+            source, scenario.task["etalon"], work / "repo", history=scenario.history(cell)
+        )
         prepared = repo_mod.Prepared(path=clone, etalon=scenario.task["etalon"])
         repo_mod.inject(
             prepared,
@@ -1035,6 +1037,7 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
             "model": plan.scenario.agent["model"],
             "model_id": recorded_model(plan.output.sessions(run_id)),
             "thinking": thinking,
+            "history": plan.scenario.history(cell),
             "injected": prepared.injected,
             # What the task was handed, as opposed to what the harness hid from git.
             # A patch touching one of these paths is the agent editing material it was
