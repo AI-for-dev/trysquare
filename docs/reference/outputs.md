@@ -379,10 +379,10 @@ the network again.
 Sessions are **written** there and **copied** into the archive, which is why
 `parity --smoke` still takes a `--workdir`: it reads them where they were written.
 
-A run's session directory survives from one launch to the next, since the run id is
-stable and so the path is. So an archive takes only what the launch it belongs to
-produced; copying whatever happened to be there would mix a previous measurement's traces
-into an archive whose `measures.json` does not describe them.
+Each launch empties a run's session directory before the agent starts, as it does the
+clone. The run id is stable, so the path is the same from one launch to the next, and the
+agent can read this directory. Left in place, a previous launch's sessions would show the
+agent how earlier attempts handled the task it is being measured on.
 
 (naming-gap)=
 ## A known gap in the naming scheme
