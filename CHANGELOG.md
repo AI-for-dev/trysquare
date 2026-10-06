@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/AI-for-dev/trysquare/compare/v0.6.2...v0.7.0) (2026-10-06)
+
+
+### Features
+
+* measure a cell without the project's git history ([#113](https://github.com/AI-for-dev/trysquare/issues/113)) ([4df7108](https://github.com/AI-for-dev/trysquare/commit/4df7108be34168659e94441b06f13ae06292f784))
+* run a setup script in the clone before the agent starts ([#114](https://github.com/AI-for-dev/trysquare/issues/114)) ([993e518](https://github.com/AI-for-dev/trysquare/commit/993e518755fa1f9330728668f1b1e691ab591cc7))
+
 ## [0.6.2](https://github.com/AI-for-dev/trysquare/compare/v0.6.1...v0.6.2) (2026-10-06)
 
 
