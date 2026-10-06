@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from trysquare.outputs import cell_fingerprint
 from trysquare.scenario import ScenarioError, parse, split_command
 
 MINIMAL = {
@@ -531,3 +532,76 @@ class TestTheStartingTree:
         """`"false"` is truthy: the cell would keep the history it is named for lacking."""
         with pytest.raises(ScenarioError, match=f"cell 'bare': {key} must be {shape}"):
             self.cells(key, none={}, bare={key: value})
+
+
+class TestPresets:
+    """`[presets.<name>]`: delta lines declared once, and `use`d by name in any cell."""
+
+    PRESETS = {
+        "blind": {"history": False, "setup": "remove-docs.sh"},
+        "careful": {"context": "AGENTS.md", "thinking": "high"},
+        "lazy": {"thinking": "off"},
+    }
+
+    def deltas(self, presets: dict | None = None, **variants) -> dict:
+        s = parse(MINIMAL | {"presets": presets or self.PRESETS, "variants": variants})
+        return {c.name: c.delta for c in s.cells}
+
+    def test_a_cell_gets_the_lines_of_the_presets_it_uses(self):
+        deltas = self.deltas(none={}, both={"use": ["blind", "careful"]})
+        assert deltas["both"] == self.PRESETS["blind"] | self.PRESETS["careful"]
+
+    def test_a_cell_s_own_line_wins(self):
+        assert self.deltas(none={}, c={"use": ["careful"], "thinking": "off"})["c"] == {
+            "context": "AGENTS.md",
+            "thinking": "off",
+        }
+
+    def test_a_cell_using_a_preset_is_the_cell_declaring_its_lines(self):
+        """Same declaration, same fingerprint: a resume cannot tell them apart."""
+        by_name = parse(
+            MINIMAL | {"presets": self.PRESETS, "variants": {"none": {}, "c": {"use": ["blind"]}}}
+        )
+        inline = parse(MINIMAL | {"variants": {"none": {}, "c": self.PRESETS["blind"]}})
+        assert cell_fingerprint(by_name, by_name.cell("c")) == cell_fingerprint(
+            inline, inline.cell("c")
+        )
+
+    def test_a_grid_value_may_use_one(self):
+        s = parse(
+            MINIMAL
+            | {
+                "presets": self.PRESETS,
+                "variants": {},
+                "axes": {"mode": ["plain", "blind"]},
+                "values": {"mode": {"blind": {"use": ["blind"]}}},
+                "verdict": {"criterion": "overflow", "reference": {"mode": "plain"}},
+            }
+        )
+        assert s.cell("blind").delta == self.PRESETS["blind"]
+
+    def test_two_presets_disagreeing_are_refused(self):
+        with pytest.raises(ScenarioError, match="presets 'careful' and 'lazy' set 'thinking'"):
+            self.deltas(none={}, c={"use": ["careful", "lazy"]})
+
+    def test_the_cell_may_settle_the_disagreement(self):
+        assert (
+            self.deltas(none={}, c={"use": ["careful", "lazy"], "thinking": "high"})["c"][
+                "thinking"
+            ]
+            == "high"
+        )
+
+    def test_an_unknown_preset_is_named_with_the_likely_one(self):
+        with pytest.raises(ScenarioError, match=r"unknown preset 'blnd' \(did you mean 'blind'"):
+            self.deltas(none={}, c={"use": ["blnd"]})
+
+    def test_use_must_be_a_list(self):
+        """A bare string would iterate as one-letter preset names."""
+        with pytest.raises(ScenarioError, match="use must be a list"):
+            self.deltas(none={}, c={"use": "blind"})
+
+    @pytest.mark.parametrize("key", ["use", "description"])
+    def test_a_preset_neither_uses_another_nor_describes_a_cell(self, key):
+        with pytest.raises(ScenarioError, match=f"a preset cannot declare '{key}'"):
+            self.deltas({"p": {key: ["x"]}}, none={})

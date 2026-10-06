@@ -242,6 +242,12 @@ class TestACloneWithoutHistory:
             ("none", True),
         ]
 
+    def test_a_cell_using_a_preset_runs_without_it(self, source, tmp_path, monkeypatch):
+        """`[presets]` reach the run: the cell's clone is the preset's, not the task's."""
+        scenario = SCENARIO_TOML + '[presets.bare]\nhistory = false\n[variants.c]\nuse = ["bare"]\n'
+        seen = launch(tmp_path, monkeypatch, source, scenario)
+        assert sorted(s["commits"] for s in seen) == [1, 1, 2, 2]
+
 
 class TestASetupScript:
     """`setup`: a script run in the clone before the agent, its changes committed."""
