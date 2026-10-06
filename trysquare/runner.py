@@ -725,6 +725,7 @@ def referenced_paths(scenario: Scenario, base: Path) -> list[tuple[str, Path]]:
             out.append((label, (base / value).resolve()))
 
     add("task.prompt", scenario.task.get("prompt"))
+    add("task.setup", scenario.task.get("setup"), always=True)
     if scenario.hypothesis:
         add("scenario.hypothesis", scenario.hypothesis, always=True)
 
@@ -732,6 +733,7 @@ def referenced_paths(scenario: Scenario, base: Path) -> list[tuple[str, Path]]:
     for cell in scenario.cells:
         for key in ("prompt", "context", "system"):
             add(f"cell {cell.name!r} -> {key}", cell.delta.get(key))
+        add(f"cell {cell.name!r} -> setup", cell.delta.get("setup"), always=True)
 
     for validator in scenario.validators:
         add(f"validation[{validator.mode}].command", validator.config.get("command"), always=True)
