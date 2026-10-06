@@ -322,24 +322,78 @@ thinking = "high"
 ```
 
 The cartesian product, named by joining the axis values with ` / ` -
-`rule / high`. **Declaration order of the axes fixes the order of the rendered
-table**: first axis in rows, second in columns.
+`rule / high`. **Declaration order of the axes fixes the order of the cells**, one row
+per cell in the rendered tables.
 
 `[values.<axis>.<value>]` holds only the **delta** from `[agent]` and `[task]`.
 
 :::{important}
 **The first value of an axis is the baseline and declares no delta.** Every other
-value must declare one:
+value must declare one, in `[values]` or by naming a [preset](#presets):
 
 ```text
-axis 'context': value 'tickett' declares no delta. Only the first value of an
-axis ('nothing') is the baseline. Deltas declared for this axis: ['rule',
-'careful ticket']
+axis 'context': value 'tickett' declares no delta and names no preset. Only the
+first value of an axis ('nothing') is the baseline. Deltas and presets: ['careful
+ticket', 'rule']
 ```
 
 Without that rule, a misspelling produces a cell identical to the baseline, published
-twice under two names, with nothing to reveal it.
+twice under two names, with nothing to reveal it. For the same reason, a first value
+that names a preset is refused: it reads as a lever and would change nothing.
 :::
+
+A value that names a preset takes that preset's lines, with no `[values]` block to
+write. A `[values]` block of the same name wins over the preset.
+
+`exclude` removes combinations from the product, as in a GitHub Actions matrix. A rule
+names some axes and their values, and every combination that matches all of them is
+removed:
+
+```toml
+[presets]
+thinking = { thinking = "high" }
+agents   = { context = "AGENTS.md" }
+blind    = { history = false, setup = "remove-issues.sh" }
+
+[axes]
+lever = ["nothing", "thinking", "agents"]
+blind = ["no", "blind"]
+exclude = [
+  { lever = "nothing", blind = "blind" },
+  { lever = "agents",  blind = "blind" },
+]
+
+[verdict]
+reference = { lever = "nothing", blind = "no" }
+```
+
+These six combinations become four cells: `nothing / no`, `thinking / no`,
+`thinking / blind` and `agents / no`. `exclude` is not an axis, and an axis or a value
+the grid does not have is refused, since a misspelled rule would otherwise remove
+nothing.
+
+`include` adds cells beside the product, each a list of presets:
+
+```toml
+[axes]
+lever = ["nothing", "thinking", "agents"]
+blind = ["no", "blind"]
+exclude = [{ lever = "nothing", blind = "blind" }]
+include = [
+  ["agents", "thinking"],
+  { use = ["agents"], thinking = "low", name = "agents, low thinking" },
+]
+```
+
+A list of presets names its cell after them, in the order `[presets]` declares them:
+`["agents", "thinking"]` is the cell `+thinking+agents`, and so is
+`["thinking", "agents"]`. The name therefore cannot promise a lever the cell does not
+take. A table gives a `name`, a `description` or lines of its own, and needs a `name`
+as soon as its presets alone do not describe the cell.
+
+The included cells follow the grid's, and `[axes]` may hold `include` alone, for a plan
+that is a list rather than a product. A cell the grid already has, or one listed twice,
+is refused instead of being measured twice under two names.
 
 ### Variants
 

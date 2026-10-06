@@ -676,3 +676,134 @@ class TestBricksAddUp:
             }
         )
         assert s.cell("yes / yes").delta["harness"] == ["skills", "probe"]
+
+
+class TestAGridOfPresets:
+    """`[axes]` values may name presets, and `exclude` removes combinations."""
+
+    PRESETS = {"thinking": {"thinking": "high"}, "blind": {"history": False}}
+    AXES = {"lever": ["nothing", "thinking"], "blind": ["no", "blind"]}
+
+    def grid(self, axes: dict | None = None, **extra) -> dict:
+        s = parse(
+            MINIMAL
+            | {
+                "presets": self.PRESETS,
+                "variants": {},
+                "axes": axes or self.AXES,
+                "verdict": {
+                    "criterion": "overflow",
+                    "reference": {"lever": "nothing", "blind": "no"},
+                },
+            }
+            | extra
+        )
+        return {c.name: c.delta for c in s.cells}
+
+    def test_a_value_naming_a_preset_takes_its_lines(self):
+        assert self.grid()["thinking / blind"] == {"thinking": "high", "history": False}
+
+    def test_a_values_block_wins_over_a_preset_of_the_same_name(self):
+        values = {"lever": {"thinking": {"thinking": "low"}}}
+        assert self.grid(values=values)["thinking / no"] == {"thinking": "low"}
+
+    def test_exclude_removes_every_combination_it_matches(self):
+        cells = self.grid(self.AXES | {"exclude": [{"lever": "nothing", "blind": "blind"}]})
+        assert list(cells) == ["nothing / no", "thinking / no", "thinking / blind"]
+
+    def test_a_partial_rule_removes_every_cell_with_its_value(self):
+        cells = self.grid(self.AXES | {"exclude": [{"blind": "blind"}]})
+        assert list(cells) == ["nothing / no", "thinking / no"]
+
+    def test_exclude_is_not_an_axis(self):
+        """It holds rules: cell names and the reference are made of the axes alone."""
+        cells = self.grid(self.AXES | {"exclude": [{"lever": "thinking", "blind": "no"}]})
+        assert list(cells) == ["nothing / no", "nothing / blind", "thinking / blind"]
+
+    @pytest.mark.parametrize(
+        "rule, message",
+        [
+            ({"blnd": "blind"}, r"no axis 'blnd' \(did you mean 'blind'"),
+            ({"blind": "yes"}, "axis 'blind' has no value 'yes'"),
+        ],
+    )
+    def test_a_rule_that_cannot_match_is_refused(self, rule, message):
+        with pytest.raises(ScenarioError, match=message):
+            self.grid(self.AXES | {"exclude": [rule]})
+
+    def test_exclude_must_be_a_list_of_tables(self):
+        with pytest.raises(ScenarioError, match="must be a list of tables"):
+            self.grid(self.AXES | {"exclude": {"blind": "blind"}})
+
+    def test_a_value_that_is_neither_declared_nor_a_preset_is_refused(self):
+        with pytest.raises(
+            ScenarioError,
+            match=r"'thinkng' declares no delta and names no preset \(did you mean 'thinking'",
+        ):
+            self.grid({"lever": ["nothing", "thinkng"]})
+
+    def test_a_baseline_naming_a_preset_is_refused(self):
+        """It reads as a lever and would measure nothing."""
+        with pytest.raises(
+            ScenarioError, match="first value is the baseline .* 'thinking' names a preset"
+        ):
+            self.grid({"lever": ["thinking", "blind"]})
+
+
+class TestIncludedCells:
+    """`[axes].include` adds cells beside the product, named after their presets."""
+
+    PRESETS = {
+        "thinking": {"thinking": "high"},
+        "agents": {"context": "A.md"},
+        "blind": {"history": False},
+    }
+    AXES = {"lever": ["nothing", "thinking"]}
+
+    def cells(self, include: list, axes: dict | None = None) -> dict:
+        s = parse(
+            MINIMAL
+            | {
+                "presets": self.PRESETS,
+                "variants": {},
+                "axes": (axes if axes is not None else self.AXES) | {"include": include},
+                "verdict": {"criterion": "overflow", "reference": "nothing"},
+            }
+        )
+        return {c.name: c.delta for c in s.cells}
+
+    def test_a_list_of_presets_is_named_after_them_in_declaration_order(self):
+        cells = self.cells([["blind", "thinking"]])
+        assert cells["+thinking+blind"] == {"thinking": "high", "history": False}
+
+    def test_the_cells_follow_the_grid(self):
+        assert list(self.cells([["agents"]])) == ["nothing", "thinking", "+agents"]
+
+    def test_include_alone_lists_cells_without_a_product(self):
+        cells = self.cells([{"name": "nothing"}, ["thinking"], ["thinking", "agents"]], axes={})
+        assert list(cells) == ["nothing", "+thinking", "+thinking+agents"]
+
+    def test_a_table_gives_a_name_and_lines_of_its_own(self):
+        cells = self.cells([{"use": ["agents"], "thinking": "low", "name": "agents, low"}])
+        assert cells["agents, low"] == {"context": "A.md", "thinking": "low"}
+
+    def test_lines_of_its_own_need_a_name(self):
+        """`+agents` would promise the preset alone."""
+        with pytest.raises(ScenarioError, match="needs a name"):
+            self.cells([{"use": ["agents"], "thinking": "low"}])
+
+    def test_a_cell_the_grid_has_is_refused(self):
+        with pytest.raises(ScenarioError, match="is cell 'thinking' already"):
+            self.cells([["thinking"]])
+
+    def test_the_same_presets_twice_are_refused(self):
+        with pytest.raises(ScenarioError, match="is cell '\\+thinking\\+agents' already"):
+            self.cells([["thinking", "agents"], ["agents", "thinking"]])
+
+    def test_an_unknown_preset_is_refused(self):
+        with pytest.raises(ScenarioError, match="unknown preset 'agnets'"):
+            self.cells([["agnets"]])
+
+    def test_an_entry_of_the_wrong_kind_is_refused(self):
+        with pytest.raises(ScenarioError, match="an entry is a list of presets"):
+            self.cells(["thinking"])
