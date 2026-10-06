@@ -248,6 +248,12 @@ class TestACloneWithoutHistory:
         seen = launch(tmp_path, monkeypatch, source, scenario)
         assert sorted(s["commits"] for s in seen) == [1, 1, 2, 2]
 
+    def test_an_included_cell_runs_as_its_presets_say(self, source, tmp_path, monkeypatch):
+        scenario = SCENARIO_TOML + '[presets.bare]\nhistory = false\n[axes]\ninclude = [["bare"]]\n'
+        seen = launch(tmp_path, monkeypatch, source, scenario)
+        assert sorted(s["commits"] for s in seen) == [1, 1, 2, 2]
+        assert {p.name for p in tmp_path.glob("out/*/runs/*")} == {"none", "+bare"}
+
 
 class TestASetupScript:
     """`setup`: a script run in the clone before the agent, its changes committed."""

@@ -372,6 +372,29 @@ These six combinations become four cells: `nothing / no`, `thinking / no`,
 the grid does not have is refused, since a misspelled rule would otherwise remove
 nothing.
 
+`include` adds cells beside the product, each a list of presets:
+
+```toml
+[axes]
+lever = ["nothing", "thinking", "agents"]
+blind = ["no", "blind"]
+exclude = [{ lever = "nothing", blind = "blind" }]
+include = [
+  ["agents", "thinking"],
+  { use = ["agents"], thinking = "low", name = "agents, low thinking" },
+]
+```
+
+A list of presets names its cell after them, in the order `[presets]` declares them:
+`["agents", "thinking"]` is the cell `+thinking+agents`, and so is
+`["thinking", "agents"]`. The name therefore cannot promise a lever the cell does not
+take. A table gives a `name`, a `description` or lines of its own, and needs a `name`
+as soon as its presets alone do not describe the cell.
+
+The included cells follow the grid's, and `[axes]` may hold `include` alone, for a plan
+that is a list rather than a product. A cell the grid already has, or one listed twice,
+is refused instead of being measured twice under two names.
+
 ### Variants
 
 ```toml
