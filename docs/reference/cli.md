@@ -265,8 +265,23 @@ shared with it - `validate` cannot pass what `run` would refuse. A note (not a
 failure) says when `pi` is missing from PATH, since a run would then refuse.
 
 ```bash
-trysquare validate <scenario> [--config <file>]
+trysquare validate <scenario> [--config <file>] [--ping]
 ```
+
+`--ping` also checks that each model the scenario calls answers: the agent's and each
+judge's. It sends each one a single short prompt (`Reply with the single word OK.`)
+from where its runs would happen, inside the `[isolation]` backend, through the
+relay, with the providers and keys a run would use. Nothing is kept. It spends a few
+tokens per model, and fails, naming the model and the provider's error, when one does
+not answer:
+
+```text
+    ilaas/gemma-4-31b in image 'trysquare-agent': ok
+  ! judging/judge-model in image 'trysquare-agent': 401: {"message":"bad key"}
+error: 1 model did not answer
+```
+
+When no run could start, it pings nothing and fails.
 
 ## `render`
 

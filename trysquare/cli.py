@@ -189,6 +189,11 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument(
         "--config", type=Path, help="config file (default: nearest trysquare.toml)"
     )
+    validate.add_argument(
+        "--ping",
+        action="store_true",
+        help="also send each model one short prompt from where runs happen (spends tokens)",
+    )
     validate.set_defaults(func=cmd_validate)
 
     render = with_progress(
@@ -673,6 +678,27 @@ def cmd_validate(args) -> int:
     ):
         print(f"  ! {problem}: this validation holds, a run would refuse")
     print("ok: nothing this scenario references is missing")
+    if not args.ping:
+        return 0
+    if problem:
+        print("error: no model was pinged, since no run could start", file=sys.stderr)
+        return 1
+    return _ping(scenario, confinement)
+
+
+def _ping(scenario, confinement) -> int:
+    """Each model the scenario calls, asked one short prompt where its runs would be."""
+    silent = 0
+    for provider, model in scenario.models:
+        reason = agent_mod.ping(confinement, provider, model)
+        print(
+            f"  {'!' if reason else ' '} {provider}/{model} {confinement.where}: {reason or 'ok'}"
+        )
+        silent += reason is not None
+    if silent:
+        print(f"error: {counted(silent, 'model')} did not answer", file=sys.stderr)
+        return 1
+    print("ok: every model answered")
     return 0
 
 
