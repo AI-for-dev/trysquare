@@ -257,7 +257,7 @@ def parse(raw: dict, path: Path | None = None) -> Scenario:
 
     axes = raw.get("axes", {})
     values = raw.get("values", {})
-    cells = _expand(axes, values, raw.get("variants", {}))
+    cells = _expand(axes, values, raw.get("variants", {}), _presets(raw.get("presets", {})))
     if not cells:
         raise ScenarioError("no cells: declare [axes] or [variants]")
 
@@ -304,11 +304,12 @@ def _refuse_a_config_file(raw: dict, where: str) -> None:
     )
 
 
-def _expand(axes: dict, values: dict, variants: dict) -> tuple[Cell, ...]:
+def _expand(axes: dict, values: dict, variants: dict, presets: dict) -> tuple[Cell, ...]:
     """Grid cells then named variants, added rather than chosen between.
 
     A scenario may use both: a grid is concise for the regular part, named
-    variants are precise for the irregular one.
+    variants are precise for the irregular one. Every delta has the presets it
+    uses spelled out, so a cell is what it declares and nothing refers further.
     """
     cells: list[Cell] = []
 
@@ -318,16 +319,57 @@ def _expand(axes: dict, values: dict, variants: dict) -> tuple[Cell, ...]:
         for combo in itertools.product(*[axes[n] for n in names]):
             delta: dict = {}
             for axis, value in zip(names, combo):
-                delta.update(values.get(axis, {}).get(value, {}))
+                declared = values.get(axis, {}).get(value, {})
+                delta.update(_using(declared, presets, f"[values.{axis}.{value}]"))
             cells.append(_cell(" / ".join(combo), delta))
 
     for name, delta in variants.items():
-        cells.append(_cell(name, delta))
+        cells.append(_cell(name, _using(delta, presets, f"[variants.{name}]")))
 
     duplicate = {n for n, k in Counter(c.name for c in cells).items() if k > 1}
     if duplicate:
         raise ScenarioError(f"cell declared twice: {', '.join(sorted(duplicate))}")
     return tuple(cells)
+
+
+def _presets(presets: dict) -> dict:
+    """The `[presets]` a scenario declares, each a delta a cell may `use`.
+
+    A preset neither uses another nor describes a cell: one level of naming is all a
+    reader has to follow, and a cell's description is the cell's own.
+    """
+    for name, preset in presets.items():
+        for key in ("use", "description"):
+            if key in preset:
+                raise ScenarioError(f"[presets.{name}]: a preset cannot declare {key!r}")
+    return presets
+
+
+def _using(delta: dict, presets: dict, owner: str) -> dict:
+    """A delta with the presets it names in `use` spelled out.
+
+    The presets apply in the order `use` lists them, and the delta's own keys win over
+    all of them. Two presets setting one key differently are refused unless the delta
+    settles it: which of the two the cell got is a question no reader of the scenario
+    could answer.
+    """
+    delta = dict(delta)
+    names = delta.pop("use", [])
+    if not isinstance(names, list):
+        raise ScenarioError(f"{owner}: use must be a list of preset names - got {names!r}")
+    merged: dict = {}
+    origin: dict = {}
+    for name in names:
+        if name not in presets:
+            raise ScenarioError(f"{owner}: unknown preset {name!r}{closest(name, presets)}")
+        for key, value in presets[name].items():
+            if key in merged and merged[key] != value and key not in delta:
+                raise ScenarioError(
+                    f"{owner}: presets {origin[key]!r} and {name!r} set {key!r} differently. "
+                    f"Set {key!r} in {owner} to choose."
+                )
+            merged[key], origin[key] = value, name
+    return merged | delta
 
 
 def _cell(name: str, delta: dict) -> Cell:

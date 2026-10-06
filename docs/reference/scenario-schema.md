@@ -356,6 +356,52 @@ scenario may carry a regular grid plus a couple of named witnesses.
 
 A cell name declared twice raises.
 
+### Presets
+
+Lines that several cells share are declared once, under a name, and each cell lists
+the presets it uses:
+
+```toml
+[presets.blind]
+history = false
+setup = "remove-docs.sh"
+
+[presets.careful]
+context = "AGENTS.md"
+thinking = "high"
+
+[variants.none]
+
+[variants.blind]
+use = ["blind"]
+
+[variants."blind + careful"]
+use = ["blind", "careful"]
+
+[variants."blind, no thinking"]
+use = ["blind", "careful"]
+thinking = "off"
+```
+
+`use` works in `[variants.*]` and in `[values.<axis>.<value>]`. The presets apply in the
+order `use` lists them, and a key the cell declares itself wins over all of them.
+
+Two presets that set the same key to different values are refused, unless the cell
+sets that key itself:
+
+```text
+[variants.c]: presets 'careful' and 'lazy' set 'thinking' differently. Set 'thinking'
+in [variants.c] to choose.
+```
+
+Without that rule, the value a cell got would depend on the order of a list, and
+nothing in the table would show it.
+
+A cell that uses a preset is the same cell as one that writes its lines out: same
+delta, same fingerprint. Editing a preset therefore changes the fingerprint of every
+cell that uses it, and a `--resume` notices. A preset cannot use another preset or
+carry a `description`.
+
 ### What a delta may contain
 
 ```{list-table}
@@ -378,6 +424,8 @@ A cell name declared twice raises.
   - `false` hides the project's git history from this cell. See [`history`](#history).
 * - `setup`
   - A script run in the clone before the agent starts. See [`setup`](#setup).
+* - `use`
+  - A list of preset names whose lines the cell takes. See [Presets](#presets).
 ```
 
 ## `[harness.<name>]`
