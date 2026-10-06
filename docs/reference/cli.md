@@ -5,7 +5,7 @@ uv run python -m trysquare <command> [options]
 trysquare <command> [options]              # if installed
 ```
 
-`--output` roots everything that writes. Eight commands.
+`--output` roots everything that writes. Ten commands.
 
 ## `init`
 
@@ -255,6 +255,28 @@ Agents that report no price are common, and an archive nobody priced is not an e
 archive - so it is used in the unit the provider does report, median tokens per run
 and what the plan comes to. Only a scenario that has never run says there is nothing
 to estimate from.
+
+## `watch`
+
+Follows a running matrix in a browser. Writes nothing, spends nothing.
+
+```bash
+trysquare watch <matrix dir> [--port N] [--no-open]
+```
+
+The directory is the one a launch prints as its `output`: the `--output` given to `run`
+plus the experiment name. One without a `state.json` is refused, so a mistyped path
+does not open a page that looks like an empty matrix. The runs in flight come from
+`live.json`, which `run` rewrites every second.
+
+The page is served on `127.0.0.1` only, on a free port unless `--port` names one, and
+opens in the browser unless `--no-open` is given. A matrix directory holds prompts,
+diffs and session transcripts, which have no business on a network interface.
+
+**Counts, never a verdict**, until the matrix is complete. Runs are interleaved by
+repetition, so at any moment every cell holds about the same handful, and an interval
+over four runs would swing at each one that lands. Once the matrix is complete the page
+links to `synthesis.md` and its HTML page, which give the verdict.
 
 ## `validate`
 
