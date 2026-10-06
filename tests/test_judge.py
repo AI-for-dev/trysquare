@@ -65,6 +65,24 @@ class TestPreflight:
         assert missing
         assert any("context" in m for m in missing)
 
+    def test_a_setup_script_is_checked_wherever_it_is_declared(self, tmp_path):
+        """Always a path, even without a separator: `setup.sh` missing would otherwise end
+        every run of the cell before its agent started."""
+        task = GRID["task"] | {"setup": "setup.sh"}
+        s = parse(
+            GRID
+            | {
+                "task": task,
+                "values": {
+                    **GRID["values"],
+                    "thinking": {"high": {"thinking": "high", "setup": "other.sh"}},
+                },
+            }
+        )
+        missing = preflight(s, tmp_path)
+        assert f"task.setup: {tmp_path / 'setup.sh'}" in missing
+        assert any(m.startswith("cell 'rule / high' -> setup") for m in missing)
+
     def test_the_scenario_the_repository_carries_passes_preflight(self):
         """Which is what the incident above should have been caught by.
 
