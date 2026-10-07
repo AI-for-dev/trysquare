@@ -1495,13 +1495,6 @@ class TestAgentModels:
         assert meta["model"] == "ilaas/gemma-4-31b"
         assert meta["source"] == "file"
 
-    def test_an_override_wins_and_is_recorded_as_such(self):
-        """Two places may declare, so the trace settles which one applied."""
-        p = self.write_agent("---\nname: explorer\ndescription: x\nmodel: a/b\n---\n")
-        meta = repo.agent_frontmatter(p, override="ilaas/gemma-4-31b")
-        assert meta["model"] == "ilaas/gemma-4-31b"
-        assert meta["source"] == "scenario override"
-
     def test_an_agent_with_no_model_anywhere_is_refused(self):
         """Nine shipped agents were in this position and ran on the wrong provider."""
         p = self.write_agent("---\nname: explorer\ndescription: x\n---\n")
@@ -1511,10 +1504,40 @@ class TestAgentModels:
             repo.check_agent_models({"explorer": meta})
         assert "explorer" in str(e.value)
 
-    def test_an_override_rescues_a_file_that_declares_nothing(self):
-        p = self.write_agent("---\nname: explorer\ndescription: x\n---\n")
-        meta = repo.agent_frontmatter(p, override="ilaas/gemma-4-31b")
+    def inject(self, tmp_path: Path, body: str, override: str | None) -> tuple[Path, dict]:
+        source = self.write_agent(body)
+        prepared = repo.inject(
+            repo.Prepared(path=tmp_path, etalon="etalon-v1"), agents=[source], agent_model=override
+        )
+        return tmp_path / ".pi" / "agents" / "explorer.md", prepared.agents["explorer"]
+
+    def test_the_override_is_written_into_the_copied_file(self, tmp_path):
+        """The subagent reads its model from the file, so the trace is read from it too."""
+        body = "---\nname: explorer\ndescription: x\nmodel: a/x\ntools: read\n---\n\nbody\n"
+        copied, meta = self.inject(tmp_path, body, "b/y")
+        assert copied.read_text() == body.replace("model: a/x", "model: b/y")
+        assert meta["model"] == "b/y"
+        assert meta["source"] == "scenario override"
+
+    def test_the_override_is_added_to_a_file_that_declares_no_model(self, tmp_path):
+        body = "---\nname: explorer\ndescription: x\n---\n\nbody\n"
+        copied, meta = self.inject(tmp_path, body, "b/y")
+        assert (
+            copied.read_text() == "---\nname: explorer\ndescription: x\nmodel: b/y\n---\n\nbody\n"
+        )
+        assert meta["model"] == "b/y"
         repo.check_agent_models({"explorer": meta})
+
+    def test_without_override_the_file_is_copied_unchanged(self, tmp_path):
+        body = "---\nname: explorer\ndescription: x\nmodel: a/x\n---\n\nbody\n"
+        copied, meta = self.inject(tmp_path, body, None)
+        assert copied.read_text() == body
+        assert meta["source"] == "file"
+
+    def test_a_file_without_frontmatter_is_refused(self, tmp_path):
+        """combo and pi skip such a file: an override written anywhere else is never read."""
+        with pytest.raises(repo.RepoError, match="no frontmatter"):
+            self.inject(tmp_path, "just a prompt\n", "b/y")
 
 
 def cell_bricks(bricks: dict, delta: dict) -> dict:

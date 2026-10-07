@@ -594,7 +594,9 @@ against a HEAD that already contains the replacement. It is refused.
 :::{note}
 `[harness.agents].model` is an optional override. Absent, each agent file declares its
 own model, which keeps a cheap explorer alongside an expensive coder expressible.
-Present, it overrides every file.
+Present, it overrides every file: the copy dropped in `.pi/agents/` has its `model:` line
+replaced, or one added, and the source file is left as it is. An agent file without a
+`---` frontmatter is refused, since combo and pi do not read it as an agent.
 
 Either way the harness **refuses to inject an agent that would end up with no model**:
 nine shipped agents once ran on the wrong provider and returned 402s because they

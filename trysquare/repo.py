@@ -325,10 +325,11 @@ def inject(
     for source in agents or []:
         if not source.exists():
             raise RepoError(f"agent definition not found: {source}")
-        target_dir = d / ".pi" / "agents"
-        target_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target_dir / source.name)
-        prepared.agents[source.stem] = agent_frontmatter(source, agent_model)
+        target = d / ".pi" / "agents" / source.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(with_model(source.read_text(), agent_model, source))
+        # Read back from the copy, so the trace records the model the subagent will read.
+        prepared.agents[source.stem] = agent_frontmatter(target, bool(agent_model))
         _mark_pi(prepared)
 
     for source in skills or []:
@@ -420,7 +421,37 @@ def give(prepared: Prepared, files: dict[str, Path] | None) -> Prepared:
     return prepared
 
 
-def agent_frontmatter(path: Path, override: str | None = None) -> dict:
+def frontmatter_lines(lines: list[str], path: Path) -> range:
+    """The indices of the frontmatter's lines, between the two `---` fences.
+
+    A file without one is refused: combo and pi skip it as "not an agent", so
+    nothing written to it, an override included, would ever be read.
+    """
+    closing = next((i for i, line in enumerate(lines) if i and line.strip() == "---"), None)
+    if not lines or lines[0].strip() != "---" or closing is None:
+        raise RepoError(
+            f"agent definition {path} has no frontmatter: combo and pi skip a file "
+            f"without a `---` block declaring `name:` and `description:`"
+        )
+    return range(1, closing)
+
+
+def with_model(text: str, model: str | None, path: Path) -> str:
+    """The agent definition with its `model:` set to `model`, every other line kept."""
+    lines = text.splitlines(keepends=True)
+    block = frontmatter_lines(lines, path)
+    if not model:
+        return text
+    line = f"model: {model}\n"
+    declared = [i for i in block if lines[i].partition(":")[0].strip() == "model"]
+    for i in declared:
+        lines[i] = line
+    if not declared:
+        lines.insert(block.stop, line)
+    return "".join(lines)
+
+
+def agent_frontmatter(path: Path, overridden: bool = False) -> dict:
     """Reads an agent definition's frontmatter, and settles which model it runs.
 
     A subagent that declares no model inherits the operator's `defaultModel`. Nine
@@ -429,22 +460,18 @@ def agent_frontmatter(path: Path, override: str | None = None) -> dict:
     came from is recorded: the declaration may live in two places, but the trace
     settles which one applied.
     """
-    text = path.read_text()
+    lines = path.read_text().splitlines()
     front: dict[str, str] = {}
-    if text.startswith("---"):
-        _, _, rest = text.partition("---")
-        block, _, _ = rest.partition("---")
-        for line in block.split("\n"):
-            key, sep, value = line.partition(":")
-            if sep and key.strip():
-                front[key.strip()] = value.strip()
+    for i in frontmatter_lines(lines, path):
+        key, sep, value = lines[i].partition(":")
+        if sep and key.strip():
+            front[key.strip()] = value.strip()
 
     declared = front.get("model")
-    model = override or declared
     return {
         "name": front.get("name", path.stem),
-        "model": model,
-        "source": "scenario override" if override else ("file" if declared else None),
+        "model": declared,
+        "source": "scenario override" if overridden else ("file" if declared else None),
         "tools": front.get("tools"),
     }
 
