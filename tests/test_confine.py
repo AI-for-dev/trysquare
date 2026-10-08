@@ -831,3 +831,25 @@ class TestInsideBwrapTheKeyStaysOut(KeyStaysOut):
 
     def fetch(self, url, authorization):
         return ["curl", "-s", "--noproxy", "*", "-H", f"Authorization: {authorization}", url]
+
+
+class TestWhatRebuildsABackend:
+    """A render of a session needs where the agent is found, and nothing it could call."""
+
+    @pytest.mark.parametrize(
+        "settings",
+        [
+            {"backend": "none"},
+            {"backend": "docker", "env": ["KEY"], "cpus": 2, "memory": "4g"},
+            {"backend": "bwrap", "env": ["KEY"], "bind": ["/opt/node"]},
+        ],
+    )
+    def test_the_settings_rebuild_the_same_backend_without_a_variable(self, settings):
+        rebuilt = confine.backend(confine.backend(settings).settings)
+        assert rebuilt.name == settings["backend"]
+        assert getattr(rebuilt, "env", ()) == ()
+        assert rebuilt.limits == {}
+        assert rebuilt.settings == confine.backend(settings).settings
+
+    def test_bwrap_keeps_the_paths_it_binds(self):
+        assert confine.Bwrap(bind=["/opt/node"]).settings["bind"] == ["/opt/node"]

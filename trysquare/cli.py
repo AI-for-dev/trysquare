@@ -798,11 +798,7 @@ def _export_sessions(
     before sessions were archived would otherwise produce a silence that reads as
     success.
     """
-    # Where the runs ran, with the image they ran from, but neither a variable nor a
-    # provider: an export reads a file and calls nothing, so it must not need the key.
-    confinement = confine.backend(
-        {k: v for k, v in config.isolation.items() if k not in ("env", "models")}
-    )
+    confinement = agent_mod.exporter(config.isolation)
     if problem := agent_mod.unrunnable(confinement, scenario.agent.get("image")):
         print(f"error: {problem}, so no session can be exported", file=sys.stderr)
         return 1
