@@ -106,7 +106,7 @@ class Watch:
             read = None
         if read:
             self._spent = read["usage"]
-            self._entry["combo"] = {k: read[k] for k in ("visits", "agent", "path")}
+            self._entry["combo"] = {k: read[k] for k in ("visits", "agent", "path", "running")}
             self._entry["model_id"] = read["model"] or self._entry["model_id"]
             self._numbers()
         return dict(self._entry)
