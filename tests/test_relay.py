@@ -5,6 +5,7 @@ Nothing here reaches a provider: the upstream is a local server that records wha
 sent and answers what it is told to.
 """
 
+import http.client
 import json
 import threading
 import time
@@ -21,9 +22,16 @@ SECRET = "sk-the-real-key"
 
 
 class Upstream:
-    """A provider stand-in: records each request, answers with `status` and `chunks`."""
+    """A provider stand-in: records each request, answers with `status` and `chunks`,
+    and hangs up before the end of its answer if `cut`."""
 
-    def __init__(self, status: int = 200, chunks: list[bytes] = (b"ok",), pause: float = 0):
+    def __init__(
+        self,
+        status: int = 200,
+        chunks: list[bytes] = (b"ok",),
+        pause: float = 0,
+        cut: bool = False,
+    ):
         self.seen: list[dict] = []
         upstream = self
 
@@ -49,6 +57,9 @@ class Upstream:
                     self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
                     self.wfile.flush()
                     time.sleep(pause)
+                if cut:
+                    self.close_connection = True
+                    return
                 self.wfile.write(b"0\r\n\r\n")
 
             do_GET = do_POST
@@ -122,6 +133,16 @@ class TestWhatComesBack:
             assert first == b"data: 1\n\n"
             assert answer.read() == b"data: 2\n\n"
         assert arrived < 1.0
+
+    def test_a_stream_cut_by_the_provider_is_cut_for_the_agent(self, upstream, capsys):
+        """A truncated answer must not reach the agent as a complete one, and a provider
+        that hangs up is not a fault of the relay to report with a traceback."""
+        server = upstream(chunks=[b"data: 1\n\n"], cut=True)
+        with post(relayed(server)) as answer:
+            with pytest.raises(http.client.IncompleteRead) as cut:
+                answer.read()
+        assert cut.value.partial == b"data: 1\n\n"
+        assert capsys.readouterr().err == ""
 
     def test_a_refusal_from_the_provider_is_passed_on_without_the_key(self, upstream):
         """A provider that quotes the key back in its error would hand it to the agent."""
