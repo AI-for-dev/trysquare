@@ -152,7 +152,9 @@ def assemble(directory: Path, now: float | None = None) -> dict:
         "progress": progress(state),
         "tallies": tallies(measures_in(directory)),
         "complete": complete,
-        "synthesis": SYNTHESIS_PAGE if (directory / SYNTHESIS_PAGE).is_file() else None,
+        "synthesis": SYNTHESIS_PAGE
+        if complete and (directory / SYNTHESIS_PAGE).is_file()
+        else None,
     }
 
 

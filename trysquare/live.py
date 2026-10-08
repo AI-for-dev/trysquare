@@ -239,7 +239,7 @@ def watching(board, run_id: str, cell: str, repetition: int, session: Path | Non
 
 @contextmanager
 def published(write, board: Board, interval: float = INTERVAL):
-    """Writes `board` through `write` every `interval`, and once more on the way out.
+    """Writes `board` through `write` on the way in, every `interval`, and on the way out.
 
     `write` is a one-argument callable rather than an `Output`, so this module can be
     exercised without a tree and cannot reach anything else in one.
@@ -251,6 +251,7 @@ def published(write, board: Board, interval: float = INTERVAL):
         except Exception:  # noqa: BLE001 - a decorative file may not end a matrix
             pass
 
+    publish(board.snapshot())
     stop = threading.Event()
 
     def tick() -> None:

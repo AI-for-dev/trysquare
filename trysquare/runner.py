@@ -28,7 +28,7 @@ from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
 from .live import Board, published, watching
 from .measure import EMPTY, VALID, Run, counted, merge, models, one_line
-from .outputs import RESUMABLE, Carried, Output, carryable, matrices, slug, write_text
+from .outputs import MISSING, RESUMABLE, Carried, Output, carryable, matrices, slug, write_text
 from .scenario import Cell, Scenario
 
 
@@ -55,14 +55,14 @@ class Plan:
     blindness: dict
     notes: list[str]
 
+    # The ledger this launch starts from: reset by an overwrite, freed of the named cells by
+    # a replay, kept by a resume. Written by `execute` before the first run, so a reader of
+    # the directory never takes the previous launch's results for this one's.
+    state: dict
+
     # The runs of a lower matrix of this same experiment that this launch is to carry.
     # `resolve` decides it; `execute` is what copies anything.
     carried: Carried | None = None
-
-    # The cells whose results this launch discards and measures again, as `--overwrite
-    # CELL` named them. `execute` needs them too: the ledger it writes is loaded from
-    # disk, so it is the one that has to record those cells as measured afresh.
-    replay: tuple[str, ...] = ()
 
     @property
     def runs(self) -> int:
@@ -263,8 +263,8 @@ def resolve(
         overrides=overrides,
         blindness=validation_mod.blindness(scenario),
         notes=notes,
+        state=state,
         carried=carried if extend else None,
-        replay=replay,
     )
 
 
@@ -1128,19 +1128,13 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     prepare_source(plan.config, plan.scenario.task["repo"], plan.scenario.task["etalon"])
     plan.confinement.prepare(plan.scenario.agent.get("image"), plan.scenario.providers)
     plan.output.prepare()
-    # Before the ledger is loaded, because the carry writes one: from here on this matrix
-    # holds the carried runs as its own, and everything below reads them like any other.
+    # The carry copies the lower matrix's trees and rows in; its runs are already in the
+    # ledger `resolve` seeded.
     if plan.carried:
         plan.output.absorb(plan.carried, plan.overrides)
-    state = plan.output.load_or_create_state(plan.overrides)
-    # The ledger comes off the disk, so this is where a replay is written down: the cells
-    # being measured again lose the results they had and take today's declaration, or the
-    # next `--resume` would refuse the runs this launch is about to measure.
-    if plan.replay:
-        state = plan.output.replayed(state, plan.replay)
+    state = plan.state
     # Restated by every launch, like the rest of the load: it is what this one runs under.
     state["limits"] = plan.confinement.limits
-    plan.output.write_state(state)
     concurrency = plan.load("concurrency")
 
     # Runs are consumed as they finish, not in the order they were submitted. Walking
@@ -1156,10 +1150,17 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
     # whose rows landed in a different order would publish different bounds under the same
     # fixed seed. Rows already archived keep their place and this pass follows in plan
     # order - the order runs complete in is a race, the order they were planned in is not.
-    archived = {r.id: r for r in plan.output.read_measures()}
-    place = {run_id: i for i, run_id in enumerate(archived)}
+    rows = plan.output.read_measures()
+    place = {r.id: i for i, r in enumerate(rows)}
     for run_id, _ in plan.todo:
         place.setdefault(run_id, len(place))
+    # A row of a run the ledger counts as missing is not this launch's: it goes before the
+    # first run, together with the ledger that dropped it.
+    archived = {
+        r.id: r for r in rows if state["runs"].get(r.id, {}).get("state", MISSING) != MISSING
+    }
+    plan.output.write_measures(list(archived.values()))
+    plan.output.write_state(state)
 
     recorded: set[str] = set()
 

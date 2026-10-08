@@ -107,6 +107,13 @@ class TestTheFileSaysWhenItStopped:
         assert len(written) > 1, "the ticker wrote while the launch ran"
         assert written[-1]["finished"] is not None
 
+    def test_the_first_write_is_the_start(self):
+        """Not one interval later: until then the file is the previous launch's, which
+        says it finished."""
+        written = []
+        with live.published(written.append, board(), interval=10):
+            assert written and written[0]["finished"] is None
+
     def test_a_run_still_in_flight_at_the_end_is_not_left_looking_alive(self):
         """Otherwise a file left by a campaign killed yesterday reads as one running
         today, which is the one lie a live view can tell that an archive cannot."""
