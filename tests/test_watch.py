@@ -19,8 +19,10 @@ from pathlib import Path
 
 import pytest
 
-from trysquare import outputs, watch
+from trysquare import live, outputs, peek, watch
 from trysquare.measure import EMPTY, VALID, Run
+
+from tests.test_peek import fake_pi  # noqa: F401 - a fixture
 
 
 def matrix(tmp_path: Path, runs=(), state=None, live=None, synthesis=False) -> Path:
@@ -197,7 +199,7 @@ class TestTheServer:
         assert json.loads(body)["progress"]["planned"] == 2
 
     def test_a_url_never_becomes_a_path(self, served):
-        """Three routes, named one by one. Nothing joins a request onto the tree."""
+        """Routes named one by one. Nothing joins a request onto the tree."""
         url, directory = served
         (directory / "secret.txt").write_text("the prompt")
         for path in ("/secret.txt", "/state.json", "/../../etc/passwd", "/runs/a/diff.patch"):
@@ -217,6 +219,77 @@ class TestTheServer:
         get(f"{url}/")
         after = {p: p.stat().st_mtime_ns for p in directory.rglob("*") if p.is_file()}
         assert before == after
+
+
+class TestARunsSession:
+    """`/run/<id>` names a run, looked up in `live.json`. The session is wherever the
+    launch said that run writes, and nowhere a URL says."""
+
+    @pytest.fixture
+    def flying(self, tmp_path, fake_pi):  # noqa: F811
+        """A served matrix with one run in flight, and the session it is writing."""
+        session = tmp_path / "work" / "abc" / "session"
+        session.mkdir(parents=True)
+        (session / "s.jsonl").write_bytes(b'{"type":"session"}\n')
+        run = {"cell": "a", "repetition": 0, "state": live.RUNNING, "session": str(session)}
+        header = {"seen": time.time(), "finished": None, "image": "", "runs": {"abc": run}}
+        directory = matrix(tmp_path, state=ledger(a=["missing"]), live=header)
+        httpd = watch.server(directory, 0)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            yield f"http://127.0.0.1:{httpd.server_address[1]}", directory, session
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_a_run_in_flight_shows_its_session(self, flying):
+        url, _, _ = flying
+        status, page = get(f"{url}/run/abc")
+        assert (status, b"1 lines" in page) == (200, True)
+
+    def test_its_page_asks_whether_the_session_moved(self, flying):
+        url, _, session = flying
+        _, body = get(f"{url}/run/abc/state")
+        assert json.loads(body) == {"running": True, "stamp": peek.stamp(session / "s.jsonl")}
+
+    def test_a_run_that_ended_says_so(self, flying):
+        url, directory, _ = flying
+        outputs.write_json(directory / outputs.LIVE, {"seen": time.time(), "runs": {}})
+        _, body = get(f"{url}/run/abc/state")
+        assert json.loads(body)["running"] is False
+        with pytest.raises(urllib.error.HTTPError) as e:
+            get(f"{url}/run/abc")
+        assert (e.value.code, b"Not in flight" in e.value.read()) == (404, True)
+
+    def test_a_run_drawn_here_keeps_its_last_state_when_it_ends(self, flying):
+        """Its final message lands just before it leaves `live.json`, so the page that
+        was following it reloads once more, and stops."""
+        url, directory, session = flying
+        get(f"{url}/run/abc")
+        with (session / "s.jsonl").open("ab") as f:
+            f.write(b'{"type":"message"}\n')
+        outputs.write_json(directory / outputs.LIVE, {"seen": time.time(), "runs": {}})
+        status, page = get(f"{url}/run/abc")
+        assert (status, b"2 lines" in page, b"ended = true" in page) == (200, True, True)
+
+    @pytest.mark.parametrize(
+        "path", ["/run/nope", "/run/..%2Fstate.json", "/run/abc/s.jsonl", "/run/abc/state/x"]
+    )
+    def test_nothing_but_a_run_id_is_looked_up(self, flying, path):
+        url, _, _ = flying
+        with pytest.raises(urllib.error.HTTPError) as e:
+            get(url + path)
+        assert e.value.code == 404
+        assert b'"runs"' not in e.value.read()
+
+    def test_watching_a_session_writes_nothing_into_it_or_the_matrix(self, flying):
+        url, directory, session = flying
+        files = [*directory.rglob("*"), *session.rglob("*")]
+        before = {p: p.stat().st_mtime_ns for p in files}
+        get(f"{url}/run/abc")
+        get(f"{url}/run/abc/state")
+        assert {p: p.stat().st_mtime_ns for p in files} == before
+        assert sorted(session.iterdir()) == [session / "s.jsonl"]
 
 
 class TestTheCommand:

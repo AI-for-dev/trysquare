@@ -76,7 +76,7 @@ an installed environment, which is what the tests use.
 | `compare` | compares two experiments side by side, refusing what is not comparable |
 | `parity` | checks this harness against the previous bench, layer by layer |
 | `form` | generates or ingests a blind manual scoring form |
-| `watch` | follows a running matrix in a browser, on the loopback interface, writing nothing |
+| `watch` | follows a running matrix, and each run's session as the agent writes it, in a browser on the loopback interface, writing nothing |
 
 `--output <dir>` roots everything that writes. One directory per experiment:
 
@@ -318,6 +318,7 @@ trysquare/
   pages.py      the synthesis as a self-contained page                   |
   live.py       what a matrix is doing, while it does it                 |
   watch.py      that, read back and served on 127.0.0.1                  |
+  peek.py       a run's session, drawn while the agent writes it         |
   progress.py   a pinned bar for the loops that take hours               |
   cli.py        argparse, overrides, reporting                          /
 
