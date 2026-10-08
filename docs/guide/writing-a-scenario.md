@@ -303,7 +303,9 @@ clone, `runs/<timestamp>/`: its `usage.json` total goes into the run's usage, an
 answer, ending `ok · runs/...` or `failed at ...`, becomes the response. A flow that
 failed still spent tokens and still answered, so it is measured like any other run. combo
 counts a turn as one prompt to a subagent, which is coarser than a session's turns.
-`measures.json` records each part under `usage_sources`.
+`measures.json` records each part under `usage_sources`. The main session stays empty,
+so the run's `session/` holds combo's own record instead: each run directory, copied to
+`session/runs/<timestamp>/` at the end of the run.
 
 While the flow runs, `trysquare watch` reads combo's `journal.jsonl` in the same
 directory. combo writes a visit there when it ends, so the page counts the tokens of
