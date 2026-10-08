@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/AI-for-dev/trysquare/compare/v0.9.0...v0.10.0) (2026-10-08)
+
+
+### Features
+
+* name each run's session and the runs' backend in live.json ([#136](https://github.com/AI-for-dev/trysquare/issues/136)) ([bdaec22](https://github.com/AI-for-dev/trysquare/commit/bdaec22d8b01db5b10d8480ffe8ec9dd532e168e))
+* name the subagents a combo /run is working on in watch ([#133](https://github.com/AI-for-dev/trysquare/issues/133)) ([a09c6d4](https://github.com/AI-for-dev/trysquare/commit/a09c6d4506375fab7c8c515bcd19c9e65ad1897e))
+* show a run's session live from the watch dashboard ([#137](https://github.com/AI-for-dev/trysquare/issues/137)) ([ee48eab](https://github.com/AI-for-dev/trysquare/commit/ee48eab62e91ec3b969f54f4e5883def0749f58e))
+
+
+### Bug Fixes
+
+* read an inline prompt with a slash as text, not as a path ([#135](https://github.com/AI-for-dev/trysquare/issues/135)) ([8021ce5](https://github.com/AI-for-dev/trysquare/commit/8021ce5046b96b0bb06c5166b8628b47fb5de932))
+* reset the ledger as soon as --overwrite relaunches a matrix ([#138](https://github.com/AI-for-dev/trysquare/issues/138)) ([b72d395](https://github.com/AI-for-dev/trysquare/commit/b72d39542aa37aa8ff853c7fb011d1e2977672e6))
+
 ## [0.9.0](https://github.com/AI-for-dev/trysquare/compare/v0.8.1...v0.9.0) (2026-10-08)
 
 
