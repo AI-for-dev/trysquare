@@ -352,7 +352,9 @@ of it against 30 KB of session, teaching nothing the per-message record does not
 A `/run` leaves the main session empty. What the flow did is in the directory combo wrote
 in the clone, so it is copied here at the end of the run, as combo left it:
 `journal.jsonl`, `usage.json`, and one transcript per subagent with combo's own page
-beside it. One directory per attempt, like the session files.
+beside it. One directory per attempt, like the session files. A flow cut short, by a
+timeout for instance, is archived too: it has no `usage.json`, and its journal is what
+says how far it got.
 
 (session-html)=
 ### `session/*.html`, on `render --html`

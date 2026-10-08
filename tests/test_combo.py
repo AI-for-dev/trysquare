@@ -10,6 +10,7 @@ Nothing here spends a token.
 
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -144,29 +145,38 @@ class TestAFlowIsArchived:
     """The flow's own record is its session: the main one stays empty under a `/run`."""
 
     @pytest.fixture
-    def archived(self, tmp_path, monkeypatch):
+    def launched(self, tmp_path, monkeypatch):
         """The run directory of a whole `trysquare run` driven by a fake `/run`."""
-        fake = tmp_path / "pi"
-        fake.write_text(
-            f"#!{sys.executable}\nimport sys\n"
-            'if "--version" in sys.argv:\n    sys.exit(print("0.0.0"))\n'
-            'open("a.js", "w").write("changed\\n")\n' + flow()[1]
-        )
-        fake.chmod(0o755)
-        monkeypatch.setattr(agent, "PI", str(fake))
-        validator = tmp_path / "v.py"
-        validator.write_text(TREE_DEPENDENT)
-        validator.chmod(0o755)
-        config = tmp_path / "trysquare.toml"
-        source = a_repo({"a.js": "one\n"})
-        config.write_text(f'[repos]\nmy-repo = "{source}"\n[defaults]\nworkdir = "{tmp_path}"\n')
-        (tmp_path / "s.toml").write_text(
-            SCENARIO_TOML.replace("repetitions = 2", "repetitions = 1")
-        )
-        argv = ["run", str(tmp_path / "s.toml"), "-o", str(tmp_path / "out")]
-        main([*argv, "--config", str(config), "--no-progress"])
-        (run,) = (tmp_path / "out").glob("*/runs/none/*")
-        return run
+
+        def launch(**fake_flow) -> Path:
+            fake = tmp_path / "pi"
+            fake.write_text(
+                f"#!{sys.executable}\nimport sys\n"
+                'if "--version" in sys.argv:\n    sys.exit(print("0.0.0"))\n'
+                'open("a.js", "w").write("changed\\n")\n' + flow(**fake_flow)[1]
+            )
+            fake.chmod(0o755)
+            monkeypatch.setattr(agent, "PI", str(fake))
+            validator = tmp_path / "v.py"
+            validator.write_text(TREE_DEPENDENT)
+            validator.chmod(0o755)
+            config = tmp_path / "trysquare.toml"
+            source = a_repo({"a.js": "one\n"})
+            config.write_text(
+                f'[repos]\nmy-repo = "{source}"\n[defaults]\nworkdir = "{tmp_path}"\n'
+            )
+            scenario = SCENARIO_TOML.replace("repetitions = 2", "repetitions = 1")
+            (tmp_path / "s.toml").write_text(scenario)
+            argv = ["run", str(tmp_path / "s.toml"), "-o", str(tmp_path / "out")]
+            main([*argv, "--config", str(config), "--no-progress"])
+            (run,) = (tmp_path / "out").glob("*/runs/none/*")
+            return run
+
+        return launch
+
+    @pytest.fixture
+    def archived(self, launched):
+        return launched()
 
     def test_the_flow_s_run_directory_is_archived_as_the_session(self, archived):
         flow_dir = archived / "session" / "runs" / "2026-10-07_19-21-16"
@@ -177,3 +187,10 @@ class TestAFlowIsArchived:
         assert sorted(p.name for p in (archived / "session" / "runs").iterdir()) == [
             "2026-10-07_19-21-16"
         ]
+
+    def test_a_flow_cut_before_combo_measured_it_is_archived_all_the_same(self, launched):
+        """A timeout leaves no `usage.json`, and the run fails: its journal is all that says why."""
+        archived = launched(usage=False)
+        flow_dir = archived / "session" / "runs" / "2026-10-07_19-21-16"
+        assert (flow_dir / "journal.jsonl").read_text() == '{"type":"life_start"}\n'
+        assert not (flow_dir / "usage.json").exists()

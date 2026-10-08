@@ -836,22 +836,23 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         run.isolation, run.image = plan.confinement.name, plan.confinement.image
         flows_before = combo.run_dirs(clone)
         run.agent_version = agent_mod.version(plan.confinement)
-        with watching(board, run_id, cell.name, meta["repetition"]) as watch:
-            outcome, tries = agent_mod.run_until_productive(
-                clone, args, timeout, attempts, trace, ceiling, watch, plan.confinement, scope
-            )
+        # Archived whatever ended the agent, and before the emptiness test: a run that
+        # produced nothing, or a flow cut before combo measured it, leaves its session as
+        # its only evidence, and it is exactly the run somebody will want to read. One
+        # file per attempt, so the count matches `run.attempts`.
+        try:
+            with watching(board, run_id, cell.name, meta["repetition"]) as watch:
+                outcome, tries = agent_mod.run_until_productive(
+                    clone, args, timeout, attempts, trace, ceiling, watch, plan.confinement, scope
+                )
+        finally:
+            plan.output.archive_sessions(run_id, session_dir)
+            plan.output.archive_flows(run_id, clone, combo.created(clone, flows_before))
 
         run.usage = outcome.usage
         run.usage_sources = outcome.sources
         run.duration = outcome.duration
         run.attempts = tries
-
-        # Archived before the emptiness test, and that ordering is the point. A run that
-        # produced nothing leaves the session as its only evidence, and it is exactly the
-        # run somebody will want to read. One file per attempt, so the count matches
-        # `run.attempts`.
-        plan.output.archive_sessions(run_id, session_dir)
-        plan.output.archive_flows(run_id, clone, combo.created(clone, flows_before))
 
         if not outcome.produced_something:
             run.state = EMPTY
