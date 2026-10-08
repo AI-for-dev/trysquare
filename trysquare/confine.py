@@ -473,7 +473,7 @@ class Docker:
         name = f"trysquare-{uuid.uuid4().hex[:12]}"
         with self._lock:
             self._live.add(name)
-        with _home(self._seed) as home:
+        with _home(self._seed, scope) as home:
             try:
                 yield self.argv(argv, scope, cwd, name, home, tty)
             finally:
@@ -574,7 +574,7 @@ class Bwrap:
 
     def run(self, argv: Sequence[str], scope: Scope, **kwargs) -> subprocess.CompletedProcess:
         _create(scope)
-        with _home(self._seed) as home:
+        with _home(self._seed, scope) as home:
             command = self.argv(argv, scope, kwargs.pop("cwd", None), home)
             return interrupt.run(command, env=self.environment(), **kwargs)
 
@@ -582,7 +582,7 @@ class Bwrap:
         """As `Docker.attach`. `--new-session` stays: the agent draws in this terminal but
         cannot type into it."""
         _create(scope)
-        with _home(self._seed) as home:
+        with _home(self._seed, scope) as home:
             command = self.argv(argv, scope, cwd, home)
             return subprocess.run(command, env=self.environment(*TERMINAL)).returncode
 
@@ -615,18 +615,33 @@ def _create(scope: Scope) -> None:
 
 
 @contextmanager
-def _home(files: dict[str, dict]) -> Iterator[Path]:
+def _home(files: dict[str, dict], scope: Scope) -> Iterator[Path]:
     """A home for one container, owned by the operator, holding what `seed` decided.
 
     A directory of the operator's rather than files mounted into the image: docker creates
     the directories above a mounted file as root, and `pi` then cannot write its own.
+
+    Its `.gitconfig` marks what the run may write as safe for git. Docker Desktop shows a
+    bind mount as owned by another uid than the container's, and git then refuses the
+    clone as of "dubious ownership": every `git` the agent runs fails, and so does the
+    `git diff` combo builds a node's `diff` read with.
     """
     with tempfile.TemporaryDirectory(prefix="trysquare-home-") as home:
         agent_dir = Path(home) / ".pi" / "agent"
         agent_dir.mkdir(parents=True)
         for name, content in files.items():
             (agent_dir / name).write_text(json.dumps(content, indent=2))
+        (Path(home) / ".gitconfig").write_text(gitconfig(scope.writable))
         yield Path(home)
+
+
+def gitconfig(safe: Sequence[Path]) -> str:
+    """A `.gitconfig` trusting each of `safe`, by its exact path rather than `*`.
+
+    Quoted and escaped, since git reads `#` or `;` in a bare value as a comment.
+    """
+    quoted = (str(path).replace("\\", "\\\\").replace('"', '\\"') for path in safe)
+    return "[safe]\n" + "".join(f'\tdirectory = "{path}"\n' for path in quoted)
 
 
 def _docker(*args: str) -> subprocess.CompletedProcess:

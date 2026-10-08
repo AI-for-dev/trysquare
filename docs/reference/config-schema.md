@@ -162,6 +162,11 @@ That home holds what `pi` needs from your `~/.pi/agent` and nothing more:
   provider's was. See below.
 - `settings.json` with `defaultThinkingLevel` only, the level a subagent thinks at. The
   rest of your settings would be inherited from the machine, which no scenario says.
+- `.gitconfig` marking the clone, and anything else the run may write, as a git
+  `safe.directory`, each by its exact path. git runs in the clone inside the container:
+  the agent's own commands, and the `git diff` a combo flow builds its `diff` read with.
+  Docker Desktop shows a bind mount as owned by another uid than the container's, and
+  git would otherwise refuse the clone as of "dubious ownership".
 - never `auth.json`, the tokens of `/login`.
 
 `models` names another file to take the providers from, relative to this config:

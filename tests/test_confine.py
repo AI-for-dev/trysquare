@@ -628,6 +628,26 @@ class TestInsideDocker:
         assert agent.unrunnable(backend, IMAGE) == f"'pi' does not run in image '{IMAGE}'"
 
 
+class TestTheGitConfig:
+    def test_git_reads_back_every_path_it_trusts(self, tmp_path):
+        paths = [tmp_path / "repo", tmp_path / 'a #b; "c" \\d']
+        (tmp_path / ".gitconfig").write_text(confine.gitconfig(paths))
+        read = subprocess.run(
+            [
+                "git",
+                "config",
+                "--file",
+                str(tmp_path / ".gitconfig"),
+                "--get-all",
+                "safe.directory",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert read.stdout.splitlines() == [str(path) for path in paths]
+
+
 class TestTheBwrapCommand:
     """What `bwrap` is asked, which needs no sandbox to check."""
 
@@ -766,6 +786,43 @@ class TestInsideTheShippedImage:
         page = agent.export_html(session, session.parent, backend)
         assert page.read_text().startswith("<!DOCTYPE html>")
         assert page.stat().st_uid == os.getuid()
+
+    @pytest.fixture
+    def foreign_clone(self):
+        """A clone owned by a uid the container does not run as, yet open to it, the way
+        Docker Desktop shows a bind mount on macOS. Handed over, and back, by root."""
+        clone = gitrepo.a_repo({"a.txt": "a\n"})
+
+        def own(uid: str) -> None:
+            subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-v",
+                    f"{clone}:{clone}",
+                    AGENT_IMAGE,
+                    "sh",
+                    "-c",
+                    f"chmod -R a+rwX {clone} && chown -R {uid} {clone}",
+                ],
+                check=True,
+            )
+
+        own("4242:4242")
+        yield clone
+        own(f"{os.getuid()}:{os.getgid()}")
+
+    def test_git_works_in_a_clone_it_does_not_own(self, backend, foreign_clone):
+        """combo builds a node's `diff` read with `git diff`: refused, every review is lost."""
+        done = backend.run(
+            ["git", "status", "--short"],
+            confine.Scope(writable=(foreign_clone,)),
+            cwd=foreign_clone,
+            capture_output=True,
+            text=True,
+        )
+        assert done.returncode == 0, done.stderr
 
 
 class KeyStaysOut:
