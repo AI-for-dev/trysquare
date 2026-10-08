@@ -246,6 +246,26 @@ def retry_warning(by_cell: dict[str, list[Run]]) -> str:
     )
 
 
+def unavailable_warning(by_cell: dict[str, list[Run]]) -> str:
+    """A note when a combo flow did not run every node it declares.
+
+    combo fails a node whose reads it cannot build, a `diff` git refused for one, before
+    its agent is spawned, and `on-fail: continue` carries the flow on. The run is measured
+    all the same, as the flow its cell names, while its reviews never ran.
+    """
+    lost = [r for runs in by_cell.values() for r in runs if r.unavailable]
+    if not lost:
+        return ""
+    affected = sorted({r.cell for r in lost})
+    return (
+        f"\n:warning: **Some combo flows did not run every node.** {counted(len(lost), 'run')}, "
+        f"in {', '.join(affected)}. combo could not run a node there, so its agent was "
+        f"never spawned and the flow went on without it: these cells measured less than "
+        f"the flow they declare. The first: `` {lost[0].unavailable[0]} ``. Each run lists its "
+        f"nodes under `unavailable` in `measures.json`.\n"
+    )
+
+
 def spend_measures() -> tuple[Measure, ...]:
     """The columns of the cost table: what a run cost, as a level rather than a gap.
 

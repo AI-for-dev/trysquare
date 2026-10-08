@@ -43,6 +43,9 @@ TOTAL = ("input", "output", "cacheRead", "cost", "turns")
 #: The custom message `/run` leaves its answer in, ending `ok · runs/<ts>` or `failed at ...`.
 ANSWER = "pipeline-result"
 
+#: The error kind of a node combo could not run: its reads unbuilt, its agent never spawned.
+UNAVAILABLE = "unavailable"
+
 #: Why a `/run` that consumed nothing is empty: combo refuses one without a word in print mode.
 REFUSED = "no combo run directory was created, so combo refused the /run (silently, in print mode)"
 
@@ -119,6 +122,23 @@ def journal(directory: Path) -> list[dict]:
         if isinstance(entry, dict):
             entries.append(entry)
     return entries
+
+
+def unavailable(clone: Path, before: set[str]) -> list[str]:
+    """The nodes of the combo runs created since `before` that combo could not run.
+
+    Each as `path: why`, the first line of combo's message. Such a node fails before its
+    agent is spawned, and an `on-fail: continue` carries the flow on: the run completes
+    and is measured as the flow it declares, while its reviews never ran.
+    """
+    found = []
+    for name in created(clone, before):
+        for entry in journal(clone / name):
+            error = entry.get("error") or {}
+            if entry.get("type") == "visit_end" and error.get("kind") == UNAVAILABLE:
+                why = str(error.get("message", "")).splitlines()
+                found.append(f"{entry.get('path')}: {why[0] if why else ''}")
+    return found
 
 
 def working(entries: list[dict]) -> list[dict]:

@@ -207,6 +207,14 @@ run, keyed by its directory in the clone (`runs/2026-10-07_19-27-26`). That dire
 archived under the run's `session/` at the same path. See
 [Run a combo flow](../guide/writing-a-scenario.md#run-a-combo-flow).
 
+`unavailable` lists the nodes of that flow combo could not run, as `path: why`, with the
+first line of combo's message, such as
+`` fix#1/review: `diff`: fatal: detected dubious ownership in repository at '...' ``.
+Such a node ends before its agent is spawned, and `on-fail: continue` carries the flow
+on, so the run is still measured. The synthesis warns about it and names the cells, and
+the line `run` prints for the run starts with `!!`. The list is empty for a run that is
+not a flow, and in archives that predate it.
+
 Persisting **per-run** values rather than aggregates is what makes `render` possible.
 Keeping only medians would make a matrix permanently unusable for a verdict, and a
 matrix costs hours.

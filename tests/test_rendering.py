@@ -6,6 +6,8 @@ produce an explanation rather than a traceback - the measures are safe on disk a
 nothing needs remeasuring.
 """
 
+from dataclasses import replace
+
 import pytest
 
 from tests.gitrepo import a_repo
@@ -22,6 +24,7 @@ from trysquare.table import (
     gap_table,
     retry_warning,
     score_rows,
+    unavailable_warning,
     score_table,
     scored_metrics,
     spend_measures,
@@ -96,6 +99,28 @@ class TestValidityMismatch:
         with pytest.raises(ValueError) as e:
             gap_rows(self.cells(), "ghost", self.measures())
         assert "ghost" in str(e.value)
+
+
+class TestUnavailableWarning:
+    """A flow whose reviews never ran must not read as the flow its cell declares."""
+
+    LOST = "fix#1/review: `diff`: fatal: detected dubious ownership in repository at '/x'"
+
+    def lost(self, cell: str) -> Run:
+        return replace(run(cell), unavailable=[self.LOST])
+
+    def test_no_node_lost_means_no_warning(self):
+        assert unavailable_warning({"a": [run("a")]}) == ""
+
+    def test_it_counts_the_runs_names_the_cells_and_quotes_why(self):
+        text = unavailable_warning({"a": [self.lost("a"), self.lost("a")], "b": [run("b")]})
+        assert "2 runs" in text
+        assert "in a." in text
+        assert self.LOST in text
+
+    def test_a_clean_cell_is_not_blamed(self):
+        text = unavailable_warning({"clean": [run("clean")], "noisy": [self.lost("noisy")]})
+        assert "clean" not in text
 
 
 class TestRetryWarning:

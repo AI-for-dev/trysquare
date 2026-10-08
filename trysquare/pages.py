@@ -54,7 +54,9 @@ code { font-family: ui-monospace, monospace; background: #efefef;
 }
 """
 
-CODE = re.compile(r"`([^`]+)`")
+#: A code span: between single backticks, or between double ones with a space inside each,
+#: which is how a span holding a backtick is written.
+CODE = re.compile(r"`` (.+?) ``|`([^`]+)`")
 BOLD = re.compile(r"\*\*([^*]+)\*\*")
 
 
@@ -62,7 +64,7 @@ def _inline(text: str) -> str:
     """Escapes first, then the two spans the synthesis actually uses."""
     escaped = html.escape(text, quote=False)
     escaped = BOLD.sub(r"<strong>\1</strong>", escaped)
-    return CODE.sub(r"<code>\1</code>", escaped)
+    return CODE.sub(lambda m: f"<code>{m.group(1) or m.group(2)}</code>", escaped)
 
 
 def _row(line: str) -> list[str]:
