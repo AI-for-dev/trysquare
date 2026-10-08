@@ -8,6 +8,9 @@ nothing needs remeasuring.
 
 import pytest
 
+from tests.gitrepo import a_repo
+from tests.spy import launch
+from tests.test_cli import SCENARIO_TOML
 from trysquare.measure import VALID, VALIDATOR_FAILED, Run
 from trysquare.table import (
     COST_MEASURES,
@@ -337,3 +340,11 @@ class TestGapTable:
     def test_a_publishable_gap_carries_its_p(self):
         text = gap_table(self.rows(), "nothing", 10_000, 1)
         assert "interval [+796, +804], p=0.002" in text
+
+
+class TestSynthesisHeader:
+    def test_one_repetition_is_counted_in_the_singular(self, tmp_path, monkeypatch):
+        scenario = SCENARIO_TOML.replace("repetitions = 2", "repetitions = 1")
+        launch(tmp_path, monkeypatch, a_repo({"a.js": "one\n"}), scenario)
+        (synthesis,) = (tmp_path / "out").glob("*/synthesis.md")
+        assert "- 1 repetition, concurrency 1" in synthesis.read_text()

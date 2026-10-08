@@ -51,6 +51,7 @@ import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from . import combo
 from .measure import EMPTY, VALIDATOR_FAILED, Run, counted
 
 STATE = "state.json"
@@ -878,6 +879,11 @@ class Output:
         """A run's archived sessions, in order. Empty when none were archived."""
         directory = self.location(run_id_) / SESSION
         return sorted(directory.glob("*.jsonl")) if directory.is_dir() else []
+
+    def flows(self, run_id_: str) -> list[Path]:
+        """A run's archived combo run directories, one per attempt, oldest first."""
+        directory = self.location(run_id_) / SESSION / combo.RUNS
+        return sorted(p for p in directory.iterdir() if p.is_dir()) if directory.is_dir() else []
 
     def write_synthesis(self, text: str, suffix: str = "") -> Path:
         name = f"synthesis{suffix}.md" if suffix else SYNTHESIS

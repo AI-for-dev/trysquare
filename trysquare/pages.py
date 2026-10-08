@@ -124,12 +124,12 @@ def _blocks(markdown: str) -> list[str]:
 
 
 def synthesis_page(
-    markdown: str, sessions: list[tuple[str, str, str, list[str]]] | None = None
+    markdown: str, sessions: list[tuple[str, str, str, list[tuple[str, str]]]] | None = None
 ) -> str:
     """The whole page, from the synthesis text and the session pages that exist.
 
-    `sessions` is `(label, run id, directory, page names)` per run, **in the order to
-    print them**. Ordering, labelling and where a run's directory is belong to the
+    `sessions` is `(label, run id, directory, pages)` per run, **in the order to print
+    them**, each page a `(label, path under session/)`. Ordering, labelling and where a run's directory is belong to the
     caller, which is the only side holding the runs; this renders what it is given.
 
     Every other section of a synthesis is organised by cell. This one used to be keyed by
@@ -139,9 +139,9 @@ def synthesis_page(
     Links are relative, so the page works wherever the experiment directory is
     copied - which is the only place it is ever meant to be read from.
 
-    A page is linked as `attempt 1`, `attempt 2`, since one file is archived per attempt.
-    The file name is a timestamp and a UUID, which identifies a session and tells a reader
-    nothing; it stays in `title` for whoever needs to find the file.
+    An agent's page is labelled `attempt 1`, `attempt 2`, since one file is archived per
+    attempt. The file name is a timestamp and a UUID, which identifies a session and tells
+    a reader nothing; it stays in `title` for whoever needs to find the file.
     """
     body = _blocks(markdown)
 
@@ -149,19 +149,20 @@ def synthesis_page(
         items = [
             f"<li>{html.escape(label)} <code>{html.escape(run_id)}</code>: "
             + " ".join(
-                f'<a href="{html.escape(directory)}/session/{html.escape(name)}"'
-                f' title="{html.escape(name)}">attempt {i}</a>'
-                for i, name in enumerate(names, 1)
+                f'<a href="{html.escape(directory)}/session/{html.escape(path)}"'
+                f' title="{html.escape(path)}">{html.escape(name)}</a>'
+                for name, path in pages
             )
             + "</li>"
-            for label, run_id, directory, names in sessions
+            for label, run_id, directory, pages in sessions
         ]
         # `h3`, the level the synthesis heads its own sections with. As an `h2` this
         # appended section outranked every section the synthesis actually wrote.
         body.append("<h3>Sessions</h3>")
         body.append(
             "<p>The agent's own trace, one page per attempt, rendered by "
-            "<code>render --html</code>.</p>"
+            "<code>render --html</code>. A combo flow has one page per subagent, "
+            "written by combo.</p>"
         )
         body.append("<ul>" + "".join(items) + "</ul>")
 

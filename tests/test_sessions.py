@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from trysquare import agent, outputs
-from trysquare.cli import main
+from trysquare.cli import main, session_links
 from trysquare.measure import VALID, Run
 from trysquare.scenario import load, parse
 
@@ -84,6 +84,22 @@ def measured(tmp_path):
         return directory
 
     return make
+
+
+FLOW = "runs/2026-10-08_04-35-14"
+
+
+def archive_a_flow(o: outputs.Output, run_id: str, tmp_path: Path, pages: bool = True) -> None:
+    """A combo run directory, archived as a `/run` leaves it: no session of pi's own.
+
+    Without `pages`, it is a flow cut before any subagent finished: a journal alone.
+    """
+    clone = tmp_path / "clone"
+    names = ("fix/fixer.jsonl", "fix/fixer.html", "review/reviewer.html") if pages else ()
+    for name in ("journal.jsonl", *names):
+        (clone / FLOW / name).parent.mkdir(parents=True, exist_ok=True)
+        (clone / FLOW / name).write_text("{}\n")
+    o.archive_flows(run_id, clone, [FLOW])
 
 
 def rendered(capsys, argv) -> tuple[int, str]:
@@ -221,6 +237,48 @@ class TestRenderHtml:
         assert "0 session pages written" in text
         assert "2 of 2 runs without an archived session" in text
 
+    def test_a_flow_run_is_not_reported_without_a_session(
+        self, measured, capsys, monkeypatch, tmp_path
+    ):
+        """combo already wrote one page per subagent: a flow run has nothing to export."""
+        directory = measured("aaaa1111", "bbbb2222")
+        archive_a_flow(
+            outputs.Output(directory, load(SCENARIO), repetitions=1), "aaaa1111", tmp_path
+        )
+        monkeypatch.setattr(agent, "unrunnable", lambda *_: None)
+        code, text = rendered(
+            capsys,
+            ["render", SCENARIO, "-o", str(directory), "--repetitions", "1", "--html"],
+        )
+        assert code == 0
+        assert "1 of 2 runs without an archived session" in text
+        assert "1 combo flow run, whose subagent pages combo wrote itself" in text
+
+    def test_a_flow_cut_before_any_subagent_page_does_not_claim_one(
+        self, measured, capsys, monkeypatch, tmp_path
+    ):
+        """Its journal is all there is: saying combo wrote its pages would send a reader
+        looking for files that do not exist."""
+        directory = measured("aaaa1111")
+        archive_a_flow(
+            outputs.Output(directory, load(SCENARIO), repetitions=1),
+            "aaaa1111",
+            tmp_path,
+            pages=False,
+        )
+        monkeypatch.setattr(agent, "unrunnable", lambda *_: None)
+        code, text = rendered(
+            capsys,
+            ["render", SCENARIO, "-o", str(directory), "--repetitions", "1", "--html"],
+        )
+        assert code == 0
+        assert "pages combo wrote" not in text
+        assert "without an archived session" not in text
+        assert (
+            "1 combo flow run with no subagent page, to read from its journal under session/runs/"
+            in text
+        )
+
     @needs_the_agent
     def test_each_archived_session_becomes_a_page_in_its_run_directory(
         self, measured, session_dir, capsys
@@ -296,3 +354,24 @@ class TestRenderHtml:
         )
         assert code == 0
         assert "session pages" not in text
+
+
+class TestSessionLinks:
+    def test_a_flow_links_each_subagent_page_combo_wrote(self, measured, tmp_path):
+        directory = measured("aaaa1111")
+        o = outputs.Output(directory, load(SCENARIO), repetitions=1)
+        archive_a_flow(o, "aaaa1111", tmp_path)
+        ((_, _, _, pages),) = session_links(o, o.read_measures())
+        assert pages == [
+            ("fix/fixer, attempt 1", f"{FLOW}/fix/fixer.html"),
+            ("review/reviewer, attempt 1", f"{FLOW}/review/reviewer.html"),
+        ]
+
+    def test_a_session_page_is_linked_by_its_attempt(self, measured, session_dir):
+        directory = measured("aaaa1111")
+        o = outputs.Output(directory, load(SCENARIO), repetitions=1)
+        o.archive_sessions("aaaa1111", session_dir("one.jsonl", "two.jsonl"))
+        for page in o.sessions("aaaa1111"):
+            page.with_suffix(".html").write_text("<!doctype html>")
+        ((_, _, _, pages),) = session_links(o, o.read_measures())
+        assert pages == [("attempt 1", "one.html"), ("attempt 2", "two.html")]
