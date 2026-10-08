@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/AI-for-dev/trysquare/compare/v0.10.1...v0.11.0) (2026-10-08)
+
+
+### Features
+
+* say when a combo flow did not run every node it declares ([#145](https://github.com/AI-for-dev/trysquare/issues/145)) ([49388e4](https://github.com/AI-for-dev/trysquare/commit/49388e44617137079cfb26548adcef188cb2eeae))
+
+
+### Bug Fixes
+
+* mark the run's clone as a safe git directory in the sandbox home ([#144](https://github.com/AI-for-dev/trysquare/issues/144)) ([b8fef46](https://github.com/AI-for-dev/trysquare/commit/b8fef4657f7f3416d7698edc8d1a6b2ce9d9106d))
+
 ## [0.10.1](https://github.com/AI-for-dev/trysquare/compare/v0.10.0...v0.10.1) (2026-10-08)
 
 
