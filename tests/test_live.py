@@ -270,6 +270,7 @@ class TestAComboFlowIsFollowed:
             "agent": "coder",
             "path": "fix#1/code",
             "running": [],
+            "directories": [str(tmp_path / "runs" / "2026-10-07_19-21-16")],
         }
         assert entry["model_id"] == "prov/m"
 

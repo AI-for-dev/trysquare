@@ -194,3 +194,51 @@ class TestAFlowIsArchived:
         flow_dir = archived / "session" / "runs" / "2026-10-07_19-21-16"
         assert (flow_dir / "journal.jsonl").read_text() == '{"type":"life_start"}\n'
         assert not (flow_dir / "usage.json").exists()
+
+
+class TestASubagentIsNamed:
+    """combo names a subagent's session by when it started and its id. The transcript that
+    names its agent is only written once the subagent closes."""
+
+    @staticmethod
+    def started(directory: Path, at: str, sid: str) -> None:
+        sessions = directory / combo.SESSIONS
+        sessions.mkdir(parents=True, exist_ok=True)
+        (sessions / f"2026-10-08T06-26-{at}Z_{sid}.jsonl").write_text('{"type":"session"}\n')
+
+    @staticmethod
+    def journaled(directory: Path, *entries: dict) -> None:
+        lines = [{"type": "life_start"}, *entries]
+        (directory / "journal.jsonl").write_text("".join(json.dumps(e) + "\n" for e in lines))
+
+    def test_a_closed_subagent_by_its_transcript_and_a_working_one_by_its_visit(self, tmp_path):
+        self.started(tmp_path, "27-000", "a1")
+        self.started(tmp_path, "35-000", "b2")
+        (tmp_path / "look[1]" / "find").mkdir(parents=True)
+        (tmp_path / "look[1]" / "find" / "scout.jsonl").write_text('{"id":"a1"}\n')
+        self.journaled(
+            tmp_path,
+            {"type": "visit_start", "path": "look[1]/find", "kind": "agent", "agent": "scout"},
+            {"type": "visit_end", "path": "look[1]/find", "kind": "agent"},
+            {"type": "visit_start", "path": "fix", "kind": "agent", "agent": "fixer"},
+        )
+        found = [
+            {k: s[k] for k in ("id", "agent", "path", "running")} for s in combo.subagents(tmp_path)
+        ]
+        assert found == [
+            {"id": "a1", "agent": "scout", "path": "look[1]/find", "running": False},
+            {"id": "b2", "agent": "fixer", "path": "fix", "running": True},
+        ]
+
+    def test_one_no_visit_names_goes_by_its_id(self, tmp_path):
+        """A delegated child: a session of its own, and no visit of its own."""
+        self.started(tmp_path, "27-000", "a1")
+        self.started(tmp_path, "28-000", "c3")
+        self.journaled(
+            tmp_path, {"type": "visit_start", "path": "fix", "kind": "agent", "agent": "fixer"}
+        )
+        child = combo.subagents(tmp_path)[1]
+        assert (child["id"], child["agent"], child["path"]) == ("c3", None, None)
+
+    def test_a_directory_without_sessions_has_no_subagent(self, tmp_path):
+        assert combo.subagents(tmp_path / "missing") == []

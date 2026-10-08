@@ -312,7 +312,9 @@ so the run's `session/` holds combo's own record instead: each run directory, co
 While the flow runs, `trysquare watch` reads combo's `journal.jsonl` in the same
 directory. combo writes each visit there when it starts and when it ends, so the page
 names the subagents working now and counts the tokens of finished visits. combo before
-v0.4.0 writes only the end, and the page then names the last subagent to finish.
+v0.4.0 writes only the end, and the page then names the last subagent to finish. The
+cell name opens the list of the flow's subagents, each linked to the session combo writes
+for it in `.sessions/`.
 
 ## Declare the validation
 

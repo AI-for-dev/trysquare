@@ -11,6 +11,11 @@ halfway through writing one: rendering it in place would write into the middle o
 next message of a run being measured. So the complete lines are copied out and `pi`
 renders the copy, in a directory of this process's own.
 
+**A combo flow is shown by its subagents.** A `/run` adds no message to the run's own
+session, so pi never writes it: the run's page lists the sessions combo writes for the
+subagents in the clone, each drawn like a session, then their archived copies once the
+run ended. A subagent is one the flow holds, picked by its id, never a path.
+
 **Rendered by the agent that writes it**, through the backend and the image the launch
 wrote in `live.json`'s header: what ran, whatever the config says now.
 
@@ -26,8 +31,9 @@ import re
 import tempfile
 import threading
 from pathlib import Path
+from urllib.parse import quote
 
-from . import agent
+from . import agent, combo
 from .live import RUNNING
 
 #: Renders running at once. Each starts a `pi`, a container under docker.
@@ -85,56 +91,107 @@ class Sessions:
     """The pages of the sessions in flight, rendered when they change and kept until then.
 
     One per server. A backend is built from what a launch's header says it ran on, and
-    prepared once, on the first render that needs it.
+    prepared once, on the first render that needs it. `archive(run_id)` is the directory
+    an ended run's sessions were archived in, or None.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, archive=lambda run_id: None) -> None:
+        self._archive = archive
         self._backends: dict[str, object] = {}
-        self._pages: dict[str, tuple[tuple, bytes]] = {}
-        self._dirs: dict[str, str] = {}
-        self._locks: dict[str, threading.Lock] = {}
+        self._pages: dict[tuple, tuple[tuple, bytes]] = {}
+        self._entries: dict[str, dict] = {}
+        self._locks: dict[tuple, threading.Lock] = {}
         self._lock = threading.Lock()
         self._slots = threading.BoundedSemaphore(EXPORTS)
 
-    def page(self, run_id: str, entry: dict, live: dict) -> bytes:
-        """What `/run/<id>` shows of a run in flight: its session, or why not yet. `live`
-        is the `live.json` it is in flight in."""
+    def page(self, run_id: str, entry: dict, live: dict, subagent: str | None = None):
+        """What `/run/<id>` shows of a run in flight, or `/run/<id>/<subagent>` of one of
+        its flow's subagents: a session, or why not yet. None for a subagent the flow does
+        not hold. `live` is the `live.json` it is in flight in."""
         with self._lock:
-            self._dirs[run_id] = entry["session"]
-        return self._draw(run_id, entry["session"], live, ended=False)
+            self._entries[run_id] = entry
+        return self._show(run_id, subagent, entry, live, ended=False)
 
-    def last(self, run_id: str, live: dict | None) -> bytes | None:
+    def last(self, run_id: str, live: dict | None, subagent: str | None = None):
         """The last state of a run drawn here that has since ended, or None for one that
         never was. Its final message lands just before it leaves `live.json`, so a page
         that stopped at its last look would miss the one most worth reading."""
-        directory = self._dirs.get(run_id)
-        return self._draw(run_id, directory, live or {}, ended=True) if directory else None
+        entry = self._entries.get(run_id)
+        return self._show(run_id, subagent, entry, live or {}, ended=True) if entry else None
+
+    def state(self, run_id: str, entry: dict, subagent: str | None = None) -> str | None:
+        """What changes when the page of a run in flight does."""
+        try:
+            target = self._target(run_id, subagent, entry, ended=False)
+        except KeyError:
+            return None
+        return listed(target) if isinstance(target, list) else stamp(target)
 
     def forget(self, keep) -> None:
         """Drops the pages kept for runs no longer in flight."""
         with self._lock:
-            for run_id in set(self._pages) - set(keep):
-                self._pages.pop(run_id, None)
-                self._locks.pop(run_id, None)
+            for at in [at for at in self._pages if at[0] not in keep]:
+                self._pages.pop(at, None)
+                self._locks.pop(at, None)
 
-    def _draw(self, run_id: str, directory: str, live: dict, ended: bool) -> bytes:
-        session = latest(directory)
+    def _target(self, run_id: str, subagent: str | None, entry: dict, ended: bool):
+        """What a page draws: a subagent's session, the run's own, or while the run has
+        none, its flow's subagents. KeyError for a subagent the flow does not hold."""
+        found = self._subagents(run_id, entry, ended)
+        if subagent is not None:
+            return {s["id"]: s["session"] for s in found}[subagent]
+        session = latest(entry["session"])
+        return found if session is None and found else session
+
+    def _subagents(self, run_id: str, entry: dict, ended: bool) -> list[dict]:
+        """The subagents of the run's flow, from the clone, or once the run ended, from
+        the copy archived under the same name."""
+        directories = [Path(d) for d in (entry.get("combo") or {}).get("directories") or ()]
+        if ended:
+            archive = self._archive(run_id)
+            directories = [archive / combo.RUNS / d.name for d in directories] if archive else []
+        return [s for directory in directories for s in combo.subagents(directory)]
+
+    def _show(self, run_id: str, subagent: str | None, entry: dict, live: dict, ended: bool):
+        try:
+            target = self._target(run_id, subagent, entry, ended)
+        except KeyError:
+            return None
+        if isinstance(target, list):
+            return status(
+                *FLOW,
+                refresh=(address(run_id), listed(target), ended),
+                items=[
+                    (
+                        address(run_id, s["id"]),
+                        s["agent"] or "subagent",
+                        s["path"] or s["id"][:8],
+                        s["running"] and not ended,
+                    )
+                    for s in target
+                ],
+            )
+        return self._draw((run_id, subagent), target, live, ended)
+
+    def _draw(self, at: tuple, session: Path | None, live: dict, ended: bool) -> bytes:
+        """`session` drawn for the page `at`, (run id, subagent), or why it cannot be."""
         current = stamp(session)
+        refresh = (address(*at), current, ended, at[1] is not None)
         if current is None:
             said = NO_SESSION if ended else WAITING
-            return status(*said, refresh=(run_id, None, ended))
-        with self._lock_for(run_id):
-            kept = self._pages.get(run_id)
+            return status(*said, refresh=refresh)
+        with self._lock_for(at):
+            kept = self._pages.get(at)
             if kept and kept[0] == (current, ended):
                 return kept[1]
             with self._slots:
-                body = self._render(session, live, (run_id, current, ended))
-            self._pages[run_id] = ((current, ended), body)
+                body = self._render(session, live, refresh)
+            self._pages[at] = ((current, ended), body)
         return body
 
-    def _lock_for(self, run_id: str) -> threading.Lock:
+    def _lock_for(self, at: tuple) -> threading.Lock:
         with self._lock:
-            return self._locks.setdefault(run_id, threading.Lock())
+            return self._locks.setdefault(at, threading.Lock())
 
     def _backend(self, live: dict):
         """The backend the launch ran on. A header from before it said so ran on this
@@ -148,7 +205,7 @@ class Sessions:
                 self._backends[key] = confinement
             return self._backends[key]
 
-    def _render(self, session: Path, live: dict, at: tuple) -> bytes:
+    def _render(self, session: Path, live: dict, refresh: tuple) -> bytes:
         """The exported page with the refresher in it, or a page saying why there is none.
 
         A failure is kept like a page, under the same stamp, so a session `pi` cannot
@@ -158,17 +215,27 @@ class Sessions:
             with tempfile.TemporaryDirectory(prefix="trysquare-peek-") as tmp:
                 copy = snapshot(session, Path(tmp))
                 if copy is None:
-                    return status(*WAITING, refresh=at)
+                    return status(*WAITING, refresh=refresh)
                 page = agent.export_html(copy, Path(tmp), self._backend(live), TIMEOUT)
                 body = page.read_bytes()
         except (OSError, RuntimeError, ValueError) as e:
             return status(
                 "This session could not be rendered",
                 f"pi said: {e}",
-                refresh=at,
+                refresh=refresh,
             )
         head, end, tail = body.rpartition(b"</body>")
-        return (head + refresher(*at) + end + tail) if end else body
+        return (head + refresher(*refresh) + end + tail) if end else body
+
+
+def address(run_id: str, subagent: str | None = None) -> str:
+    """The path of a run's page, or of one of its flow's subagents."""
+    return f"/run/{quote(run_id, safe='')}" + (f"/{quote(subagent, safe='')}" if subagent else "")
+
+
+def listed(subagents: list[dict]) -> str:
+    """What changes when the list of a flow's subagents does."""
+    return json.dumps([[s["id"], s["agent"], s["path"], s["running"]] for s in subagents])
 
 
 WAITING = (
@@ -176,27 +243,36 @@ WAITING = (
     "The agent writes its session once its first exchange is done.",
 )
 NO_SESSION = ("No session", "This run ended before its agent wrote a session.")
+FLOW = (
+    "The flow's subagents",
+    "This run is a combo `/run`, which adds no message to the agent's own session, so that "
+    "session stays empty by design. Each subagent of the flow writes its own:",
+)
 
 
 #: Keeps the page in step with the session: it asks every `REFRESH` seconds whether the
 #: session moved, and reloads only when it did, or once more when the run ended. Where the reader was is kept across the
 #: reload - at the bottom stays at the bottom, as a terminal would, and anywhere else
-#: stays put. The first look starts at the bottom, where the agent is.
+#: stays put. The first look starts at the bottom, where the agent is. A subagent's page
+#: links back to the list of its flow's subagents.
 SCRIPT = """
-<div id="trysquare-live" title="Redrawn as the agent writes its session">live</div>
+<div id="trysquare-bar">%(back)s<div id="trysquare-live" title="Redrawn as the agent writes its session">live</div></div>
 <style>
-#trysquare-live { position: fixed; right: 12px; bottom: 12px; z-index: 1000;
-  font: 600 11px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .04em;
-  padding: 5px 9px 5px 20px; border-radius: 10px; color: #fff; background: #0b7a3b;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .3); pointer-events: none; }
+#trysquare-bar { position: fixed; right: 12px; bottom: 12px; z-index: 1000; display: flex; gap: 6px;
+  font: 600 11px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .04em; }
+#trysquare-bar > * { padding: 5px 9px; border-radius: 10px; color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+#trysquare-back { background: #3a3f45; text-decoration: none; }
+#trysquare-back:hover { background: #24282c; }
+#trysquare-live { position: relative; padding-left: 20px; background: #0b7a3b; pointer-events: none; }
 #trysquare-live::before { content: ""; position: absolute; left: 8px; top: 50%%;
   width: 6px; height: 6px; margin-top: -3px; border-radius: 50%%; background: currentColor; }
 #trysquare-live.ended { background: #5c5c5c; }
 </style>
 <script>
 (() => {
-  const run = %(run)s, stamp = %(stamp)s, ended = %(ended)s, every = %(every)d;
-  const key = 'trysquare-scroll:' + run;
+  const page = %(page)s, stamp = %(stamp)s, ended = %(ended)s, every = %(every)d;
+  const key = 'trysquare-scroll:' + page;
   // pi's page scrolls its #content on a narrow screen and the document on a wide one.
   const range = (b) => b.scrollHeight - b.clientHeight;
   const box = () => [document.getElementById('content'), document.scrollingElement]
@@ -216,7 +292,7 @@ SCRIPT = """
   }
   async function look() {
     try {
-      const r = await fetch('/run/' + encodeURIComponent(run) + '/state', { cache: 'no-store' });
+      const r = await fetch(page + '/state', { cache: 'no-store' });
       const s = await r.json();
       if (!s.running || s.stamp !== stamp) { save(); location.reload(); return; }
     } catch (e) {}
@@ -233,13 +309,16 @@ SCRIPT = """
 """
 
 
-def refresher(run_id: str, current: str | None, ended: bool = False) -> bytes:
-    """`SCRIPT` for one run at one stamp, polling only while the run is in flight."""
+def refresher(page: str, current: str | None, ended: bool = False, back: bool = False) -> bytes:
+    """`SCRIPT` for the page at path `page`, at one stamp, polling only while its run is in
+    flight. `back` for a subagent's page, which links to its run's."""
 
     def literal(value) -> str:
         return json.dumps(value).replace("</", "<\\/")
 
-    values = {"run": literal(run_id), "stamp": literal(current), "ended": literal(ended)}
+    up = html.escape(page.rpartition("/")[0])
+    values = {"page": literal(page), "stamp": literal(current), "ended": literal(ended)}
+    values["back"] = f'<a id="trysquare-back" href="{up}">&lsaquo; subagents</a>' if back else ""
     values["every"] = REFRESH * 1000
     return (SCRIPT % values).encode()
 
@@ -252,28 +331,46 @@ STATUS = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>%(title)s</title>
 <style>
-:root { --bg: #ffffff; --fg: #1a1a1a; --dim: #5c5c5c; }
-@media (prefers-color-scheme: dark) { :root { --bg: #15171a; --fg: #e8e8e8; --dim: #9aa0a6; } }
+:root { --bg: #ffffff; --fg: #1a1a1a; --dim: #5c5c5c; --line: #e2e2e2; --live: #0b7a3b; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15171a; --fg: #e8e8e8; --dim: #9aa0a6; --line: #2c3036; --live: #4ec27e; }
+}
 body { margin: 0; padding: 3rem 1.5rem; background: var(--bg); color: var(--fg);
   font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
 main { max-width: 40rem; margin: 0 auto; }
 h1 { font-size: 1.15rem; font-weight: 600; margin: 0 0 .5rem; }
 p { color: var(--dim); margin: 0; overflow-wrap: anywhere; }
 code { font-family: ui-monospace, monospace; color: var(--fg); }
+ul { list-style: none; margin: 1rem 0 0; padding: 0; border-top: 1px solid var(--line); }
+li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .6rem;
+  padding: .5rem 0; border-bottom: 1px solid var(--line); }
+li a { color: var(--fg); font-weight: 600; }
+li code { color: var(--dim); font-size: .85em; overflow-wrap: anywhere; }
+li .running { margin-left: auto; color: var(--live); font-size: .8rem; font-weight: 600; }
 </style>
 </head>
 <body>
-<main><h1>%(title)s</h1><p>%(message)s</p></main>
+<main><h1>%(title)s</h1><p>%(message)s</p>%(items)s</main>
 %(script)s
 </body>
 </html>
 """
 
 
-def status(title: str, message: str, refresh: tuple | None = None) -> bytes:
+def status(title: str, message: str, refresh: tuple | None = None, items=()) -> bytes:
     """A page saying why there is no session to show, reloading once there is one when
-    `refresh` holds `refresher`'s arguments. `code` in `message` is set as code."""
+    `refresh` holds `refresher`'s arguments. `code` in `message` is set as code.
+
+    `items` are the sessions to show instead, as (link, name, where, running)."""
     script = refresher(*refresh).decode() if refresh else ""
     message = re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(message))
+    rows = "".join(
+        f'<li><a href="{html.escape(link)}">{html.escape(name)}</a>'
+        f"<code>{html.escape(where)}</code>"
+        + ('<span class="running">running</span>' if running else "")
+        + "</li>"
+        for link, name, where, running in items
+    )
     values = {"title": html.escape(title), "message": message, "script": script}
+    values["items"] = f"<ul>{rows}</ul>" if rows else ""
     return (STATUS % values).encode()

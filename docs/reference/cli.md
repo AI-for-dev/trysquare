@@ -283,6 +283,11 @@ draws a copy, never the file the agent is writing. When the run ends, an open pa
 reloads once to show its final state, then stops. An ended run is `render --html`'s to
 draw from its archive.
 
+A combo `/run` adds no message to the agent's session, so that session stays empty. The
+run's page lists the flow's subagents instead, as the flow reaches them, and each one
+links to its own session, drawn the same way. Once the run ends, an open page reads them
+from the copy archived under `session/runs/`.
+
 **Counts, never a verdict**, until the matrix is complete. Runs are interleaved by
 repetition, so at any moment every cell holds about the same handful, and an interval
 over four runs would swing at each one that lands. Once the matrix is complete the page

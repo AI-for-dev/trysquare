@@ -5,7 +5,8 @@ A reader, and only a reader. Nothing here writes into an output tree, nothing in
 measurement path imports this module, and the server answers fixed routes rather than
 mapping a URL onto a file - so no request can name a path, and a matrix cannot be
 damaged by somebody watching it. `/run/<id>` names a run, which is looked up in
-`live.json`; the session it shows is wherever the launch said that run writes.
+`live.json`; the session it shows is wherever the launch said that run writes, and
+`/run/<id>/<subagent>` one its combo flow holds.
 
 It binds to `127.0.0.1`. A matrix directory holds prompts, diffs and session
 transcripts, which are the work of whoever ran it and not something a harness may put
@@ -34,7 +35,7 @@ from urllib.parse import unquote
 
 from . import peek
 from .measure import Run, kind, rate, valid_runs
-from .outputs import LIVE, STATE, SYNTHESIS, measures_in
+from .outputs import LIVE, SESSION, STATE, SYNTHESIS, ledger_run_dirs, measures_in
 
 PAGE = Path(__file__).parent / "dashboard.html"
 HTML = "text/html; charset=utf-8"
@@ -176,33 +177,41 @@ def handler_for(directory: Path, sessions: peek.Sessions):
                 return self._json(assemble(directory))
             if route == f"/{SYNTHESIS_PAGE}" and (directory / SYNTHESIS_PAGE).is_file():
                 return self._send((directory / SYNTHESIS_PAGE).read_bytes(), HTML)
-            match route.split("/"):
-                case ["", "run", run_id]:
-                    return self._session(unquote(run_id))
-                case ["", "run", run_id, "state"]:
-                    return self._state(unquote(run_id))
+            match [unquote(part) for part in route.split("/")]:
+                case ["", "run", run_id, *subagent, "state"] if len(subagent) < 2:
+                    return self._state(run_id, *subagent)
+                case ["", "run", run_id, *subagent] if len(subagent) < 2:
+                    return self._session(run_id, *subagent)
             self.send_error(404)
             return None
 
-        def _session(self, run_id: str) -> None:
+        def _session(self, run_id: str, subagent: str | None = None) -> None:
             """A run's session as it stands, or a page saying why it cannot be shown."""
             live = _read(directory / LIVE)
             sessions.forget((live or {}).get("runs") or {})
             entry = peek.in_flight(live, run_id)
-            page = sessions.page(run_id, entry, live) if entry else sessions.last(run_id, live)
-            if page is None:
+            if entry:
+                page = sessions.page(run_id, entry, live, subagent)
+            else:
+                page = sessions.last(run_id, live, subagent)
+            if page is not None:
+                return self._send(page, HTML)
+            if entry:
+                page = peek.status(
+                    "No such subagent", f"The flow of run `{run_id}` holds no `{subagent}`."
+                )
+            else:
                 page = peek.status(
                     "Not in flight",
                     f"No run `{run_id}` is running now. Its session is archived with the "
                     f"run, and `trysquare render --html` draws it.",
                 )
-                return self._send(page, HTML, 404)
-            return self._send(page, HTML)
+            return self._send(page, HTML, 404)
 
-        def _state(self, run_id: str) -> None:
-            """Whether a run still runs, and how far its session is, for its page to poll."""
+        def _state(self, run_id: str, subagent: str | None = None) -> None:
+            """Whether a run still runs, and how far its page is, for that page to poll."""
             entry = peek.in_flight(_read(directory / LIVE), run_id)
-            current = peek.stamp(peek.latest(entry["session"])) if entry else None
+            current = sessions.state(run_id, entry, subagent) if entry else None
             return self._json({"running": entry is not None, "stamp": current})
 
         def _json(self, payload: dict) -> None:
@@ -223,11 +232,18 @@ def handler_for(directory: Path, sessions: peek.Sessions):
     return Handler
 
 
+def archived(directory: Path, run_id: str) -> Path | None:
+    """Where the run `run_id` of the matrix in `directory` has its sessions archived."""
+    where = ledger_run_dirs(directory, _read(directory / STATE) or {}).get(run_id)
+    return where / SESSION if where else None
+
+
 def server(directory: Path, port: int = 0) -> ThreadingHTTPServer:
     """Bound to the loopback interface, not yet serving.
 
     Returned rather than run, so the caller can read the port it was given: `0` asks
     the system for a free one, which is what keeps two watched matrices apart.
     """
-    handler = handler_for(Path(directory), peek.Sessions())
+    directory = Path(directory)
+    handler = handler_for(directory, peek.Sessions(lambda run_id: archived(directory, run_id)))
     return ThreadingHTTPServer(("127.0.0.1", port), handler)
