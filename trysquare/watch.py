@@ -2,9 +2,10 @@
 """`trysquare watch`: a matrix directory, read and served, while it fills.
 
 A reader, and only a reader. Nothing here writes into an output tree, nothing in the
-measurement path imports this module, and the server answers three fixed routes rather
-than mapping a URL onto a file - so no request can name a path, and a matrix cannot be
-damaged by somebody watching it.
+measurement path imports this module, and the server answers fixed routes rather than
+mapping a URL onto a file - so no request can name a path, and a matrix cannot be
+damaged by somebody watching it. `/run/<id>` names a run, which is looked up in
+`live.json`; the session it shows is wherever the launch said that run writes.
 
 It binds to `127.0.0.1`. A matrix directory holds prompts, diffs and session
 transcripts, which are the work of whoever ran it and not something a harness may put
@@ -29,11 +30,15 @@ import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import unquote
 
+from . import peek
 from .measure import Run, kind, rate, valid_runs
 from .outputs import LIVE, STATE, SYNTHESIS, measures_in
 
 PAGE = Path(__file__).parent / "dashboard.html"
+HTML = "text/html; charset=utf-8"
+JSON = "application/json; charset=utf-8"
 SYNTHESIS_PAGE = Path(SYNTHESIS).with_suffix(".html").name
 
 #: Seconds without a heartbeat past which a launch is presumed dead rather than busy.
@@ -151,7 +156,7 @@ def assemble(directory: Path, now: float | None = None) -> dict:
     }
 
 
-def handler_for(directory: Path):
+def handler_for(directory: Path, sessions: peek.Sessions):
     """The request handler for one directory, as a class of its own.
 
     A class per server rather than an attribute set on a shared one, so two watched
@@ -159,24 +164,50 @@ def handler_for(directory: Path):
     """
 
     class Handler(BaseHTTPRequestHandler):
-        """Three routes, named one by one. A URL never becomes a path."""
+        """Routes named one by one. A URL never becomes a path."""
 
         def do_GET(self) -> None:  # noqa: N802 - the name the stdlib dispatches on
             route = self.path.split("?", 1)[0]
             if route == "/":
-                return self._send(PAGE.read_bytes(), "text/html; charset=utf-8")
+                return self._send(PAGE.read_bytes(), HTML)
             if route == "/data":
-                body = json.dumps(assemble(directory), ensure_ascii=False).encode()
-                return self._send(body, "application/json; charset=utf-8")
+                return self._json(assemble(directory))
             if route == f"/{SYNTHESIS_PAGE}" and (directory / SYNTHESIS_PAGE).is_file():
-                return self._send(
-                    (directory / SYNTHESIS_PAGE).read_bytes(), "text/html; charset=utf-8"
-                )
+                return self._send((directory / SYNTHESIS_PAGE).read_bytes(), HTML)
+            match route.split("/"):
+                case ["", "run", run_id]:
+                    return self._session(unquote(run_id))
+                case ["", "run", run_id, "state"]:
+                    return self._state(unquote(run_id))
             self.send_error(404)
             return None
 
-        def _send(self, body: bytes, content_type: str) -> None:
-            self.send_response(200)
+        def _session(self, run_id: str) -> None:
+            """A run's session as it stands, or a page saying why it cannot be shown."""
+            live = _read(directory / LIVE)
+            sessions.forget((live or {}).get("runs") or {})
+            entry = peek.in_flight(live, run_id)
+            page = sessions.page(run_id, entry, live) if entry else sessions.last(run_id, live)
+            if page is None:
+                page = peek.status(
+                    "Not in flight",
+                    f"No run `{run_id}` is running now. Its session is archived with the "
+                    f"run, and `trysquare render --html` draws it.",
+                )
+                return self._send(page, HTML, 404)
+            return self._send(page, HTML)
+
+        def _state(self, run_id: str) -> None:
+            """Whether a run still runs, and how far its session is, for its page to poll."""
+            entry = peek.in_flight(_read(directory / LIVE), run_id)
+            current = peek.stamp(peek.latest(entry["session"])) if entry else None
+            return self._json({"running": entry is not None, "stamp": current})
+
+        def _json(self, payload: dict) -> None:
+            self._send(json.dumps(payload, ensure_ascii=False).encode(), JSON)
+
+        def _send(self, body: bytes, content_type: str, code: int = 200) -> None:
+            self.send_response(code)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             # The page polls; a cached answer is a matrix that appears to have stopped.
@@ -196,4 +227,5 @@ def server(directory: Path, port: int = 0) -> ThreadingHTTPServer:
     Returned rather than run, so the caller can read the port it was given: `0` asks
     the system for a free one, which is what keeps two watched matrices apart.
     """
-    return ThreadingHTTPServer(("127.0.0.1", port), handler_for(Path(directory)))
+    handler = handler_for(Path(directory), peek.Sessions())
+    return ThreadingHTTPServer(("127.0.0.1", port), handler)

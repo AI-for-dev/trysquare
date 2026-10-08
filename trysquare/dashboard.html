@@ -87,7 +87,8 @@ a { color: inherit; }
   <tbody id="runs"></tbody>
 </table></div>
 <div class="note">
-  <b>tok/s</b> is exact: the tokens come from <code>message_end</code>, one per turn.
+  A <b>cell</b> name opens that run's session in a new tab, redrawn as the agent writes it.
+  <br><b>tok/s</b> is exact: the tokens come from <code>message_end</code>, one per turn.
   <b>upd/s</b> is a pulse: the rate of stream updates, about two characters each.
   They are not tokens.
   <br><b>subagent</b>, for a combo flow: the subagents working now, <code>×2</code> when two
@@ -164,6 +165,14 @@ function subagent(combo) {
   return `${now || last} <span class="zero">· ${combo.visits} done</span>`;
 }
 
+/* The cell name opens the run's session, drawn as the agent writes it. A launch that
+   predates the view names no session, and its rows stay plain. */
+function session(id, r) {
+  if (!r.session) return r.cell;
+  return `<a href="/run/${encodeURIComponent(id)}" target="_blank" rel="noopener"
+    title="The agent's session, as it runs">${r.cell}</a>`;
+}
+
 function flight(d) {
   const runs = Object.entries((d.live || {}).runs || {});
   const now = (d.live || {}).seen || Date.now() / 1000;
@@ -172,7 +181,7 @@ function flight(d) {
   $('runs').innerHTML = runs.map(([id, r]) => {
     const { tokens, pulse } = rates(id, r, now);
     return `<tr>
-      <td class="cell">${r.cell}</td>
+      <td class="cell">${session(id, r)}</td>
       <td class="num">${r.repetition}</td>
       <td class="num${r.attempt > 1 ? ' warn' : ''}">${r.attempt}</td>
       <td class="cell">${r.model_id || '-'}</td>

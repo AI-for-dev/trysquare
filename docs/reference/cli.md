@@ -274,6 +274,15 @@ The page is served on `127.0.0.1` only, on a free port unless `--port` names one
 opens in the browser unless `--no-open` is given. A matrix directory holds prompts,
 diffs and session transcripts, which have no business on a network interface.
 
+The cell name of each run in flight opens its session in a new tab: the page
+`pi --export` draws of the current attempt, redrawn a few seconds after each message the
+agent writes. A reader at the bottom stays at the bottom. `pi` draws it inside the
+backend and from the image the launch recorded in `live.json`, so the agent that writes
+a session also draws it, whatever the config says now. The view is read-only: `pi`
+draws a copy, never the file the agent is writing. When the run ends, an open page
+reloads once to show its final state, then stops. An ended run is `render --html`'s to
+draw from its archive.
+
 **Counts, never a verdict**, until the matrix is complete. Runs are interleaved by
 repetition, so at any moment every cell holds about the same handful, and an interval
 over four runs would swing at each one that lands. Once the matrix is complete the page
