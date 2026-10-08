@@ -605,12 +605,20 @@ class TestInsideDocker:
         self.inside(backend, work, "touch", "written")
         assert (work / "mine" / "repo" / "written").stat().st_uid == os.getuid()
 
-    def test_a_container_outlives_no_timeout(self, backend, work):
-        """Killing the client outright leaves the container, and its agent, running."""
+    def test_a_container_outlives_no_timeout(self, backend, work, monkeypatch):
+        """Killing the client outright leaves the container, and its agent, running.
+
+        Looked up by its own name: a matrix or a test run beside this one has containers
+        of its own, which this run must not answer for.
+        """
+        names = []
+        argv = backend.argv
+        monkeypatch.setattr(backend, "argv", lambda *a: names.append(a[3]) or argv(*a))
         with pytest.raises(subprocess.TimeoutExpired):
             backend.run(["sleep", "60"], confine.Scope(), timeout=2)
+        (name,) = names
         left = subprocess.run(
-            ["docker", "ps", "--all", "--quiet", "--filter", "name=trysquare-"],
+            ["docker", "ps", "--all", "--quiet", "--filter", f"name=^{name}$"],
             capture_output=True,
             text=True,
         )
