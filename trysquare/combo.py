@@ -125,7 +125,7 @@ def progress(clone: Path, before: set[str]) -> dict | None:
     this never raises, since combo is still writing what it reads.
     """
     spent, agents = [], []
-    for name in sorted(run_dirs(clone) - before):
+    for name in created(clone, before):
         ends = ended(clone / name)
         paths = {end.get("path") for end in ends}
         spent += [end for end in ends if paths.isdisjoint(holders(str(end.get("path"))))]
