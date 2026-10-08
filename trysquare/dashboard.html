@@ -90,8 +90,9 @@ a { color: inherit; }
   <b>tok/s</b> is exact: the tokens come from <code>message_end</code>, one per turn.
   <b>upd/s</b> is a pulse: the rate of stream updates, about two characters each.
   They are not tokens.
-  <br><b>subagent</b>, for a combo flow: the last subagent to finish a visit,
-  and how many have finished. combo writes a visit only when it ends, so its tokens arrive with it.
+  <br><b>subagent</b>, for a combo flow: the subagents working now, <code>×2</code> when two
+  visits run the same agent, and how many visits are done. Greyed, the last to finish, when
+  none is working. A visit's tokens arrive when it ends.
 </div>
 
 <h2>Cells</h2>
@@ -148,9 +149,19 @@ function header(d) {
   $('meta').innerHTML = bits.filter(Boolean).join(' · ');
 }
 
+/* The visits of one agent run as one name, `scout ×2`, their paths on hover: a map
+   runs one agent over every item, and `scout, scout` says nothing. */
 function subagent(combo) {
   if (!combo) return '<span class="zero">-</span>';
-  return `<span title="${combo.path}">${combo.agent || combo.path}</span> <span class="zero">(${combo.visits})</span>`;
+  const paths = new Map();
+  for (const v of combo.running) {
+    const name = v.agent || v.path;
+    paths.set(name, [...(paths.get(name) || []), v.path]);
+  }
+  const now = [...paths].map(([name, all]) =>
+    `<span title="${all.join('\n')}">${name}${all.length > 1 ? ` ×${all.length}` : ''}</span>`).join(', ');
+  const last = combo.path ? `<span class="zero" title="${combo.path}">${combo.agent || combo.path}</span>` : '';
+  return `${now || last} <span class="zero">· ${combo.visits} done</span>`;
 }
 
 function flight(d) {

@@ -3,7 +3,7 @@
 
 pi runs `/run` before any model turn, so the main session's stream carries no usage at
 all: every token is in combo's own subagents, and only its run directory says so. The
-fake agent below leaves that directory as combo v0.3.0 does.
+fake agent below leaves that directory as combo v0.4.0 does.
 
 Nothing here spends a token.
 """

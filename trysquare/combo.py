@@ -9,13 +9,14 @@ from the stream alone, a flow that did the whole task is a run that consumed not
 combo is named here rather than behind a declared contract, because there is no
 contract to declare: the files below are combo's own record of a run, written for its
 users, and trysquare reads them as they are - the way `assay.OPAQUE` names its
-`subagent` tool. The layout is pinned to combo v0.3.0. A directory that looks like one
-of its runs and does not hold what v0.3.0 writes is refused loudly, rather than read
+`subagent` tool. The layout is pinned to combo v0.4.0. A directory that looks like one
+of its runs and does not hold what v0.4.0 writes is refused loudly, rather than read
 as a run that cost nothing.
 
-What v0.3.0 writes, for each `/run`: `runs/<YYYY-MM-DD_HH-MM-SS>[-n]/` at the root of
+What v0.4.0 writes, for each `/run`: `runs/<YYYY-MM-DD_HH-MM-SS>[-n]/` at the root of
 the clone, with `journal.jsonl` opened as the run starts and `usage.json` closed as it
 ends, print mode included. `total` there is the whole run, delegated subagents and all.
+The journal gets a `visit_start` and a `visit_end` line for each visit, as it happens.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ import json
 import re
 from pathlib import Path
 
-LAYOUT = "combo v0.3.0"
+LAYOUT = "combo v0.4.0"
 
 RUNS = "runs"
 
@@ -98,8 +99,8 @@ def holders(path: str) -> list[str]:
     return [ITERATION.sub("", "/".join(segments[: i + 1])) for i in range(len(segments) - 1)]
 
 
-def ended(directory: Path) -> list[dict]:
-    """The `visit_end` entries of a run's journal so far. A line combo is still writing is skipped."""
+def journal(directory: Path) -> list[dict]:
+    """A run's journal so far. A line combo is still writing is skipped."""
     try:
         lines = (directory / "journal.jsonl").read_text().splitlines()
     except OSError:
@@ -110,27 +111,46 @@ def ended(directory: Path) -> list[dict]:
             entry = json.loads(line)
         except ValueError:
             continue
-        if isinstance(entry, dict) and entry.get("type") == "visit_end":
+        if isinstance(entry, dict):
             entries.append(entry)
     return entries
 
 
-def progress(clone: Path, before: set[str]) -> dict | None:
-    """What the combo runs created since `before` have ended so far, for a live view.
+def working(entries: list[dict]) -> list[dict]:
+    """The agent visits of a journal that started and have not ended, in the order they started.
 
-    combo journals a visit when it ends and not before, so the subagent named here is
-    the last one to finish, and the tokens of the one working now arrive with its end.
-    Each visit is counted once, at the outermost visit holding it, as combo's own
-    `costOf` does: a loop's usage already includes every iteration's. Unlike `usage`,
-    this never raises, since combo is still writing what it reads.
+    Only the last life counts: what a killed life left open is not running any more.
     """
-    spent, agents = [], []
+    started: dict[str, dict] = {}
+    for entry in entries:
+        kind_ = entry.get("type")
+        if kind_ == "life_start":
+            started.clear()
+        elif kind_ == "visit_start" and entry.get("kind") == "agent":
+            started[entry.get("path")] = entry
+        elif kind_ == "visit_end":
+            started.pop(entry.get("path"), None)
+    return [{"agent": start.get("agent"), "path": start.get("path")} for start in started.values()]
+
+
+def progress(clone: Path, before: set[str]) -> dict | None:
+    """Where the combo runs created since `before` are, for a live view.
+
+    `running` names the subagents working now. A journal older than v0.4.0 holds no
+    `visit_start`, so only the last subagent to finish is named. The tokens of a visit
+    arrive with its end, counted once at the outermost visit holding it, as combo's
+    own `costOf` does: a loop's usage already includes every iteration's. Unlike
+    `usage`, this never raises, since combo is still writing what it reads.
+    """
+    spent, agents, running = [], [], []
     for name in created(clone, before):
-        ends = ended(clone / name)
+        entries = journal(clone / name)
+        ends = [entry for entry in entries if entry.get("type") == "visit_end"]
         paths = {end.get("path") for end in ends}
         spent += [end for end in ends if paths.isdisjoint(holders(str(end.get("path"))))]
         agents += [end for end in ends if end.get("kind") == "agent"]
-    if not spent:
+        running += working(entries)
+    if not (spent or running):
         return None
     last = agents[-1] if agents else {}
     return {
@@ -139,4 +159,5 @@ def progress(clone: Path, before: set[str]) -> dict | None:
         "agent": last.get("agent"),
         "path": last.get("path"),
         "model": last.get("model"),
+        "running": running,
     }

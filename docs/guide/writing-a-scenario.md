@@ -269,7 +269,7 @@ prompt = "../materials/flow-prompt.md"   # holds: /run fix <the ticket>
 
 [harness.combo]
 repo = "combo"        # [harness] combo = "https://github.com/AI-for-dev/combo"
-tag = "v0.3.0"
+tag = "v0.4.0"
 load = "."
 
 [harness.agents]
@@ -308,8 +308,9 @@ so the run's `session/` holds combo's own record instead: each run directory, co
 `session/runs/<timestamp>/` at the end of the run.
 
 While the flow runs, `trysquare watch` reads combo's `journal.jsonl` in the same
-directory. combo writes a visit there when it ends, so the page counts the tokens of
-finished visits and names the last subagent to finish rather than the one working now.
+directory. combo writes each visit there when it starts and when it ends, so the page
+names the subagents working now and counts the tokens of finished visits. combo before
+v0.4.0 writes only the end, and the page then names the last subagent to finish.
 
 ## Declare the validation
 
