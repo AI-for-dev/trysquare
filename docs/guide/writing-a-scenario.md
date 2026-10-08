@@ -57,8 +57,10 @@ etalon = "etalon-v1"               # a tag, cloned fresh per run
 prompt = "tickets/vague.md"        # relative to this file
 ```
 
-The prompt may be inline or a path. Prefer a path for anything multi-line: it keeps the
-scenario readable, and it lets the prompt be diffed on its own.
+The prompt may be inline or a path. A value with no space or newline that contains `/` or
+ends in `.md`, `.txt`, `.json` or `.toml` is a path, and a missing one is refused. Anything
+else is text, so `"read tests/x.py and fix it"` is a prompt. Prefer a path for anything
+multi-line: it keeps the scenario readable, and it lets the prompt be diffed on its own.
 
 Three more keys describe what *running* the task involves, and the scenario declares them
 because the alternative is detecting them from inside the perimeter the agent may edit:
@@ -286,8 +288,8 @@ kind = "files"
 - **`load = "."`** loads the package root. Its `package.json` declares the extension, and
   `extension/` imports `../src`, so under `docker` and `bwrap` the whole clone has to be
   readable. `load = "extension"` would mount only half of it.
-- **The prompt is a file.** A `prompt` containing `/` is read as a path, so an inline
-  `/run fix ...` is refused as a file that does not exist.
+- **The prompt can be inline.** `prompt = "/run fix <the ticket>"` has spaces, so it is
+  sent as text, not read as a path.
 - **Name the agents brick `agents`.** The check that a subagent thinks at the cell's
   `thinking` level, against the operator's `defaultThinkingLevel`, applies when a brick
   of that name is declared. combo's subagents read their model from the agent file,
