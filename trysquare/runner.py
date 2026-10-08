@@ -841,7 +841,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         # its only evidence, and it is exactly the run somebody will want to read. One
         # file per attempt, so the count matches `run.attempts`.
         try:
-            with watching(board, run_id, cell.name, meta["repetition"]) as watch:
+            with watching(board, run_id, cell.name, meta["repetition"], session_dir) as watch:
                 outcome, tries = agent_mod.run_until_productive(
                     clone, args, timeout, attempts, trace, ceiling, watch, plan.confinement, scope
                 )
@@ -1191,6 +1191,11 @@ def execute(plan: Plan, on_run=None) -> list[Run]:
             "started": time.time(),
             "planned": len(plan.todo),
             "finished": None,
+            # What the runs execute on, so `watch` renders a session with the agent that
+            # is writing it: the backend, and the image id the launch resolved rather
+            # than a tag that may move.
+            "isolation": plan.confinement.settings,
+            "image": plan.confinement.image,
             "cells": [
                 {
                     "name": cell.name,

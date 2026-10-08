@@ -62,6 +62,9 @@ class Confinement(Protocol):
     #: Whether the agent runs from the scenario's `[agent] image` rather than from this
     #: machine's tools.
     takes_image: bool
+    #: The `[isolation]` settings that rebuild this backend to render a session: where the
+    #: agent is found, and no variable, provider or limit, since a render calls nothing.
+    settings: dict
 
     def prepare(self, image: str | None, providers: Sequence[str]) -> None:
         """Checks this machine can run the backend, or raises `RuntimeError` saying why.
@@ -87,6 +90,7 @@ class Unconfined:
     where = "on this machine"
     limits: dict = {}
     takes_image = False
+    settings = {"backend": NONE}
 
     def prepare(self, image: str | None, providers: Sequence[str]) -> None:
         pass
@@ -349,6 +353,8 @@ class Docker:
 
     name = DOCKER
     takes_image = True
+    # The agent is the image's, and `image` names it.
+    settings = {"backend": DOCKER}
 
     def __init__(
         self,
@@ -524,6 +530,7 @@ class Bwrap:
         if isinstance(bind, str) or not all(isinstance(p, str) for p in bind):
             raise ValueError(f"bind = {bind!r} is not a list of paths")
         self.bind = tuple(Path(os.path.expanduser(p)) for p in bind)
+        self.settings = {"backend": BWRAP, "bind": [str(p) for p in self.bind]}
         self._seed: dict[str, dict] = {}
         self._relays: list[Relay] = []
 

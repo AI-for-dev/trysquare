@@ -33,6 +33,12 @@ class TestWhatIsPublished:
             assert entry["state"] == live.RUNNING
         assert b.snapshot()["runs"] == {}, "a finished run is measures.json's to describe"
 
+    def test_a_run_names_where_its_session_is_written(self, tmp_path):
+        """So a reader can draw what the agent is doing, and only while it does."""
+        b = board()
+        with b.watching("abc", "none / off", 0, tmp_path / "session"):
+            assert b.snapshot()["runs"]["abc"]["session"] == str(tmp_path / "session")
+
     def test_the_numbers_are_the_ones_the_ledger_will_record(self):
         """One fold fed two ways. Two implementations would drift, and the dashboard is
         the one of the pair nobody checks against the archive."""
@@ -291,3 +297,32 @@ class TestAComboFlowIsFollowed:
         entries = [visit_end("fix#1/code", "coder", 40), visit_end("fix#2/code", "coder", 60), loop]
         entry = self.during(tmp_path, entries)
         assert entry["output"] == 100
+
+
+class TestALaunchPublishes:
+    def test_each_run_points_at_the_session_its_agent_writes(self, tmp_path, monkeypatch):
+        from tests.gitrepo import a_repo
+        from tests.spy import launch
+        from trysquare import runner
+
+        named = []
+
+        def spying(board, run_id, cell, repetition, session=None):
+            named.append(session)
+            return live.watching(board, run_id, cell, repetition, session)
+
+        monkeypatch.setattr(runner, "watching", spying)
+        launch(tmp_path, monkeypatch, a_repo({"a.js": "one\n"}))
+        assert named
+        assert all(list(session.glob("*.jsonl")) for session in named)
+
+    def test_the_header_names_what_the_runs_execute_on(self, tmp_path, monkeypatch):
+        """The image id under docker, so `watch` draws with the agent that wrote. Empty
+        on this machine, whose own `pi` it is."""
+        from tests.gitrepo import a_repo
+        from tests.spy import launch
+
+        launch(tmp_path, monkeypatch, a_repo({"a.js": "one\n"}))
+        (published,) = (tmp_path / "out").glob("*/live.json")
+        header = json.loads(published.read_text())
+        assert (header["isolation"], header["image"]) == ({"backend": "none"}, "")

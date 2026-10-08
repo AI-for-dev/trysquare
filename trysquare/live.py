@@ -32,6 +32,7 @@ import json
 import threading
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 from .measure import Fold, plus
 
@@ -156,16 +157,21 @@ class Board:
         self._lock = threading.Lock()
 
     @contextmanager
-    def watching(self, run_id: str, cell: str, repetition: int):
+    def watching(self, run_id: str, cell: str, repetition: int, session: Path | None = None):
         """Publishes one run for as long as it runs, and unpublishes it after.
 
         A run that ends leaves this file: what it produced belongs to `measures.json`,
         and holding it here too would make two records of one run, which is how they
         come to disagree.
+
+        `session` is the directory the agent writes its session into, named so a reader
+        can render what the agent is doing. A pointer rather than a copy: the archive
+        takes the session when the run ends, and the entry goes with the run.
         """
         entry = {
             "cell": cell,
             "repetition": repetition,
+            "session": str(session) if session else None,
             "attempt": 0,
             "state": RUNNING,
             "started": time.time(),
@@ -218,7 +224,7 @@ class Board:
 
 
 @contextmanager
-def watching(board, run_id: str, cell: str, repetition: int):
+def watching(board, run_id: str, cell: str, repetition: int, session: Path | None = None):
     """`board.watching`, or nothing at all when no board is publishing.
 
     So a caller measuring one run never has to know whether anybody is looking, and
@@ -227,7 +233,7 @@ def watching(board, run_id: str, cell: str, repetition: int):
     if board is None:
         yield None
         return
-    with board.watching(run_id, cell, repetition) as watch:
+    with board.watching(run_id, cell, repetition, session) as watch:
         yield watch
 
 
