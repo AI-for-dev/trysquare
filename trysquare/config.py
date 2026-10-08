@@ -175,7 +175,7 @@ class Config:
         return expand(declared, relative_to=self.path)
 
     def workdir(self) -> Path:
-        return expand(self.defaults.get("workdir", BUILTIN_DEFAULTS["workdir"]))
+        return expand(self.defaults.get("workdir", BUILTIN_DEFAULTS["workdir"]), self.path)
 
     def fallback(self, key: str):
         return self.defaults.get(key, BUILTIN_DEFAULTS.get(key))

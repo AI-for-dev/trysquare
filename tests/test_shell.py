@@ -592,6 +592,13 @@ class TestPinnedSources:
         assert directory.parent == c.workdir() / "sources"
         assert "release-1.0" in directory.name
 
+    def test_a_relative_workdir_is_relative_to_the_config(self, tmp_path, monkeypatch):
+        """The workdir holds the harness clones `pi -e` loads from inside each run's clone,
+        so a path left relative to wherever trysquare was launched points nowhere there."""
+        (tmp_path / "trysquare.toml").write_text('[defaults]\nworkdir = "work"\n')
+        monkeypatch.chdir(tmp_path.parent)
+        assert config.load(tmp_path / "trysquare.toml").workdir() == tmp_path / "work"
+
     def test_a_local_entry_is_never_cloned(self, tmp_path):
         existing = tmp_path
         c, calls, result = self.pin_calls(str(existing))
