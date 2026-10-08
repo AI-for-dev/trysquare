@@ -690,6 +690,38 @@ class TestAnExtensionIsNeverSilent:
         assert "This matrix was extended" in published
 
 
+def measured(plan, during=None):
+    """`execute` with the measurement replaced by a row nothing else could have
+    written, so a re-measured run is told from a kept one by reading it.
+
+    `during` is called as each run starts, which is when a reader of the directory sees
+    the launch in flight.
+    """
+    import unittest.mock
+
+    from trysquare import runner
+    from trysquare.measure import VALID, Run
+
+    def one(_plan, run_id, meta, _board=None):
+        if during:
+            during()
+        return Run(
+            id=run_id,
+            cell=meta["cell"],
+            repetition=meta["repetition"],
+            usage={"input": 99, "output": 99},
+            duration=7,
+            metrics={"delivered": 1.0, "in_scope": 1.0, "tests": 1.0},
+            state=VALID,
+        )
+
+    with (
+        unittest.mock.patch.object(runner, "prepare_source"),
+        unittest.mock.patch.object(runner, "one_run", side_effect=one),
+    ):
+        return runner.execute(plan)
+
+
 class TestMeasuringOneVariantAgain:
     """`--overwrite CELL`: one variant measured again, the rest of the matrix kept.
 
@@ -719,31 +751,6 @@ class TestMeasuringOneVariantAgain:
         state = output.read_state()
         state["cells"][cell] = "0000000000000000"
         output.write_state(state)
-
-    def measured(self, plan):
-        """`execute` with the measurement replaced by a row nothing else could have
-        written, so a re-measured run is told from a kept one by reading it."""
-        import unittest.mock
-
-        from trysquare import runner
-        from trysquare.measure import VALID, Run
-
-        def one(_plan, run_id, meta, _board=None):
-            return Run(
-                id=run_id,
-                cell=meta["cell"],
-                repetition=meta["repetition"],
-                usage={"input": 99, "output": 99},
-                duration=7,
-                metrics={"delivered": 1.0, "in_scope": 1.0, "tests": 1.0},
-                state=VALID,
-            )
-
-        with (
-            unittest.mock.patch.object(runner, "prepare_source"),
-            unittest.mock.patch.object(runner, "one_run", side_effect=one),
-        ):
-            return runner.execute(plan)
 
     def test_only_the_named_cell_is_measured_again(self, tmp_path):
         """Every run of it, whatever its result - that is what makes it an overwrite -
@@ -835,12 +842,11 @@ class TestMeasuringOneVariantAgain:
         assert plan.runs == 2
 
     def test_a_replay_leaves_a_ledger_a_resume_does_not_refuse(self, tmp_path):
-        """`execute` loads the ledger off the disk, so it is the one that has to record
-        the new declaration. Kept there, the old digest would have the next `--resume`
-        refuse the very runs this launch just measured."""
+        """The ledger records the new declaration. Kept there, the old digest would have
+        the next `--resume` refuse the very runs this launch just measured."""
         output = a_measured_matrix(tmp_path, 2)
         self.rewritten(output, self.CELL)
-        self.measured(self.resolved(tmp_path, replay=(self.CELL,)))
+        measured(self.resolved(tmp_path, replay=(self.CELL,)))
 
         state = output.read_state()
         assert state["cells"][self.CELL] == output.fingerprints()[self.CELL]
@@ -850,7 +856,7 @@ class TestMeasuringOneVariantAgain:
         """Kept means kept whole: the row in measures.json as much as the ledger entry."""
         output = a_measured_matrix(tmp_path, 2)
         before = {r.id: r for r in output.read_measures()}
-        self.measured(self.resolved(tmp_path, replay=(self.CELL,)))
+        measured(self.resolved(tmp_path, replay=(self.CELL,)))
 
         after = {r.id: r for r in output.read_measures()}
         assert set(after) == set(before)
@@ -858,6 +864,42 @@ class TestMeasuringOneVariantAgain:
         assert len(kept) == 10
         assert all(after[rid] == before[rid] for rid in kept)
         assert all(r.duration == 7 for r in after.values() if r.cell == self.CELL)
+
+
+class TestOverwritingTheWholeMatrix:
+    """A bare `--overwrite`: the previous launch's results stop being the matrix's the
+    moment this one starts, not as each run lands over them."""
+
+    def overwritten(self, root, during=None):
+        from trysquare import config as config_mod
+        from trysquare import runner
+        from trysquare.scenario import load
+
+        plan = runner.resolve(
+            load(SCENARIO), config_mod.load(MACHINE), root, overrides={"repetitions": 2}
+        )
+        return measured(plan, during)
+
+    def test_a_reader_never_sees_the_previous_launch_as_this_one(self, tmp_path):
+        """What `watch` reads while the first run is in flight: a ledger that said
+        `complete` and rows from the launch before read as a finished matrix."""
+        from trysquare.outputs import MISSING
+
+        output = a_measured_matrix(tmp_path, 2)
+        seen = []
+        self.overwritten(
+            tmp_path, lambda: seen.append((output.read_state(), output.read_measures()))
+        )
+
+        state, rows = seen[0]
+        assert not state["complete"]
+        assert {m["state"] for m in state["runs"].values()} == {MISSING}
+        assert rows == []
+
+    def test_attempts_count_this_launch_only(self, tmp_path):
+        output = a_measured_matrix(tmp_path, 2)
+        self.overwritten(tmp_path)
+        assert {m["attempts"] for m in output.read_state()["runs"].values()} == {1}
 
 
 class TestAskingBeforeSpending:

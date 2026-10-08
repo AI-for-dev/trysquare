@@ -83,6 +83,7 @@ def measured_once(tmp_path, monkeypatch, scenario, spy) -> tuple[Run, Path]:
         overrides={},
         blindness={},
         notes=[],
+        state={},
     )
     monkeypatch.setitem(confine.BACKENDS, Spy.name, lambda: spy)
     run = runner.one_run(plan, "abcd1234", {"cell": scenario.cells[0].name, "repetition": 0})

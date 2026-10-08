@@ -697,6 +697,7 @@ class TestTheLoadOneLaunchRunsAt:
             overrides=overrides,
             blindness={},
             notes=[],
+            state={},
         )
 
     def test_the_flag_wins_over_the_scenario(self):

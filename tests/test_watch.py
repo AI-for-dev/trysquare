@@ -95,7 +95,11 @@ class TestTallies:
 
 class TestTheVerdictWaits:
     def test_an_incomplete_matrix_is_offered_no_synthesis(self, tmp_path):
-        d = matrix(tmp_path, state=ledger(a=["valid", "missing"]) | {"complete": False})
+        """Not even the one a previous launch left: it answers for a ledger this launch has
+        reset."""
+        d = matrix(
+            tmp_path, state=ledger(a=["valid", "missing"]) | {"complete": False}, synthesis=True
+        )
         payload = watch.assemble(d)
         assert payload["complete"] is False
         assert payload["synthesis"] is None
