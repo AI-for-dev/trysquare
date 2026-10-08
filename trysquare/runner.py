@@ -532,8 +532,13 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
 PATH_SUFFIXES = (".md", ".txt", ".json", ".toml")
 
 
+def is_prose(value: str) -> bool:
+    """Whitespace makes a value text: a path is one token, a prompt is a sentence."""
+    return any(char.isspace() for char in value)
+
+
 def looks_like_path(value: str) -> bool:
-    return "/" in value or value.endswith(PATH_SUFFIXES)
+    return not is_prose(value) and ("/" in value or value.endswith(PATH_SUFFIXES))
 
 
 _HARNESS_LOCK = threading.Lock()
@@ -698,8 +703,11 @@ def read_brick(base: Path, value: str | None) -> str | None:
     if not value:
         return None
     candidate = (base / value).resolve()
-    if candidate.is_file():
-        return candidate.read_text()
+    try:
+        if candidate.is_file():
+            return candidate.read_text()
+    except OSError:  # a long inline prompt is no valid file name
+        pass
     if looks_like_path(value):
         raise RuntimeError(f"referenced file does not exist: {candidate} (declared as {value!r})")
     return value

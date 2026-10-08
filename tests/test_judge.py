@@ -43,8 +43,29 @@ class TestBrickResolution:
     def test_what_counts_as_a_path(self):
         for value in ("tickets/x.md", "a/b", "x.md", "notes.txt"):
             assert looks_like_path(value), value
-        for value in ("do the thing", "off", "high", "a sentence with spaces"):
+        for value in (
+            "do the thing",
+            "off",
+            "high",
+            "a sentence with spaces",
+            "read tests/x.py and fix it",
+            "/run fix the ticket",
+            "Read tests/x.py.\nThen fix it.\n",
+        ):
             assert not looks_like_path(value), value
+
+    def test_prose_with_a_slash_is_inline_text(self):
+        text = "Read tests/test_basket.py, then fix the total\nwhen the list is empty.\n"
+        assert read_brick(self.base, text) == text
+
+    def test_a_long_inline_prompt_is_inline_text(self):
+        """Probed as a file name, a paragraph is too long and raises on some Pythons."""
+        text = "Fix the basket total when the list is empty. " * 10
+        assert read_brick(self.base, text) == text
+
+    def test_a_file_with_a_space_in_its_name_is_read(self):
+        (self.base / "my task.md").write_text("the task")
+        assert read_brick(self.base, "my task.md") == "the task"
 
     def test_none_stays_none(self):
         assert read_brick(self.base, None) is None
@@ -58,6 +79,11 @@ class TestPreflight:
         labels = [label for label, _ in referenced_paths(s, Path("/base"))]
         assert any("cell 'rule / off'" in label for label in labels)
         assert any("validation[script].command" in label for label in labels)
+
+    def test_an_inline_prompt_with_a_slash_is_not_a_reference(self):
+        s = parse(GRID | {"task": GRID["task"] | {"prompt": "read tests/x.py and fix it"}})
+        labels = [label for label, _ in referenced_paths(s, Path("/base"))]
+        assert "task.prompt" not in labels
 
     def test_missing_files_are_listed_with_where_they_were_declared(self, tmp_path):
         s = parse(GRID)
