@@ -19,6 +19,7 @@ environment names if it names one.
 
 from __future__ import annotations
 
+import http.client
 import threading
 import urllib.error
 import urllib.request
@@ -128,7 +129,9 @@ class _Forward(BaseHTTPRequestHandler):
 
         A refusal is read whole and stripped of the secrets first: a provider that quotes
         the key back in its error would otherwise hand it to the agent. A success is
-        streamed chunk by chunk, since an agent reads its tokens as they come.
+        streamed chunk by chunk, since an agent reads its tokens as they come. When either
+        side hangs up mid-stream, the agent's connection is dropped without the final
+        chunk, so a truncated answer never passes for a complete one.
         """
         status = upstream.status
         self.send_response(status)
@@ -143,7 +146,11 @@ class _Forward(BaseHTTPRequestHandler):
             return
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
-        while chunk := upstream.read1(65536):
-            self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
-            self.wfile.flush()
+        try:
+            while chunk := upstream.read1(65536):
+                self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
+                self.wfile.flush()
+        except (http.client.HTTPException, OSError):
+            self.close_connection = True
+            return
         self.wfile.write(b"0\r\n\r\n")
