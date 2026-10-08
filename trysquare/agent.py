@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import combo, interrupt
+from . import combo, confine, interrupt
 from .confine import Confinement, Scope, Unconfined
 from .measure import bounded, consumed_tokens, plus, read_file
 
@@ -387,6 +387,12 @@ def ping(confinement: Confinement, provider: str, model: str, timeout: int = 120
         return None
     said = (proc.stderr.strip() or proc.stdout.strip()).splitlines()
     return said[-1][:200] if said else f"{PI!r} exited with {proc.returncode}"
+
+
+def exporter(isolation: dict) -> Confinement:
+    """The backend an export runs in: where the runs ran, but without a variable or a
+    provider. An export reads a file and calls nothing, so it must not need the key."""
+    return confine.backend({k: v for k, v in isolation.items() if k not in ("env", "models")})
 
 
 def export_html(
