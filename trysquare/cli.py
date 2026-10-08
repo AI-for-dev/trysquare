@@ -807,7 +807,7 @@ def _export_sessions(
         print(f"error: {problem}, so no session can be exported", file=sys.stderr)
         return 1
 
-    written = bare = flows = 0
+    written = bare = paged = pageless = 0
     # Counted per run, not per session file: a run may archive several, and the
     # total has to be known before the first one is opened.
     enabled = progress_mod.wanted(no_progress=no_progress)
@@ -815,10 +815,13 @@ def _export_sessions(
         for run in sorted(runs, key=lambda r: r.id):
             sessions = output.sessions(run.id)
             if not sessions:
-                if output.flows(run.id):
-                    flows += 1
-                else:
+                # A flow cut before any subagent finished leaves combo's journal alone.
+                if not output.flows(run.id):
                     bare += 1
+                elif session_pages(output, run.id):
+                    paged += 1
+                else:
+                    pageless += 1
                 bar.tick()
                 continue
             for session in sessions:
@@ -832,8 +835,13 @@ def _export_sessions(
             bar.tick()
 
     print(f"\n  {counted(written, 'session page')} written")
-    if flows:
-        print(f"  {counted(flows, 'combo flow run')}, whose subagent pages combo wrote itself")
+    if paged:
+        print(f"  {counted(paged, 'combo flow run')}, whose subagent pages combo wrote itself")
+    if pageless:
+        print(
+            f"  {counted(pageless, 'combo flow run')} with no subagent page, "
+            f"to read from its journal under session/runs/"
+        )
     if bare:
         print(
             f"  {bare} of {len(runs)} runs without an archived session: measured before "

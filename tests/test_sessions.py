@@ -89,10 +89,14 @@ def measured(tmp_path):
 FLOW = "runs/2026-10-08_04-35-14"
 
 
-def archive_a_flow(o: outputs.Output, run_id: str, tmp_path: Path) -> None:
-    """A combo run directory, archived as a `/run` leaves it: no session of pi's own."""
+def archive_a_flow(o: outputs.Output, run_id: str, tmp_path: Path, pages: bool = True) -> None:
+    """A combo run directory, archived as a `/run` leaves it: no session of pi's own.
+
+    Without `pages`, it is a flow cut before any subagent finished: a journal alone.
+    """
     clone = tmp_path / "clone"
-    for name in ("journal.jsonl", "fix/fixer.jsonl", "fix/fixer.html", "review/reviewer.html"):
+    names = ("fix/fixer.jsonl", "fix/fixer.html", "review/reviewer.html") if pages else ()
+    for name in ("journal.jsonl", *names):
         (clone / FLOW / name).parent.mkdir(parents=True, exist_ok=True)
         (clone / FLOW / name).write_text("{}\n")
     o.archive_flows(run_id, clone, [FLOW])
@@ -249,6 +253,31 @@ class TestRenderHtml:
         assert code == 0
         assert "1 of 2 runs without an archived session" in text
         assert "1 combo flow run, whose subagent pages combo wrote itself" in text
+
+    def test_a_flow_cut_before_any_subagent_page_does_not_claim_one(
+        self, measured, capsys, monkeypatch, tmp_path
+    ):
+        """Its journal is all there is: saying combo wrote its pages would send a reader
+        looking for files that do not exist."""
+        directory = measured("aaaa1111")
+        archive_a_flow(
+            outputs.Output(directory, load(SCENARIO), repetitions=1),
+            "aaaa1111",
+            tmp_path,
+            pages=False,
+        )
+        monkeypatch.setattr(agent, "unrunnable", lambda *_: None)
+        code, text = rendered(
+            capsys,
+            ["render", SCENARIO, "-o", str(directory), "--repetitions", "1", "--html"],
+        )
+        assert code == 0
+        assert "pages combo wrote" not in text
+        assert "without an archived session" not in text
+        assert (
+            "1 combo flow run with no subagent page, to read from its journal under session/runs/"
+            in text
+        )
 
     @needs_the_agent
     def test_each_archived_session_becomes_a_page_in_its_run_directory(
