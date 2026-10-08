@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/AI-for-dev/trysquare/compare/v0.8.1...v0.9.0) (2026-10-08)
+
+
+### Features
+
+* translate the board into English ([#130](https://github.com/AI-for-dev/trysquare/issues/130)) ([0e78441](https://github.com/AI-for-dev/trysquare/commit/0e7844154c449da0675aa76e11173f7c22a6a3f3))
+
+
+### Bug Fixes
+
+* archive a combo flow's run directory as the run's session ([#131](https://github.com/AI-for-dev/trysquare/issues/131)) ([56531a7](https://github.com/AI-for-dev/trysquare/commit/56531a7882679642f954c9f1f2614612bae58f0f))
+* follow a combo /run in watch while it runs ([#128](https://github.com/AI-for-dev/trysquare/issues/128)) ([93a6078](https://github.com/AI-for-dev/trysquare/commit/93a6078e7bbaab99f02f145c449fc16e2f883928))
+* show a combo flow's pages in render --html and the synthesis ([#132](https://github.com/AI-for-dev/trysquare/issues/132)) ([0614969](https://github.com/AI-for-dev/trysquare/commit/06149694276fd6ed89fa6b24315b9202a4fc993d))
+
 ## [0.8.1](https://github.com/AI-for-dev/trysquare/compare/v0.8.0...v0.8.1) (2026-10-08)
 
 
