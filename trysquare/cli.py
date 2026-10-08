@@ -945,7 +945,7 @@ def _write_synthesis(
         "",
         f"- etalon `{scenario.task['etalon']}`, provider `{scenario.agent['provider']}`, "
         f"model `{scenario.agent['model']}`, thinking `{scenario.agent['thinking']}`",
-        f"- {output.repetitions} repetitions, concurrency "
+        f"- {counted(output.repetitions, 'repetition')}, concurrency "
         f"{state.get('concurrency')}, timeout {state.get('timeout')}s",
     ]
     for record in state.get("carried", ()):
