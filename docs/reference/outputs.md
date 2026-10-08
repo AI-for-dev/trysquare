@@ -370,6 +370,11 @@ agent's rather than ours.
 
 It costs no tokens and it is opt-in - see {doc}`cli`.
 
+A combo flow run has nothing to export: combo already wrote one page per subagent in its
+run directory, such as `session/runs/<timestamp>/fix/fixer.html`. `render --html` counts
+such runs apart from the runs with no session, and the synthesis page links those pages
+by node and agent.
+
 ## Where clones and sessions live
 
 Under `workdir` from the config, by default `$TMPDIR/trysquare`. Deliberately outside the

@@ -807,7 +807,7 @@ def _export_sessions(
         print(f"error: {problem}, so no session can be exported", file=sys.stderr)
         return 1
 
-    written = bare = 0
+    written = bare = flows = 0
     # Counted per run, not per session file: a run may archive several, and the
     # total has to be known before the first one is opened.
     enabled = progress_mod.wanted(no_progress=no_progress)
@@ -815,7 +815,10 @@ def _export_sessions(
         for run in sorted(runs, key=lambda r: r.id):
             sessions = output.sessions(run.id)
             if not sessions:
-                bare += 1
+                if output.flows(run.id):
+                    flows += 1
+                else:
+                    bare += 1
                 bar.tick()
                 continue
             for session in sessions:
@@ -829,6 +832,8 @@ def _export_sessions(
             bar.tick()
 
     print(f"\n  {counted(written, 'session page')} written")
+    if flows:
+        print(f"  {counted(flows, 'combo flow run')}, whose subagent pages combo wrote itself")
     if bare:
         print(
             f"  {bare} of {len(runs)} runs without an archived session: measured before "
@@ -837,7 +842,29 @@ def _export_sessions(
     return 0
 
 
-def session_links(output: Output, runs: list[Run]) -> list[tuple[str, str, str, list[str]]]:
+def session_pages(output: Output, run_id: str) -> list[tuple[str, str]]:
+    """A run's pages as `(label, path under session/)`: the agent's, then combo's.
+
+    The agent's are one per attempt, so the ordinal is their label. A combo flow has one
+    page per subagent, written by combo in each attempt's run directory, so its label is
+    the node and the agent it ran.
+    """
+    session = output.location(run_id) / SESSION
+    pages = [(f"attempt {i}", p.name) for i, p in enumerate(sorted(session.glob("*.html")), 1)]
+    for i, flow in enumerate(output.flows(run_id), 1):
+        pages += [
+            (
+                f"{page.relative_to(flow).with_suffix('').as_posix()}, attempt {i}",
+                page.relative_to(session).as_posix(),
+            )
+            for page in sorted(flow.rglob("*.html"))
+        ]
+    return pages
+
+
+def session_links(
+    output: Output, runs: list[Run]
+) -> list[tuple[str, str, str, list[tuple[str, str]]]]:
     """Each run's archived session pages, labelled by cell and ordered like the tables.
 
     The cell order is the order the cells first appear in the measures, which is the
@@ -851,15 +878,11 @@ def session_links(output: Output, runs: list[Run]) -> list[tuple[str, str, str, 
     for run in runs:
         cells.setdefault(run.cell, len(cells))
 
-    found = [
-        (run, names)
-        for run in runs
-        if (names := [p.name for p in sorted((output.location(run.id) / SESSION).glob("*.html"))])
-    ]
+    found = [(run, pages) for run in runs if (pages := session_pages(output, run.id))]
     found.sort(key=lambda pair: (cells[pair[0].cell], pair[0].repetition))
     return [
-        (f"{run.cell} #{run.repetition}", run.id, output.relative_run(run.id), names)
-        for run, names in found
+        (f"{run.cell} #{run.repetition}", run.id, output.relative_run(run.id), pages)
+        for run, pages in found
     ]
 
 
