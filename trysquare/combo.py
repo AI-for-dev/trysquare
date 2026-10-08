@@ -81,3 +81,57 @@ def usage(clone: Path, before: set[str]) -> dict[str, dict]:
             )
         found[name] = {key: total[key] for key in TOTAL}
     return found
+
+
+#: What a visit path ends with when it is one iteration of a loop or one item of a `map`.
+ITERATION = re.compile(r"(#\d+|\[\d+\])$")
+
+
+def holders(path: str) -> list[str]:
+    """The visits that can hold the visit `path`: `fix#2/code` is held by the loop `fix`."""
+    segments = path.split("/")
+    return [ITERATION.sub("", "/".join(segments[: i + 1])) for i in range(len(segments) - 1)]
+
+
+def ended(directory: Path) -> list[dict]:
+    """The `visit_end` entries of a run's journal so far. A line combo is still writing is skipped."""
+    try:
+        lines = (directory / "journal.jsonl").read_text().splitlines()
+    except OSError:
+        return []
+    entries = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict) and entry.get("type") == "visit_end":
+            entries.append(entry)
+    return entries
+
+
+def progress(clone: Path, before: set[str]) -> dict | None:
+    """What the combo runs created since `before` have ended so far, for a live view.
+
+    combo journals a visit when it ends and not before, so the subagent named here is
+    the last one to finish, and the tokens of the one working now arrive with its end.
+    Each visit is counted once, at the outermost visit holding it, as combo's own
+    `costOf` does: a loop's usage already includes every iteration's. Unlike `usage`,
+    this never raises, since combo is still writing what it reads.
+    """
+    spent, agents = [], []
+    for name in sorted(run_dirs(clone) - before):
+        ends = ended(clone / name)
+        paths = {end.get("path") for end in ends}
+        spent += [end for end in ends if paths.isdisjoint(holders(str(end.get("path"))))]
+        agents += [end for end in ends if end.get("kind") == "agent"]
+    if not spent:
+        return None
+    last = agents[-1] if agents else {}
+    return {
+        "usage": {key: sum((end.get("usage") or {}).get(key, 0) for end in spent) for key in TOTAL},
+        "visits": len(agents),
+        "agent": last.get("agent"),
+        "path": last.get("path"),
+        "model": last.get("model"),
+    }

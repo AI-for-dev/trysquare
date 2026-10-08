@@ -176,3 +176,86 @@ class TestWithNobodyLooking:
     def test_watching_nothing_yields_nothing(self):
         with live.watching(None, "abc", "none / off", 0) as watch:
             assert watch is None
+
+
+def visit_end(path: str, agent_name: str, output: int) -> dict:
+    """A `visit_end` as combo v0.3.0 journals it once an agent visit ends."""
+    usage = {"input": 100, "output": output, "cacheRead": 5, "cost": 0.25, "turns": 1}
+    return {
+        "type": "visit_end",
+        "path": path,
+        "node": path,
+        "kind": "agent",
+        "ok": True,
+        "agent": agent_name,
+        "model": "prov/m",
+        "wallMs": 10,
+        "usage": {**usage, "cacheWrite": 0, "wallMs": 10, "busyMs": 10},
+    }
+
+
+def mid_flow(tmp_path, entries) -> list[str]:
+    """A fake `pi -p "/run ..."` that journals `entries`, then holds until told to go."""
+    script = f"""
+import json, os, time
+d = os.path.join("runs", "2026-10-07_19-21-16")
+os.makedirs(d)
+with open(os.path.join(d, "journal.jsonl"), "w") as f:
+    for entry in [{{"type": "life_start"}}] + {entries!r}:
+        f.write(json.dumps(entry) + chr(10))
+while not os.path.exists({str(tmp_path / "go")!r}):
+    time.sleep(0.01)
+total = {{"input": 0, "output": 0, "cacheRead": 0, "cost": 0, "turns": 0}}
+open(os.path.join(d, "usage.json"), "w").write(json.dumps({{"total": total}}))
+"""
+    return ["-c", script]
+
+
+class TestAComboFlowIsFollowed:
+    """A `/run` spends everything in combo's subagents, out of the stream: a live view
+    reading the stream alone shows a flow that works for an hour as a run doing nothing."""
+
+    @staticmethod
+    def visits(b: live.Board) -> int:
+        return (b.snapshot()["runs"]["abc"].get("combo") or {}).get("visits", 0)
+
+    def during(self, tmp_path, entries) -> dict:
+        b = board()
+        go = tmp_path / "go"
+        agents = sum(entry["kind"] == "agent" for entry in entries)
+        with b.watching("abc", "none / off", 0) as watch:
+            child = threading.Thread(
+                target=agent.run,
+                args=(tmp_path, mid_flow(tmp_path, entries), 60, tmp_path / "trace.jsonl"),
+                kwargs={"watch": watch},
+            )
+            child.start()
+            try:
+                deadline = time.time() + 10
+                while self.visits(b) < agents and time.time() < deadline:
+                    time.sleep(0.02)
+                return b.snapshot()["runs"]["abc"]
+            finally:
+                go.touch()
+                child.join()
+
+    def test_the_visits_it_ended_are_counted_while_it_runs(self, fake_agent, tmp_path):  # noqa: F811
+        entry = self.during(
+            tmp_path, [visit_end("scout", "scout", 40), visit_end("fix#1/code", "coder", 60)]
+        )
+        assert (entry["turns"], entry["output"], entry["input"]) == (2, 100, 200)
+
+    def test_the_subagent_it_last_heard_from_is_named(self, fake_agent, tmp_path):  # noqa: F811
+        entry = self.during(
+            tmp_path, [visit_end("scout", "scout", 40), visit_end("fix#1/code", "coder", 60)]
+        )
+        assert entry["combo"] == {"visits": 2, "agent": "coder", "path": "fix#1/code"}
+        assert entry["model_id"] == "prov/m"
+
+    def test_a_visit_is_counted_once_under_the_visits_holding_it(self, fake_agent, tmp_path):  # noqa: F811
+        """A loop's `visit_end` carries every visit inside it, as combo's `costOf` reads."""
+        loop = {**visit_end("fix", "", 100), "kind": "loop"}
+        loop.pop("agent")
+        entries = [visit_end("fix#1/code", "coder", 40), visit_end("fix#2/code", "coder", 60), loop]
+        entry = self.during(tmp_path, entries)
+        assert entry["output"] == 100

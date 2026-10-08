@@ -81,7 +81,7 @@ a { color: inherit; }
 <h2>En vol <span id="inflight" class="sub"></span></h2>
 <div class="scroll"><table>
   <thead><tr>
-    <th>cellule</th><th>rép</th><th>tent</th><th>modèle</th><th>tours</th>
+    <th>cellule</th><th>rép</th><th>tent</th><th>modèle</th><th>sous-agent</th><th>tours</th>
     <th>in</th><th>out</th><th>tok/s</th><th>maj/s</th><th>durée</th>
   </tr></thead>
   <tbody id="runs"></tbody>
@@ -90,6 +90,8 @@ a { color: inherit; }
   <b>tok/s</b> est exact&nbsp;: les tokens viennent de <code>message_end</code>, un par tour.
   <b>maj/s</b> est un pouls&nbsp;: le rythme des mises à jour de flux, environ deux caractères
   chacune. Ce ne sont pas des tokens.
+  <br><b>sous&#8209;agent</b>, pour un flow combo&nbsp;: le dernier sous-agent à avoir fini une visite,
+  et combien en ont fini. combo n'écrit une visite qu'à sa fin, donc ses tokens arrivent avec elle.
 </div>
 
 <h2>Cellules</h2>
@@ -145,6 +147,11 @@ function header(d) {
   $('meta').innerHTML = bits.filter(Boolean).join(' · ');
 }
 
+function subagent(combo) {
+  if (!combo) return '<span class="zero">-</span>';
+  return `<span title="${combo.path}">${combo.agent || combo.path}</span> <span class="zero">(${combo.visits})</span>`;
+}
+
 function flight(d) {
   const runs = Object.entries((d.live || {}).runs || {});
   const now = (d.live || {}).seen || Date.now() / 1000;
@@ -157,6 +164,7 @@ function flight(d) {
       <td class="num">${r.repetition}</td>
       <td class="num${r.attempt > 1 ? ' warn' : ''}">${r.attempt}</td>
       <td class="cell">${r.model_id || '—'}</td>
+      <td class="cell">${subagent(r.combo)}</td>
       <td class="num">${r.turns}</td>
       <td class="num">${n(r.input)}</td>
       <td class="num">${n(r.output)}</td>
@@ -164,7 +172,7 @@ function flight(d) {
       <td class="num">${pulse === null ? '<span class="zero">…</span>' : pulse.toFixed(1)}</td>
       <td class="num">${duration(now - r.started)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="10" class="zero">rien en vol</td></tr>';
+  }).join('') || '<tr><td colspan="11" class="zero">rien en vol</td></tr>';
   const stale = new Set(runs.map(([id]) => id));
   for (const id of previous.keys()) if (!stale.has(id)) previous.delete(id);
 }

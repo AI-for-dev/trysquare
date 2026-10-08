@@ -305,6 +305,10 @@ failed still spent tokens and still answered, so it is measured like any other r
 counts a turn as one prompt to a subagent, which is coarser than a session's turns.
 `measures.json` records each part under `usage_sources`.
 
+While the flow runs, `trysquare watch` reads combo's `journal.jsonl` in the same
+directory. combo writes a visit there when it ends, so the page counts the tokens of
+finished visits and names the last subagent to finish rather than the one working now.
+
 ## Declare the validation
 
 ```toml
