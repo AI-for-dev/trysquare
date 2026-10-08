@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/AI-for-dev/trysquare/compare/v0.10.0...v0.10.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* show a combo /run's subagent sessions live in watch ([#141](https://github.com/AI-for-dev/trysquare/issues/141)) ([c864a8d](https://github.com/AI-for-dev/trysquare/commit/c864a8d2ff788e0960db097413fc948a0978a6dc))
+* stop the relay from printing a traceback when an agent drops a connection ([#140](https://github.com/AI-for-dev/trysquare/issues/140)) ([abf7e7a](https://github.com/AI-for-dev/trysquare/commit/abf7e7a424466acb0f215a28c9d5e5c4de5811e2))
+
 ## [0.10.0](https://github.com/AI-for-dev/trysquare/compare/v0.9.0...v0.10.0) (2026-10-08)
 
 
