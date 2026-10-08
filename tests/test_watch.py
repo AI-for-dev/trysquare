@@ -296,6 +296,99 @@ class TestARunsSession:
         assert sorted(session.iterdir()) == [session / "s.jsonl"]
 
 
+FLOW = "runs/2026-10-08_06-26-27"
+FIXER = "01a11a31-18aa-77e2-8c6c-bba525a0b385"
+
+
+class TestAComboFlowsSubagents:
+    """A `/run` leaves the run's own session empty by design: pi writes a session once it
+    holds a user or an assistant message, and `/run` adds neither. The work is in the
+    sessions combo writes for its subagents, in the clone."""
+
+    @pytest.fixture
+    def flowing(self, tmp_path, fake_pi):  # noqa: F811
+        """A served matrix with one flow run in flight, its `fix` visit running `fixer`."""
+        work = tmp_path / "work" / "abc"
+        (work / "session").mkdir(parents=True)
+        flow = work / "repo" / FLOW
+        (flow / ".sessions").mkdir(parents=True)
+        journal = [
+            {"type": "life_start"},
+            {"type": "visit_start", "path": "fix", "kind": "agent", "agent": "fixer"},
+        ]
+        (flow / "journal.jsonl").write_text("".join(json.dumps(e) + "\n" for e in journal))
+        session = flow / ".sessions" / f"2026-10-08T06-26-27-626Z_{FIXER}.jsonl"
+        session.write_bytes(b'{"type":"session"}\n')
+        combo = {
+            "visits": 0,
+            "agent": None,
+            "path": None,
+            "running": [],
+            "directories": [str(flow)],
+        }
+        run = {
+            "cell": "a",
+            "repetition": 0,
+            "state": live.RUNNING,
+            "session": str(work / "session"),
+            "combo": combo,
+        }
+        header = {"seen": time.time(), "finished": None, "image": "", "runs": {"abc": run}}
+        directory = matrix(
+            tmp_path,
+            state={
+                "runs": {"abc": {"cell": "a", "repetition": 0, "state": "missing"}},
+                "layout": "by-cell",
+            },
+            live=header,
+        )
+        httpd = watch.server(directory, 0)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            yield f"http://127.0.0.1:{httpd.server_address[1]}", directory, session
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_the_run_lists_its_subagents_rather_than_waiting(self, flowing):
+        url, _, _ = flowing
+        status, page = get(f"{url}/run/abc")
+        assert status == 200
+        assert b"Waiting for the session" not in page
+        assert b"empty by design" in page
+        assert f'href="/run/abc/{FIXER}"'.encode() in page
+        assert b"fixer" in page
+
+    def test_a_subagent_shows_its_own_session_as_it_grows(self, flowing):
+        url, _, session = flowing
+        page = get(f"{url}/run/abc/{FIXER}")[1]
+        assert (b"1 lines" in page, b'id="trysquare-back" href="/run/abc"' in page) == (True, True)
+        with session.open("ab") as f:
+            f.write(b'{"type":"message"}\n')
+        _, body = get(f"{url}/run/abc/{FIXER}/state")
+        assert json.loads(body) == {"running": True, "stamp": peek.stamp(session)}
+        assert b"2 lines" in get(f"{url}/run/abc/{FIXER}")[1]
+
+    @pytest.mark.parametrize("subagent", ["nope", FIXER[:8], "..%2F.sessions", "journal.jsonl"])
+    def test_a_subagent_is_one_the_flow_holds_and_nothing_else(self, flowing, subagent):
+        url, _, _ = flowing
+        with pytest.raises(urllib.error.HTTPError) as e:
+            get(f"{url}/run/abc/{subagent}")
+        assert e.value.code == 404
+
+    def test_once_the_run_ended_its_archived_copy_is_read(self, flowing):
+        url, directory, session = flowing
+        get(f"{url}/run/abc/{FIXER}")
+        archived = directory / "runs" / "a" / "abc" / "session" / FLOW / ".sessions" / session.name
+        archived.parent.mkdir(parents=True)
+        archived.write_bytes(b'{"type":"session"}\n' * 3)
+        outputs.write_json(directory / outputs.LIVE, {"seen": time.time(), "runs": {}})
+        status, page = get(f"{url}/run/abc/{FIXER}")
+        assert (status, b"3 lines" in page, b"ended = true" in page) == (200, True, True)
+        status, page = get(f"{url}/run/abc")
+        assert (status, f'href="/run/abc/{FIXER}"'.encode() in page) == (200, True)
+
+
 class TestTheCommand:
     def test_a_directory_with_no_ledger_is_refused(self, tmp_path, capsys):
         """A wrong path would otherwise open a page saying nothing, and a reader would

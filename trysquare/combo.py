@@ -17,6 +17,8 @@ What v0.4.0 writes, for each `/run`: `runs/<YYYY-MM-DD_HH-MM-SS>[-n]/` at the ro
 the clone, with `journal.jsonl` opened as the run starts and `usage.json` closed as it
 ends, print mode included. `total` there is the whole run, delegated subagents and all.
 The journal gets a `visit_start` and a `visit_end` line for each visit, as it happens.
+Each subagent's pi session grows in `.sessions/<start>_<id>.jsonl`, and is copied to
+its transcript, `<home>/<agent>.jsonl`, once the subagent closes.
 """
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ RUNS = "runs"
 
 #: A run directory's name. combo suffixes `-2`, `-3` when two runs start in one second.
 RUN_DIR = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(-\d+)?")
+
+#: Where a run keeps its subagents' pi sessions while they work.
+SESSIONS = ".sessions"
 
 #: The figures of `usage.json`'s `total` a run's usage is made of. Same names as trysquare's.
 TOTAL = ("input", "output", "cacheRead", "cost", "turns")
@@ -136,14 +141,16 @@ def working(entries: list[dict]) -> list[dict]:
 def progress(clone: Path, before: set[str]) -> dict | None:
     """Where the combo runs created since `before` are, for a live view.
 
-    `running` names the subagents working now. A journal older than v0.4.0 holds no
-    `visit_start`, so only the last subagent to finish is named. The tokens of a visit
+    `running` names the subagents working now, and `directories` is where those runs
+    are. A journal older than v0.4.0 holds no `visit_start`, so only the last subagent
+    to finish is named. The tokens of a visit
     arrive with its end, counted once at the outermost visit holding it, as combo's
     own `costOf` does: a loop's usage already includes every iteration's. Unlike
     `usage`, this never raises, since combo is still writing what it reads.
     """
     spent, agents, running = [], [], []
-    for name in created(clone, before):
+    names = created(clone, before)
+    for name in names:
         entries = journal(clone / name)
         ends = [entry for entry in entries if entry.get("type") == "visit_end"]
         paths = {end.get("path") for end in ends}
@@ -160,4 +167,41 @@ def progress(clone: Path, before: set[str]) -> dict | None:
         "path": last.get("path"),
         "model": last.get("model"),
         "running": running,
+        "directories": [str(clone / name) for name in names],
     }
+
+
+def subagents(directory: Path) -> list[dict]:
+    """The subagents of one run so far, in the order they started, each with its session.
+
+    A session names no agent, and the transcript that does is only written once its
+    subagent closes. So a session without one is named after the visits still running,
+    taken in the order both started; one that matches none, a delegated child still
+    working, goes by its id alone.
+    """
+    try:
+        sessions = sorted((directory / SESSIONS).glob("*.jsonl"))
+        transcripts = [p for p in directory.glob("*/**/*.jsonl") if p.parent.name != SESSIONS]
+    except OSError:
+        return []
+    closed = {_session_id(p): p.relative_to(directory).with_suffix("") for p in transcripts}
+    running = iter(working(journal(directory)))
+    found = []
+    for session in sessions:
+        sid = session.stem.rpartition("_")[2]
+        if home := closed.get(sid):
+            name = {"agent": home.name, "path": home.parent.as_posix(), "running": False}
+        else:
+            visit = next(running, {"agent": None, "path": None})
+            name = {**visit, "running": True}
+        found.append({"id": sid, "session": session, **name})
+    return found
+
+
+def _session_id(path: Path) -> str | None:
+    """The id in a pi session's header line."""
+    try:
+        with path.open() as f:
+            return json.loads(f.readline()).get("id")
+    except (OSError, ValueError, AttributeError):
+        return None
