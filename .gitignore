@@ -24,3 +24,6 @@ uv.lock
 
 # Local working notes, never part of the project.
 .scratch/
+
+# Git worktrees, one per branch in progress.
+worktree/
