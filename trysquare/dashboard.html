@@ -74,7 +74,7 @@ a { color: inherit; }
 <h1 id="title">…</h1>
 <div class="sub" id="meta"></div>
 
-<div class="done"><span id="done" class="num">0</span> <span class="sub">/ <span id="planned">0</span> runs</span></div>
+<div class="done"><span id="done" class="num">0</span> <span class="sub">/ <span id="planned">0 runs</span></span></div>
 <div class="bar"><i id="fill" style="width:0"></i></div>
 <div class="sub" id="states"></div>
 
@@ -104,6 +104,7 @@ a { color: inherit; }
 <script>
 const $ = (id) => document.getElementById(id);
 const n = (v) => (v ?? 0).toLocaleString('en-US');
+const runCount = (k) => `${n(k)} run${k === 1 ? '' : 's'}`;
 
 function duration(s) {
   s = Math.max(0, Math.round(s));
@@ -156,19 +157,19 @@ function flight(d) {
   const runs = Object.entries((d.live || {}).runs || {});
   const now = (d.live || {}).seen || Date.now() / 1000;
   runs.sort((a, b) => a[1].cell.localeCompare(b[1].cell) || a[1].repetition - b[1].repetition);
-  $('inflight').textContent = runs.length ? `${runs.length} run${runs.length > 1 ? 's' : ''}` : '';
+  $('inflight').textContent = runs.length ? runCount(runs.length) : '';
   $('runs').innerHTML = runs.map(([id, r]) => {
     const { tokens, pulse } = rates(id, r, now);
     return `<tr>
       <td class="cell">${r.cell}</td>
       <td class="num">${r.repetition}</td>
       <td class="num${r.attempt > 1 ? ' warn' : ''}">${r.attempt}</td>
-      <td class="cell">${r.model_id || '—'}</td>
+      <td class="cell">${r.model_id || '-'}</td>
       <td class="cell">${subagent(r.combo)}</td>
       <td class="num">${r.turns}</td>
       <td class="num">${n(r.input)}</td>
       <td class="num">${n(r.output)}</td>
-      <td class="num">${tokens ? tokens.toFixed(1) : '<span class="zero">—</span>'}</td>
+      <td class="num">${tokens ? tokens.toFixed(1) : '<span class="zero">-</span>'}</td>
       <td class="num">${pulse === null ? '<span class="zero">…</span>' : pulse.toFixed(1)}</td>
       <td class="num">${duration(now - r.started)}</td>
     </tr>`;
@@ -201,7 +202,7 @@ function cells(d) {
     const seen = t.cells[cell] || { runs: 0, counts: {} };
     const counts = t.metrics.map((m) => {
       const [x, total] = seen.counts[m] || [0, 0];
-      return `<td class="num${total ? '' : ' zero'}">${total ? `${x}/${total}` : '—'}</td>`;
+      return `<td class="num${total ? '' : ' zero'}">${total ? `${x}/${total}` : '-'}</td>`;
     }).join('');
     return `<tr><td class="cell">${cell}${what(declared.get(cell))}</td>
       <td class="num">${p[cell].done}/${p[cell].planned}</td>${counts}</tr>`;
@@ -217,7 +218,7 @@ function cells(d) {
 function counters(d) {
   const p = d.progress;
   $('done').textContent = n(p.done);
-  $('planned').textContent = n(p.planned);
+  $('planned').textContent = runCount(p.planned);
   $('fill').style.width = p.planned ? `${(100 * p.done) / p.planned}%` : '0';
   $('states').textContent = Object.entries(p.states)
     .sort().map(([s, c]) => `${c} ${s}`).join(' · ');
