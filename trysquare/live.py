@@ -33,7 +33,7 @@ import threading
 import time
 from contextlib import contextmanager
 
-from .measure import Fold
+from .measure import Fold, plus
 
 #: Seconds between two snapshots. One is below what a reader notices and far above
 #: what the write costs: a matrix of 180 runs writes a few kilobytes a second for two
@@ -79,12 +79,37 @@ class Watch:
     def __init__(self, entry: dict) -> None:
         self._entry = entry
         self._fold = Fold()
+        self._flow = None
+        self._spent: dict = {}
 
     def attempt(self, n: int) -> None:
         """A new attempt truncates the trace, so the fold starts over with it."""
         self._fold = Fold()
-        self._entry.update(attempt=n, started=time.time(), updates=0)
+        self._flow, self._spent = None, {}
+        self._entry.update(combo=None, attempt=n, started=time.time(), updates=0)
         self._numbers()
+
+    def follow(self, flow) -> None:
+        """`flow()` reads what this attempt's combo runs have ended so far, or None.
+
+        A `/run` spends everything in combo's subagents, which never write to the
+        stream, so the stream alone would show an hour of flow as a run doing nothing.
+        Read on each snapshot rather than on each event, since the flow emits none.
+        """
+        self._flow = flow
+
+    def published(self) -> dict:
+        """The entry as a snapshot shows it, with the flow it follows read again."""
+        try:
+            read = self._flow() if self._flow else None
+        except Exception:  # noqa: BLE001 - a decorative file may not end a matrix
+            read = None
+        if read:
+            self._spent = read["usage"]
+            self._entry["combo"] = {k: read[k] for k in ("visits", "agent", "path")}
+            self._entry["model_id"] = read["model"] or self._entry["model_id"]
+            self._numbers()
+        return dict(self._entry)
 
     def update(self) -> None:
         """One stream update seen and dropped. The hot path: 16 679 of them per run."""
@@ -104,7 +129,7 @@ class Watch:
         self._numbers()
 
     def _numbers(self) -> None:
-        usage = self._fold.usage
+        usage = plus(self._fold.usage, {"flow": self._spent})
         self._entry.update(
             input=usage["input"],
             output=usage["output"],
@@ -125,7 +150,7 @@ class Board:
 
     def __init__(self, header: dict) -> None:
         self.header = dict(header)
-        self._runs: dict[str, dict] = {}
+        self._runs: dict[str, Watch] = {}
         # Around insertion and removal only, so the snapshot cannot walk a dict that
         # is changing size. What happens inside one entry needs no lock - see `Watch`.
         self._lock = threading.Lock()
@@ -152,11 +177,13 @@ class Board:
             "retries": 0,
             "cost": 0.0,
             "updates": 0,
+            "combo": None,
         }
+        watch = Watch(entry)
         with self._lock:
-            self._runs[run_id] = entry
+            self._runs[run_id] = watch
         try:
-            yield Watch(entry)
+            yield watch
         finally:
             with self._lock:
                 self._runs.pop(run_id, None)
@@ -172,7 +199,8 @@ class Board:
         is a launch that died without a word.
         """
         with self._lock:
-            runs = {k: dict(v) for k, v in self._runs.items()}
+            watches = dict(self._runs)
+        runs = {k: watch.published() for k, watch in watches.items()}
         return {**self.header, "seen": time.time(), "runs": runs}
 
     def stopped(self) -> dict:

@@ -253,6 +253,8 @@ def run(
     trace.parent.mkdir(parents=True, exist_ok=True)
     overflowed = False
     flows_before = combo.run_dirs(cwd)
+    if watch:
+        watch.follow(lambda: combo.progress(cwd, flows_before))
     try:
         # Truncating, so an attempt reads its own stream and not the tail of the
         # attempt it is replacing.
