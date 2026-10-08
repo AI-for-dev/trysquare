@@ -20,6 +20,7 @@ environment names if it names one.
 from __future__ import annotations
 
 import http.client
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -48,14 +49,17 @@ HOP = frozenset(
 SILENCE = 600
 
 
+#: How a connection reads when its other end went away.
+HUNG_UP = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)
+
+
 class Relay:
     """One provider's origin, its secrets by placeholder, and a port to reach it on."""
 
     def __init__(self, origin: str, secrets: dict[str, str], bind: str = "127.0.0.1") -> None:
         self.origin = origin.rstrip("/")
         self.secrets = dict(secrets)
-        self._server = ThreadingHTTPServer((bind, 0), _Forward)
-        self._server.daemon_threads = True
+        self._server = _Server((bind, 0), _Forward)
         self._server.relay = self
         self.port = self._server.server_address[1]
         threading.Thread(
@@ -79,6 +83,20 @@ class Relay:
     def close(self) -> None:
         self._server.shutdown()
         self._server.server_close()
+
+
+class _Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address) -> None:
+        """Reports what went wrong with a request, but not an agent that hung up.
+
+        An agent drops a keep-alive connection whenever it likes, often while the relay
+        waits for its next request line: that is the end of a connection, not a failure,
+        and a matrix opens hundreds of them. The provider hanging up is `answer`'s.
+        """
+        if not isinstance(sys.exception(), HUNG_UP):
+            super().handle_error(request, client_address)
 
 
 class _Forward(BaseHTTPRequestHandler):

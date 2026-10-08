@@ -7,10 +7,13 @@ sent and answers what it is told to.
 
 import http.client
 import json
+import socket
+import struct
 import threading
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -90,6 +93,15 @@ def relayed(upstream: Upstream) -> Relay:
     return Relay(upstream.origin, {PLACEHOLDER: SECRET})
 
 
+@contextmanager
+def handled():
+    """Waits, on the way out, for the connections opened inside to be handled."""
+    before = set(threading.enumerate())
+    yield
+    for thread in set(threading.enumerate()) - before:
+        thread.join(timeout=10)
+
+
 def post(relay: Relay, path: str = "/v1/chat", key: str = PLACEHOLDER, body: bytes = b"{}"):
     request = urllib.request.Request(
         f"http://127.0.0.1:{relay.port}{path}",
@@ -157,3 +169,28 @@ class TestWhatComesBack:
         with pytest.raises(urllib.error.HTTPError) as failed:
             post(relay)
         assert failed.value.code == 502
+
+
+class TestTheAgentsSide:
+    def test_an_idle_connection_reset_by_the_agent_is_not_reported(self, upstream, capsys):
+        """A container drops a keep-alive connection while the relay waits for its next
+        request: no request failed, so nothing reaches the operator's terminal."""
+        relay = relayed(upstream())
+        with handled():
+            agent = http.client.HTTPConnection("127.0.0.1", relay.port, timeout=10)
+            agent.request("POST", "/v1/chat", b"{}", {"Authorization": f"Bearer {PLACEHOLDER}"})
+            assert agent.getresponse().read() == b"ok"
+            agent.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            agent.close()
+        assert capsys.readouterr().err == ""
+
+    def test_a_request_the_relay_cannot_read_is_still_reported(self, upstream, capsys):
+        relay = relayed(upstream())
+        with socket.create_connection(("127.0.0.1", relay.port), timeout=10) as agent:
+            agent.sendall(
+                b"POST /v1/chat HTTP/1.1\r\nAuthorization: Bearer %s\r\n"
+                b"Transfer-Encoding: chunked\r\n\r\nnot-hex\r\n" % PLACEHOLDER.encode()
+            )
+            # The relay hangs up once it has reported the request it could not read.
+            assert agent.recv(1) == b""
+        assert "ValueError" in capsys.readouterr().err
