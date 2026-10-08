@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.1](https://github.com/AI-for-dev/trysquare/compare/v0.8.0...v0.8.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* anchor a relative workdir to the config file ([#124](https://github.com/AI-for-dev/trysquare/issues/124)) ([ca56acf](https://github.com/AI-for-dev/trysquare/commit/ca56acf95886bdadff31489a63840ae8a6f7456e))
+* drop the agent's connection when the provider cuts a stream ([#127](https://github.com/AI-for-dev/trysquare/issues/127)) ([6659604](https://github.com/AI-for-dev/trysquare/commit/6659604e8bd3d72ae3957860fc36769c4bfdd9d3))
+* measure a run driven by a combo /run from the flow's own usage ([#125](https://github.com/AI-for-dev/trysquare/issues/125)) ([cb3bf0f](https://github.com/AI-for-dev/trysquare/commit/cb3bf0f33811b787b267fc3b881bf19f661bad96))
+* write the [harness.agents] model override into the copied agent files ([#123](https://github.com/AI-for-dev/trysquare/issues/123)) ([f7ecfdf](https://github.com/AI-for-dev/trysquare/commit/f7ecfdf030d897c1d466d0dcd642fd36cc42b64e))
+
 ## [0.8.0](https://github.com/AI-for-dev/trysquare/compare/v0.7.0...v0.8.0) (2026-10-06)
 
 
