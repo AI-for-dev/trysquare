@@ -22,7 +22,7 @@ from functools import cached_property
 from pathlib import Path
 
 from . import agent as agent_mod
-from . import confine, interrupt
+from . import combo, confine, interrupt
 from . import repo as repo_mod
 from . import validation as validation_mod
 from .config import CONFIG_NAME, Config, closest
@@ -841,6 +841,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
             )
 
         run.usage = outcome.usage
+        run.usage_sources = outcome.sources
         run.duration = outcome.duration
         run.attempts = tries
 
@@ -861,6 +862,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
                 or outcome.error
                 or one_line(outcome.stderr)[:200]
                 or "no tokens consumed"
+                + (f": {combo.REFUSED}" if prompt.startswith("/run ") else "")
             )
             return run
 

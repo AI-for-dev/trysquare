@@ -200,6 +200,12 @@ archives that predate the field.
 same reason, and `image` the id of the image it ran from, empty under `none`. When any
 run says `none`, the synthesis header says the runs were not isolated.
 
+`usage_sources` appears when a run started a combo flow. It splits `usage` by where
+each part came from: `session` for the main session's stream, then one entry per combo
+run, keyed by its directory in the clone (`runs/2026-10-07_19-27-26`), which holds the
+flow's journal and its subagents' transcripts. See
+[Run a combo flow](../guide/writing-a-scenario.md#run-a-combo-flow).
+
 Persisting **per-run** values rather than aggregates is what makes `render` possible.
 Keeping only medians would make a matrix permanently unusable for a verdict, and a
 matrix costs hours.

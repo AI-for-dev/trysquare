@@ -24,6 +24,8 @@ import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .combo import ANSWER
+
 VALID = "valid"
 EMPTY = "empty"
 VALIDATOR_FAILED = "validator_failed"
@@ -56,6 +58,9 @@ class Run:
     isolation: str = ""
     # The id of the image it ran from, when it ran in one: the tools the agent had.
     image: str = ""
+    # Where `usage` came from when the stream is not its only part: the main session,
+    # then each combo run by its directory in the clone, which holds its transcripts.
+    usage_sources: dict = field(default_factory=dict)
 
     @property
     def is_valid(self) -> bool:
@@ -206,7 +211,7 @@ class Fold:
         elif kind_ == "message_end":
             message = event.get("message") or {}
             _add_usage(self.usage, message.get("usage"))
-            self.response = _assistant_text(message) or self.response
+            self.response = _assistant_text(message) or _flow_answer(message) or self.response
             if message.get("role") == "assistant":
                 self.gave_up = _error_of(event) if message.get("stopReason") == "error" else ""
         if not self.error:
@@ -356,6 +361,27 @@ def _assistant_text(message: dict) -> str:
     ]
     joined = "\n".join(p for p in pieces if p.strip())
     return joined if joined.strip() else ""
+
+
+def _flow_answer(message: dict) -> str:
+    """The answer a combo `/run` left in the conversation, empty for any other message.
+
+    The run's whole result when the main session made no turn of its own, and the
+    line it ends on says whether the flow succeeded.
+    """
+    content = message.get("content")
+    if message.get("customType") != ANSWER or not isinstance(content, str):
+        return ""
+    return content
+
+
+def plus(usage: dict, parts: dict[str, dict]) -> dict:
+    """`usage` with each part's figures added: a stream's, and the flows it ran."""
+    total = dict(usage)
+    for part in parts.values():
+        for key, value in part.items():
+            total[key] = total.get(key, 0) + value
+    return total
 
 
 def _error_of(event: dict) -> str:

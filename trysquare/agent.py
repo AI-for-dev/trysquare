@@ -21,12 +21,12 @@ import threading
 import time
 from collections.abc import Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import interrupt
+from . import combo, interrupt
 from .confine import Confinement, Scope, Unconfined
-from .measure import bounded, consumed_tokens, read_file
+from .measure import bounded, consumed_tokens, plus, read_file
 
 PI = "pi"
 
@@ -77,6 +77,9 @@ class Outcome:
     usage: dict
     overflowed: bool = False
     gave_up: str = ""
+    # Where `usage` came from, by part: the main session's stream, then each combo run
+    # by its directory in the clone. Empty when the stream is the only part.
+    sources: dict = field(default_factory=dict)
 
     @property
     def produced_something(self) -> bool:
@@ -249,6 +252,7 @@ def run(
     start = time.monotonic()
     trace.parent.mkdir(parents=True, exist_ok=True)
     overflowed = False
+    flows_before = combo.run_dirs(cwd)
     try:
         # Truncating, so an attempt reads its own stream and not the tail of the
         # attempt it is replacing.
@@ -276,6 +280,7 @@ def run(
         stderr, code, timed_out = str(e), -1, False
 
     found = read_file(trace)
+    flows = combo.usage(cwd, flows_before)
     return Outcome(
         trace=trace,
         response=found.response,
@@ -284,9 +289,10 @@ def run(
         code=code,
         duration=round(time.monotonic() - start),
         timed_out=timed_out,
-        usage=found.usage,
+        usage=plus(found.usage, flows),
         overflowed=overflowed,
         gave_up=found.gave_up,
+        sources={"session": found.usage, **flows} if flows else {},
     )
 
 

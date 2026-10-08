@@ -258,6 +258,53 @@ cannot diverge between cells.
 Pin harness repositories by tag. An experiment that pins the measured repository and
 lets the harness float is measuring the operator.
 
+### Run a combo flow
+
+A task can be a [combo](https://github.com/AI-for-dev/combo) flow started with
+`/run <flow> <input>`. Four bricks do it:
+
+```toml
+[task]
+prompt = "../materials/flow-prompt.md"   # holds: /run fix <the ticket>
+
+[harness.combo]
+repo = "combo"        # [harness] combo = "https://github.com/AI-for-dev/combo"
+tag = "v0.3.0"
+load = "."
+
+[harness.agents]
+paths = ["../materials/agents/fixer.md"]
+model = "ilaas/qwen-3.6-35b-instruct"
+
+[harness.flow]
+kind = "files"
+[harness.flow.files]
+".pi/flows/fix.md" = "../materials/flows/fix.md"
+".pi/checks/test.sh" = "../materials/checks/test.sh"
+```
+
+- **`load = "."`** loads the package root. Its `package.json` declares the extension, and
+  `extension/` imports `../src`, so under `docker` and `bwrap` the whole clone has to be
+  readable. `load = "extension"` would mount only half of it.
+- **The prompt is a file.** A `prompt` containing `/` is read as a path, so an inline
+  `/run fix ...` is refused as a file that does not exist.
+- **Name the agents brick `agents`.** The check that a subagent thinks at the cell's
+  `thinking` level, against the operator's `defaultThinkingLevel`, applies when a brick
+  of that name is declared. combo's subagents read their model from the agent file,
+  never from `[agent] model`.
+- **A broken flow is silent.** combo refuses an unknown flow, agent or check script with
+  a notice that print mode does not show. pi exits 0 and nothing is spent, so the run is
+  recorded `empty`, with a detail saying no combo run directory was created. Run the flow
+  once with `trysquare pi` before a matrix.
+
+pi runs `/run` before any model turn, so the main session spends nothing and the flow's
+subagents spend everything. Each run is read from the directory combo writes in the
+clone, `runs/<timestamp>/`: its `usage.json` total goes into the run's usage, and its
+answer, ending `ok · runs/...` or `failed at ...`, becomes the response. A flow that
+failed still spent tokens and still answered, so it is measured like any other run. combo
+counts a turn as one prompt to a subagent, which is coarser than a session's turns.
+`measures.json` records each part under `usage_sources`.
+
 ## Declare the validation
 
 ```toml
