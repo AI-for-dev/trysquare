@@ -20,6 +20,7 @@ The layout, as a literal block so the underscores are not read as markup::
       runs/<cell>/<id>/           grouped, or runs/<id>/ when the tree is blind
         context.json  configuration.json  diff.patch
         session/*.jsonl          the agent's per-message record, one file per attempt
+        session/runs/<ts>/       a combo flow's run directory, one per attempt
         validation/<mode>.json   validation/<mode>.stderr
 
 `runs/` takes one of two layouts, and which one is a property of the tree rather than
@@ -861,6 +862,17 @@ class Output:
             destination.write_bytes(source.read_bytes())
             copied.append(destination)
         return copied
+
+    def archive_flows(self, run_id_: str, clone: Path, names: list[str]) -> None:
+        """Adds combo's run directories `names` to the session archive, at their path in `clone`.
+
+        A `/run` leaves the main session empty, so the flow's own record - its journal, its
+        usage and its subagents' transcripts - is the only trace of what the agent did. It
+        is written in the clone, which is disposable, so it is copied here as it stands.
+        Called after `archive_sessions`, which has just emptied the archive.
+        """
+        for name in names:
+            shutil.copytree(clone / name, self.run_dir(run_id_) / SESSION / name)
 
     def sessions(self, run_id_: str) -> list[Path]:
         """A run's archived sessions, in order. Empty when none were archived."""

@@ -14,6 +14,10 @@ import sys
 import pytest
 
 from trysquare import agent, combo
+from trysquare.cli import main
+
+from tests.gitrepo import a_repo
+from tests.test_cli import SCENARIO_TOML, TREE_DEPENDENT
 
 FLOW_TOTAL = {
     "input": 9019,
@@ -134,3 +138,42 @@ class TestTheLayoutIsPinned:
     def test_a_directory_that_is_not_a_run_is_ignored(self, tmp_path):
         (tmp_path / "runs" / "notes").mkdir(parents=True)
         assert combo.run_dirs(tmp_path) == set()
+
+
+class TestAFlowIsArchived:
+    """The flow's own record is its session: the main one stays empty under a `/run`."""
+
+    @pytest.fixture
+    def archived(self, tmp_path, monkeypatch):
+        """The run directory of a whole `trysquare run` driven by a fake `/run`."""
+        fake = tmp_path / "pi"
+        fake.write_text(
+            f"#!{sys.executable}\nimport sys\n"
+            'if "--version" in sys.argv:\n    sys.exit(print("0.0.0"))\n'
+            'open("a.js", "w").write("changed\\n")\n' + flow()[1]
+        )
+        fake.chmod(0o755)
+        monkeypatch.setattr(agent, "PI", str(fake))
+        validator = tmp_path / "v.py"
+        validator.write_text(TREE_DEPENDENT)
+        validator.chmod(0o755)
+        config = tmp_path / "trysquare.toml"
+        source = a_repo({"a.js": "one\n"})
+        config.write_text(f'[repos]\nmy-repo = "{source}"\n[defaults]\nworkdir = "{tmp_path}"\n')
+        (tmp_path / "s.toml").write_text(
+            SCENARIO_TOML.replace("repetitions = 2", "repetitions = 1")
+        )
+        argv = ["run", str(tmp_path / "s.toml"), "-o", str(tmp_path / "out")]
+        main([*argv, "--config", str(config), "--no-progress"])
+        (run,) = (tmp_path / "out").glob("*/runs/none/*")
+        return run
+
+    def test_the_flow_s_run_directory_is_archived_as_the_session(self, archived):
+        flow_dir = archived / "session" / "runs" / "2026-10-07_19-21-16"
+        assert (flow_dir / "journal.jsonl").read_text() == '{"type":"life_start"}\n'
+        assert json.loads((flow_dir / "usage.json").read_text())["total"] == FLOW_TOTAL
+
+    def test_what_the_flow_left_beside_it_is_not_archived(self, archived):
+        assert sorted(p.name for p in (archived / "session" / "runs").iterdir()) == [
+            "2026-10-07_19-21-16"
+        ]

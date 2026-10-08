@@ -13,6 +13,7 @@ Everything is rooted at `--output`. One directory per experiment.
     diff.patch             what the agent changed
     session/<id>.jsonl         the agent's own trace, one file per attempt
     session/<id>.html          the same trace as a page, on `render --html`
+    session/runs/<timestamp>/  a combo flow's own record, one directory per attempt
     validation/<mode>.json     each validator's output
     validation/<mode>.stderr   kept when a validator fails
     validation/<mode>/context.json   what that validator was handed
@@ -202,8 +203,8 @@ run says `none`, the synthesis header says the runs were not isolated.
 
 `usage_sources` appears when a run started a combo flow. It splits `usage` by where
 each part came from: `session` for the main session's stream, then one entry per combo
-run, keyed by its directory in the clone (`runs/2026-10-07_19-27-26`), which holds the
-flow's journal and its subagents' transcripts. See
+run, keyed by its directory in the clone (`runs/2026-10-07_19-27-26`). That directory is
+archived under the run's `session/` at the same path. See
 [Run a combo flow](../guide/writing-a-scenario.md#run-a-combo-flow).
 
 Persisting **per-run** values rather than aggregates is what makes `render` possible.
@@ -345,6 +346,13 @@ is what `pi --mode json` prints while it works, almost entirely streaming deltas
 of it against 30 KB of session, teaching nothing the per-message record does not. The
 *session* is the per-message record, and that is what is kept.
 :::
+
+### `session/runs/<timestamp>/`, for a combo flow
+
+A `/run` leaves the main session empty. What the flow did is in the directory combo wrote
+in the clone, so it is copied here at the end of the run, as combo left it:
+`journal.jsonl`, `usage.json`, and one transcript per subagent with combo's own page
+beside it. One directory per attempt, like the session files.
 
 (session-html)=
 ### `session/*.html`, on `render --html`

@@ -834,6 +834,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
             readable=(*bricks["extensions"], *bricks["skills"]),
         )
         run.isolation, run.image = plan.confinement.name, plan.confinement.image
+        flows_before = combo.run_dirs(clone)
         run.agent_version = agent_mod.version(plan.confinement)
         with watching(board, run_id, cell.name, meta["repetition"]) as watch:
             outcome, tries = agent_mod.run_until_productive(
@@ -850,6 +851,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         # run somebody will want to read. One file per attempt, so the count matches
         # `run.attempts`.
         plan.output.archive_sessions(run_id, session_dir)
+        plan.output.archive_flows(run_id, clone, combo.created(clone, flows_before))
 
         if not outcome.produced_something:
             run.state = EMPTY

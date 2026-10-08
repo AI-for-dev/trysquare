@@ -53,6 +53,11 @@ def run_dirs(clone: Path) -> set[str]:
     return {f"{RUNS}/{d.name}" for d in runs.iterdir() if d.is_dir() and RUN_DIR.fullmatch(d.name)}
 
 
+def created(clone: Path, before: set[str]) -> list[str]:
+    """The combo run directories in `clone` that are not in `before`, oldest first."""
+    return sorted(run_dirs(clone) - before)
+
+
 def usage(clone: Path, before: set[str]) -> dict[str, dict]:
     """The usage of every combo run created since `before`, keyed by its directory.
 
@@ -60,7 +65,7 @@ def usage(clone: Path, before: set[str]) -> dict[str, dict]:
     kill. Its cost is unknown rather than zero, so it is refused like a changed layout.
     """
     found = {}
-    for name in sorted(run_dirs(clone) - before):
+    for name in created(clone, before):
         directory = clone / name
         if not (directory / "journal.jsonl").is_file():
             raise LayoutError(f"{name} has no journal.jsonl, which {LAYOUT} writes first")
