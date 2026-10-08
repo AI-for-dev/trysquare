@@ -61,6 +61,9 @@ class Run:
     # Where `usage` came from when the stream is not its only part: the main session,
     # then each combo run by its directory in the clone, which holds its transcripts.
     usage_sources: dict = field(default_factory=dict)
+    # The nodes of its combo flow that never ran, as `path: why`: such a run measured
+    # less than the flow its cell declares, and the synthesis says so.
+    unavailable: list = field(default_factory=list)
 
     @property
     def is_valid(self) -> bool:

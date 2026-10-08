@@ -80,6 +80,8 @@ class Outcome:
     # Where `usage` came from, by part: the main session's stream, then each combo run
     # by its directory in the clone. Empty when the stream is the only part.
     sources: dict = field(default_factory=dict)
+    # The nodes of its combo runs that combo could not run, as `combo.unavailable` says.
+    unavailable: list = field(default_factory=list)
 
     @property
     def produced_something(self) -> bool:
@@ -295,6 +297,7 @@ def run(
         overflowed=overflowed,
         gave_up=found.gave_up,
         sources={"session": found.usage, **flows} if flows else {},
+        unavailable=combo.unavailable(cwd, flows_before),
     )
 
 

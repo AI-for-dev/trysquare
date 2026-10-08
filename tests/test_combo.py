@@ -46,14 +46,21 @@ def assistant(text: str) -> str:
     return json.dumps({"type": "message_end", "message": message})
 
 
-def flow(name="2026-10-07_19-21-16", total=FLOW_TOTAL, usage=True, lines=(custom(ANSWER),)):
-    """A fake `pi -p "/run ..."`: the run directory combo writes, then the stream."""
+def flow(
+    name="2026-10-07_19-21-16", total=FLOW_TOTAL, usage=True, lines=(custom(ANSWER),), ends=()
+):
+    """A fake `pi -p "/run ..."`: the run directory combo writes, then the stream.
+
+    `ends` are the `visit_end` entries its journal holds after its `life_start`.
+    """
     script = f"""
 import json, os, sys
 d = os.path.join("runs", {name!r})
 os.makedirs(d)
 open(os.path.join("runs", ".gitignore"), "w").write("*")
-open(os.path.join(d, "journal.jsonl"), "w").write('{{"type":"life_start"}}\\n')
+with open(os.path.join(d, "journal.jsonl"), "w") as f:
+    for entry in [{{"type": "life_start"}}] + {list(ends)!r}:
+        f.write(json.dumps(entry, separators=(",", ":")) + chr(10))
 if {usage!r}:
     open(os.path.join(d, "usage.json"), "w").write(json.dumps({{"subagents": [], "total": {total!r}}}))
 for line in {list(lines)!r}:
@@ -126,6 +133,32 @@ class TestAFlowIsMeasured:
         assert outcome.usage["input"] == 9019
 
 
+def ended(path: str, kind: str, message: str) -> dict:
+    """A node's `visit_end` as combo v0.4.0 journals a failure."""
+    error = {"kind": kind, "message": message}
+    return {"type": "visit_end", "path": path, "kind": "agent", "ok": False, "error": error}
+
+
+class TestANodeComboCouldNotRunIsNamed:
+    """combo fails a node whose reads it cannot build before spawning its agent, and
+    `on-fail: continue` carries the flow on: measured, it reads as the flow it declares."""
+
+    DUBIOUS = "`diff`: fatal: detected dubious ownership in repository at '/x/repo'\nTo add..."
+
+    def test_each_one_by_its_path_and_the_first_line_of_why(self, tmp_path):
+        ends = [ended("round#1/steps[1]/step/review", "unavailable", self.DUBIOUS)]
+        outcome = run(tmp_path, flow(ends=ends))
+        assert outcome.unavailable == [
+            "round#1/steps[1]/step/review: `diff`: fatal: detected dubious ownership "
+            "in repository at '/x/repo'"
+        ]
+
+    def test_a_node_that_failed_otherwise_is_not_one(self, tmp_path):
+        """A provider's refusal is the agent's run failing, not a node that never ran."""
+        outcome = run(tmp_path, flow(ends=[ended("review", "provider", "down")]))
+        assert outcome.unavailable == []
+
+
 class TestTheLayoutIsPinned:
     def test_a_run_combo_did_not_close_is_refused(self, tmp_path):
         with pytest.raises(combo.LayoutError, match="no usage.json"):
@@ -194,6 +227,15 @@ class TestAFlowIsArchived:
         flow_dir = archived / "session" / "runs" / "2026-10-07_19-21-16"
         assert (flow_dir / "journal.jsonl").read_text() == '{"type":"life_start"}\n'
         assert not (flow_dir / "usage.json").exists()
+
+    def test_a_node_that_never_ran_is_said_where_the_run_is_read(self, launched, capsys):
+        lost = "review: `diff`: fatal: detected dubious ownership in repository at '/x'"
+        archived = launched(ends=[ended("review", "unavailable", lost.split(": ", 1)[1])])
+        matrix = archived.parents[2]
+        (row,) = json.loads((matrix / "measures.json").read_text())
+        assert row["unavailable"] == [lost]
+        assert f"The first: `` {lost} ``" in (matrix / "synthesis.md").read_text()
+        assert "!! none" in capsys.readouterr().out
 
 
 class TestASubagentIsNamed:

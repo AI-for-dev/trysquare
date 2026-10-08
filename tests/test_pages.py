@@ -45,6 +45,10 @@ class TestThePage:
         assert "<li>etalon <code>etalon-v1</code>" in page
         assert "<strong>No sentence may rest on an <code>o</code>.</strong>" in page
 
+    def test_a_code_span_holding_a_backtick_renders_whole(self):
+        page = synthesis_page("The first: `` review: `diff`: fatal `` here.")
+        assert "<code>review: `diff`: fatal</code> here." in page
+
     def test_two_plain_lines_are_one_paragraph(self):
         page = synthesis_page(SYNTHESIS)
         assert "anyway: hiding a measurement" in page

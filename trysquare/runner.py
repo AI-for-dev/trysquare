@@ -859,6 +859,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
 
         run.usage = outcome.usage
         run.usage_sources = outcome.sources
+        run.unavailable = outcome.unavailable
         run.duration = outcome.duration
         run.attempts = tries
 

@@ -309,6 +309,12 @@ counts a turn as one prompt to a subagent, which is coarser than a session's tur
 so the run's `session/` holds combo's own record instead: each run directory, copied to
 `session/runs/<timestamp>/` at the end of the run.
 
+A node combo cannot run, because it could not build one of its reads, ends before its
+agent is spawned, and a node with `on-fail: continue` lets the flow go on without it.
+The run is measured all the same, so trysquare says it: `measures.json` lists such nodes
+under `unavailable`, and the synthesis warns that those cells measured less than the
+flow they declare.
+
 While the flow runs, `trysquare watch` reads combo's `journal.jsonl` in the same
 directory. combo writes each visit there when it starts and when it ends, so the page
 names the subagents working now and counts the tokens of finished visits. combo before

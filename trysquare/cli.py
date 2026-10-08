@@ -462,8 +462,11 @@ def cmd_run(args) -> int:
         with progress_mod.bar(current.runs, "runs", enabled) as bar:
 
             def report(run: Run) -> None:
-                mark = "ok " if run.state == VALID else "!! "
+                mark = "ok " if run.state == VALID and not run.unavailable else "!! "
                 detail = "" if run.state == VALID else f"  {run.state}: {run.detail}"
+                if run.unavailable:
+                    lost = counted(len(run.unavailable), "combo node")
+                    detail += f"  {lost} unavailable: {run.unavailable[0]}"
                 bar.line(
                     f"  {mark}{run.cell:<24} {run.duration}s  "
                     f"{run.usage.get('input', 0)} in / {run.usage.get('output', 0)} out  "
@@ -964,7 +967,11 @@ def _write_synthesis(
         header.append(f"- overrides: {json.dumps(state['overrides'])}")
     header += isolation_lines(runs, state.get("limits") or {})
     header.append("")
-    warning = table_mod.retry_warning(by_cell) + carried_note(state)
+    warning = (
+        table_mod.retry_warning(by_cell)
+        + table_mod.unavailable_warning(by_cell)
+        + carried_note(state)
+    )
     path = output.write_synthesis("\n".join([*header, text, warning, ""]), suffix)
     print(f"\n  written {path}")
 
