@@ -48,6 +48,7 @@ from .verdict import plain
 from .outputs import (
     DIFF,
     SESSION,
+    SKILLS,
     STAMP,
     STATE,
     Output,
@@ -1376,6 +1377,7 @@ def replay_context(run_dir: Path, clone: Path, source: Path, scenario, at_etalon
         # run was handed is a fact about the run, and a scenario that gained a brick
         # since must not make an old run look as though it had received one.
         given=configuration.get("given", []),
+        skills=run_dir / SKILLS if configuration.get("skills") else None,
         declared=scenario.declared_metrics,
     )
 

@@ -21,6 +21,7 @@ The layout, as a literal block so the underscores are not read as markup::
         context.json  configuration.json  diff.patch
         session/*.jsonl          the agent's per-message record, one file per attempt
         session/runs/<ts>/       a combo flow's run directory, one per attempt
+        skills/<name>/...        what the run wrote beside its skills
         validation/<mode>.json   validation/<mode>.stderr
 
 `runs/` takes one of two layouts, and which one is a property of the tree rather than
@@ -51,7 +52,7 @@ import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from . import combo
+from . import combo, repo
 from .measure import EMPTY, VALIDATOR_FAILED, Run, counted
 
 STATE = "state.json"
@@ -65,6 +66,7 @@ RUNS = "runs"
 DIFF = "diff.patch"
 CONFIGURATION = "configuration.json"
 VALIDATION = "validation"
+SKILLS = "skills"
 # What tells a run's directory from a cell's, whatever the run managed to produce.
 RUN_MARKERS = (DIFF, CONFIGURATION, SESSION, VALIDATION)
 
@@ -874,6 +876,21 @@ class Output:
         """
         for name in names:
             shutil.copytree(clone / name, self.run_dir(run_id_) / SESSION / name)
+
+    def archive_skills(self, run_id_: str, clone: Path, names: list[str]) -> Path:
+        """Makes a run's `skills/` hold `names`, files under the clone's `.pi/skills/`.
+
+        What a skill wrote beside itself is not in the diff, `.pi/` being excluded, and a
+        nested session that wrote it keeps no session of its own: the clone is the only
+        copy, and it is disposable. Replaced like the sessions, for the same reason.
+        """
+        target = self.location(run_id_) / SKILLS
+        shutil.rmtree(target, ignore_errors=True)
+        for name in names:
+            destination = target / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(clone / repo.SKILLS / name, destination)
+        return target
 
     def sessions(self, run_id_: str) -> list[Path]:
         """A run's archived sessions, in order. Empty when none were archived."""

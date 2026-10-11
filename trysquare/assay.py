@@ -572,6 +572,24 @@ class Assay:
         return self._context.get("given") or ()
 
     @property
+    def skills(self) -> Path:
+        """What the run wrote beside its skills, laid out as the clone's `.pi/skills/`.
+
+        A skill's script may build a file next to its `SKILL.md`, through a nested `pi`
+        whose session nobody keeps. The file is archived, and this is where: read
+        `run.skills / "<skill>" / "references" / "out.md"`. Only what the run wrote or
+        changed is there, never the skill as the brick shipped it, and the directory does
+        not exist when the run wrote nothing.
+
+        Refused for a cell that loaded no skill, which has no such directory to mean
+        anything by.
+        """
+        return Path(self._part("skills"))
+
+    def _compute_skills(self):
+        return self._given("skills", "what the run wrote beside its skills")
+
+    @property
     def files_at_etalon(self) -> tuple[str, ...]:
         """Every path in the pinned tree, unfiltered.
 

@@ -338,7 +338,7 @@ def inject(
     for source in skills or []:
         if not source.exists():
             raise RepoError(f"skill directory not found: {source}")
-        target = d / ".pi" / "skills" / source.name
+        target = d / SKILLS / source.name
         target.parent.mkdir(parents=True, exist_ok=True)
         if source.is_dir():
             shutil.copytree(source, target, dirs_exist_ok=True)
@@ -354,6 +354,32 @@ def inject(
             f.write("\n# Injected by the harness, not written by the agent.\n")
             f.write("".join(f"{name}\n" for name in prepared.injected))
     return prepared
+
+
+#: Where `inject` copies the skills, relative to the clone.
+SKILLS = Path(".pi") / "skills"
+
+
+def skill_writes(clone: Path, sources: list[Path]) -> list[str]:
+    """The files under the clone's skills that `sources` did not put there as they are.
+
+    Relative to `SKILLS`, sorted: what a skill's script or the agent wrote beside a skill,
+    new files and edited ones alike. The copies left as injected are the brick's, which
+    the scenario already holds.
+    """
+    root = clone / SKILLS
+    shipped: dict[str, Path] = {}
+    for source in sources:
+        files = [source] if source.is_file() else [f for f in source.rglob("*") if f.is_file()]
+        for f in files:
+            shipped[(Path(source.name) / f.relative_to(source)).as_posix()] = f
+    found = sorted(f for f in root.rglob("*") if f.is_file()) if root.is_dir() else []
+    return [
+        name
+        for f in found
+        if (name := f.relative_to(root).as_posix()) not in shipped
+        or shipped[name].read_bytes() != f.read_bytes()
+    ]
 
 
 def _mark_pi(prepared: Prepared) -> None:
