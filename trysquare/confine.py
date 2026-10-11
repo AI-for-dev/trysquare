@@ -119,6 +119,11 @@ HOME = "/home/trysquare"
 #: scenario. Any other setting would be inherited from the machine, which no scenario says.
 SETTINGS = ("defaultThinkingLevel",)
 
+#: What a confined agent's environment always holds, whatever its image: a run calls its
+#: provider and nothing else, so no update check and no install telemetry. A variable
+#: `[isolation] env` names comes after, and wins.
+QUIET = {"PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
+
 #: A reference to a variable inside a value, `$NAME` or `${NAME}`, as `pi` interpolates
 #: it: `Bearer ${TOKEN}` is a header whose secret comes from the environment. `$$` and
 #: `$!` are escapes, matched so they are never read as references.
@@ -358,7 +363,8 @@ class Docker:
 
     The container sees the run's scope and nothing else, each path where the host has it.
     It runs as the operator's uid so what the agent writes in the clone stays the
-    operator's, and its environment is the variables `[isolation] env` names. It calls
+    operator's, and gains no privilege past it, whatever `sudo` the image grants that
+    uid. Its environment is `QUIET` and the variables `[isolation] env` names. It calls
     its provider through the relay on the host, as `host.docker.internal`.
     """
 
@@ -438,10 +444,19 @@ class Docker:
             name,
             "--user",
             f"{os.getuid()}:{os.getgid()}",
+            # An image that grants the operator's uid `sudo` would give one machine's
+            # agent tools another's has not.
+            "--security-opt",
+            "no-new-privileges",
             "--volume",
             f"{home}:{HOME}:rw",
             "--env",
             f"HOME={HOME}",
+            # An image whose entrypoint is tini runs it under `--init`'s, and its warning
+            # would sit in the stderr a failed run is told by.
+            "--env",
+            "TINI_SUBREAPER=1",
+            *(a for k, v in QUIET.items() for a in ("--env", f"{k}={v}")),
             # Where the relay listens, under the same name on Linux as Docker Desktop has.
             "--add-host",
             "host.docker.internal:host-gateway",
@@ -516,9 +531,9 @@ class Bwrap:
     `pi` under `~/.nvm`, say - and nothing else. It runs as the operator, shares the
     network to reach the provider, and dies with trysquare, so no run outlives a kill.
 
-    Its environment is `PATH`, `HOME` and the variables `[isolation] env` names, handed
-    to bwrap as its own environment rather than as `--setenv` arguments: a variable never
-    sits in an argv, where `ps` would show it. The relay listens on the loopback, which
+    Its environment is `PATH`, `HOME`, `QUIET` and the variables `[isolation] env` names,
+    handed to bwrap as its own environment rather than as `--setenv` arguments: a variable
+    never sits in an argv, where `ps` would show it. The relay listens on the loopback, which
     the sandbox shares.
     """
 
@@ -579,6 +594,7 @@ class Bwrap:
         return {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "HOME": HOME,
+            **QUIET,
             **{v: os.environ[v] for v in self.env},
             **{v: os.environ[v] for v in extra if v in os.environ},
         }

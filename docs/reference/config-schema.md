@@ -218,7 +218,12 @@ to reach its provider, so no proxy variable has to be passed in either.
 
 `env` lists the variables passed into the container, by name, for whatever else the
 agent needs. Nothing else of your environment goes in, and a variable `env` names that
-is unset is refused before any run.
+is unset is refused before any run. trysquare sets `PI_SKIP_VERSION_CHECK=1` and
+`PI_TELEMETRY=0` itself, whatever the image, so a run calls its provider and nothing
+else; a variable `env` names wins over them.
+
+The container runs as your uid with `no-new-privileges`: an image that grants that uid
+`sudo` does not let the agent install what another machine's agent could not.
 
 :::{warning}
 Only a provider your `models.json` describes, with its `baseUrl`, goes through the relay.
