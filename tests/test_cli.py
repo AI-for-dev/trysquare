@@ -2294,6 +2294,21 @@ class TestReplayRescore:
             os.chdir(here)
         assert 1 == self.measures()["aaaaaaaa"]["metrics"]["session_files"]
 
+    def test_a_run_that_loaded_skills_is_handed_their_archive(self):
+        """Read from the run's configuration, so an archive older than the key is not
+        handed a directory that was never written."""
+        run_dir = self.experiment / "runs" / "aaaaaaaa"
+        (run_dir / "configuration.json").write_text(
+            json.dumps({"cell": "none", "skills": ["builder"]})
+        )
+        assert 0 == self.replay()
+        contexts = {
+            p.parent.parent.name: json.loads(p.read_text())
+            for p in (self.home / "work" / "replay").glob("*/validation/context.json")
+        }
+        assert Path(contexts["aaaaaaaa"]["skills"]) == (run_dir / "skills").resolve()
+        assert "skills" not in contexts["bbbbbbbb"]
+
     # --- what a re-scoring may and may not touch -------------------------
 
     def test_a_repaired_validator_makes_the_run_valid_again(self):

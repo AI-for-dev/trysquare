@@ -66,6 +66,7 @@ score.py /path/to/run/validation/script/context.json
   "touched": ["src/basket.js"],
   "files": ["README.md", "src/basket.js", "src/theme.js"],
   "given": ["src/probe.test.js"],
+  "skills": "/path/to/run/skills",
   "declared": ["in_scope", "delivered", "tests"]
 }
 ```
@@ -129,6 +130,23 @@ It is withheld from a judge's context: naming a brick names the configuration.
 
 A scenario that declares nothing gets an empty set, so this line is safe to write
 everywhere.
+
+### Read what a skill built
+
+A skill may write beside itself - a script that starts a nested `pi -p` and builds
+`references/bugs-arcade.md` next to its `SKILL.md`. That file is not in `touched` or in
+the diff, and the nested session keeps no session of its own, so the harness archives what
+the run wrote under `.pi/skills/` and `run.skills` names the copy, laid out the same way:
+
+```python
+built = run.skills / "dynamic-playtester" / "references" / "bugs-arcade.md"
+entries = built.read_text().count("\n## ") if built.is_file() else 0
+```
+
+Only the files the run wrote or changed are there, and the directory does not exist when
+it wrote nothing. A cell that loaded no skill has no `skills` key, so asking refuses, and
+a judge is never handed it. The nested session's tokens and cost are not in the run's
+usage: see [extensions for nested sessions](../reference/scenario-schema.md#extensions-for-nested-sessions).
 
 ### Score a skill on both ways it arrives
 

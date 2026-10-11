@@ -888,6 +888,9 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         finally:
             plan.output.archive_sessions(run_id, session_dir)
             plan.output.archive_flows(run_id, clone, combo.created(clone, flows_before))
+            skills = plan.output.archive_skills(
+                run_id, clone, repo_mod.skill_writes(clone, bricks["skills"])
+            )
 
         run.usage = outcome.usage
         run.usage_sources = outcome.sources
@@ -947,6 +950,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
                 touched=touched,
                 files=at_etalon,
                 given=prepared.given,
+                skills=skills if prepared.skills else None,
                 declared=validator.metrics,
             )
             if validator.mode == "script":
@@ -1113,6 +1117,8 @@ def archive(plan: Plan, run_id: str, clone: Path, prepared, cell: Cell, thinking
             # Two places may declare a subagent's model, so the trace settles
             # which one applied.
             "agents": prepared.agents,
+            # Which skills the run loaded, so a replay knows its `skills/` was archived.
+            "skills": [p.name for p in prepared.skills],
         },
     )
 

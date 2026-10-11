@@ -182,6 +182,15 @@ class TestWhatTheCellWasGiven:
         assert Assay.fake(given=["game/probe.test.js"]).given == {"game/probe.test.js"}
 
 
+class TestWhatTheRunWroteBesideItsSkills:
+    def test_it_is_the_archived_directory(self):
+        assert Assay({"skills": "/out/runs/x/skills"}).skills == Path("/out/runs/x/skills")
+
+    def test_a_cell_that_loaded_no_skill_cannot_be_asked(self):
+        with pytest.raises(CannotJudge, match="what the run wrote beside its skills"):
+            Assay({}).skills
+
+
 class TestTheErrorContract:
     """ "Could not judge" is not "worked badly", and one validator in four got it right.
 

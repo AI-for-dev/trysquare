@@ -1178,6 +1178,22 @@ class TestBlindness:
         assert "cell" not in context
         assert context["test_command"] == "node --test"
 
+    def test_a_blind_context_does_not_say_whether_the_cell_loaded_skills(self, tmp_path):
+        path = validation.write_context(
+            tmp_path,
+            repo=Path("/r"),
+            etalon="etalon-v1",
+            etalon_checkout=Path("/e"),
+            prompt_file=None,
+            session_dir=Path("/s"),
+            trace=None,
+            cell="none",
+            repetition=0,
+            blind=True,
+            skills=Path("/run/skills"),
+        )
+        assert "skills" not in json.loads(path.read_text())
+
     def test_the_context_and_the_loader_split_it_the_same_way(self, tmp_path):
         """The point of a single rule: what loads is what runs, with nothing in between.
 
@@ -1665,6 +1681,36 @@ class TestTheSkillARunLoads:
     def test_what_it_writes_there_is_not_the_agent_s_work(self, seen, tmp_path):
         contexts = tmp_path.glob("out/*/runs/built/*/validation/script/context.json")
         assert [json.loads(p.read_text())["touched"] for p in contexts] == [["a.js"]] * 2
+
+    def test_what_it_writes_there_is_archived_and_the_skill_is_not(self, seen, tmp_path):
+        runs = list(tmp_path.glob("out/*/runs/built/*"))
+        assert len(runs) == 2
+        for run in runs:
+            archived = run / "skills" / "builder"
+            assert (archived / "references" / "out.md").read_text() == "built\n"
+            assert not (archived / "SKILL.md").exists()
+            assert json.loads((run / "configuration.json").read_text())["skills"] == ["builder"]
+
+    def test_a_validator_is_handed_the_archive_of_a_cell_with_skills_only(self, seen, tmp_path):
+        for path in tmp_path.glob("out/*/runs/*/*/validation/script/context.json"):
+            run = path.parents[2]
+            context = json.loads(path.read_text())
+            if run.parent.name == "built":
+                assert context["skills"] == str(run / "skills")
+            else:
+                assert "skills" not in context
+
+    def test_a_write_is_what_the_brick_does_not_hold_as_it_is(self, tmp_path):
+        brick = tmp_path / "builder"
+        gitrepo.write(brick, {"SKILL.md": "skill\n", "scripts/a.sh": "one\n"})
+        clone = tmp_path / "clone"
+        repo.inject(repo.Prepared(path=clone, etalon="etalon-v1"), skills=[brick])
+        copy = clone / repo.SKILLS / "builder"
+        gitrepo.write(copy, {"scripts/a.sh": "two\n", "references/out.md": "built\n"})
+        assert repo.skill_writes(clone, [brick]) == [
+            "builder/references/out.md",
+            "builder/scripts/a.sh",
+        ]
 
 
 PROBE = {"probe": {"kind": "files", "files": {"game/probe.test.js": "bricks/probe.test.js"}}}

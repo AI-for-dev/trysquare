@@ -36,7 +36,7 @@ CONTEXT_NAME = "context.json"
 # `given` is among them because it names a `files` brick, and a brick is a
 # configuration: a judge told this tree was handed a probe knows it is looking at the
 # treatment rather than the baseline.
-BLIND_KEYS = ("cell", "repetition", "configuration", "harness", "given")
+BLIND_KEYS = ("cell", "repetition", "configuration", "harness", "given", "skills")
 
 
 @dataclass
@@ -91,6 +91,7 @@ def write_context(
     touched: list[str] | None = None,
     files: list[str] | None = None,
     given: list[str] | None = None,
+    skills: Path | None = None,
     declared: tuple[str, ...] = (),
 ) -> Path:
     """Writes the context file a validator is handed.
@@ -174,6 +175,10 @@ def write_context(
     # it was handed pass for a run that was handed nothing.
     if given:
         context["given"] = list(given)
+    # The archived copy of what the run wrote beside its skills, for a cell that loaded
+    # any. A directory that does not exist then says the run wrote nothing there.
+    if skills is not None:
+        context["skills"] = where(skills)
     if declared:
         context["declared"] = list(declared)
     if response_file is not None:

@@ -14,6 +14,7 @@ Everything is rooted at `--output`. One directory per experiment.
     session/<id>.jsonl         the agent's own trace, one file per attempt
     session/<id>.html          the same trace as a page, on `render --html`
     session/runs/<timestamp>/  a combo flow's own record, one directory per attempt
+    skills/<name>/...          what the run wrote beside its skills, see run.skills
     validation/<mode>.json     each validator's output
     validation/<mode>.stderr   kept when a validator fails
     validation/<mode>/context.json   what that validator was handed
