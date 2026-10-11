@@ -232,19 +232,22 @@ One of `pi`'s own that it does not describe reads its key from the environment, 
 keep it out.
 :::
 
-trysquare ships `image/Dockerfile`: Ubuntu 24.04 pinned by digest, Node checked
-against its published checksum, pi at an exact version, and git, python3 and fd. Build
-it, extend it with what your repository's tests need, and name the result in the
-scenario:
-
-```bash
-docker build -t trysquare-agent image/
-```
+The agent's image is the official [`sbx/pi-image`](https://hub.docker.com/r/sbx/pi-image):
+pi, Node, git, python3, fd and ripgrep. Its `latest` tag moves every night, so name a
+dated tag, with its digest, in the scenario: the tools in the image are the agent's
+tools, and a run records the image it measured with. Extend it with what your
+repository's tests need, and name the result instead:
 
 ```dockerfile
-FROM trysquare-agent
+FROM docker.io/sbx/pi-image:20261011-358a89d1cda7f47b37a5a4b60b2ce63be4eab818@sha256:17f24a8c99653df1d325f4ce684c349c861b15c513de7337dde7cf54e95f2a13
+USER root
 RUN apt-get update && apt-get install -y --no-install-recommends make \
     && rm -rf /var/lib/apt/lists/*
+USER agent
+```
+
+```bash
+docker build -t my-agent .
 ```
 
 `cpus` and `memory` hold each container to that much of the machine, swap included.

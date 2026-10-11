@@ -84,7 +84,7 @@
           <dt>--config</dt>
           <dd>config file; defaults to the nearest <code>trysquare.toml</code> walking up</dd>
           <dt>--image</dt>
-          <dd>what docker runs <code>pi</code> from; default <code>trysquare-agent</code></dd>
+          <dd>what docker runs <code>pi</code> from; default the official <code>sbx/pi-image</code>, pinned</dd>
         </dl>
         <div class="ts-note">
           Refused under <code>backend = "none"</code>, and from a directory holding your
@@ -439,7 +439,7 @@ prompt = <span class="ts-k">"tickets/vague.md"</span>
 provider = <span class="ts-k">"ilaas"</span>   <span class="ts-c">#*</span>
 model = <span class="ts-k">"gemma-4-31b"</span> <span class="ts-c">#*</span>
 thinking = <span class="ts-k">"off"</span>      <span class="ts-c">#*</span>
-image = <span class="ts-k">"trysquare-agent"</span>  <span class="ts-c"># docker</span>
+image = <span class="ts-k">"my-agent"</span>  <span class="ts-c"># docker</span>
 
 [protocol]
 repetitions = 10        <span class="ts-c">#*</span>

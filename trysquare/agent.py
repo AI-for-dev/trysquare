@@ -30,6 +30,13 @@ from .measure import bounded, consumed_tokens, plus, read_file
 
 PI = "pi"
 
+#: The image docker runs `pi` from when nothing names another: the official one, by its
+#: dated tag for a reader and its digest for docker, so it never moves.
+IMAGE = (
+    "docker.io/sbx/pi-image:20261011-358a89d1cda7f47b37a5a4b60b2ce63be4eab818"
+    "@sha256:17f24a8c99653df1d325f4ce684c349c861b15c513de7337dde7cf54e95f2a13"
+)
+
 #: What runs the agent when the caller names no boundary.
 UNCONFINED = Unconfined()
 
