@@ -1,7 +1,8 @@
 """A whole `trysquare run`, with a fake agent reporting what it found when it started.
 
 Nothing here spends a token: the agent is a script that writes down what a real one
-could have read, leaves a session, and changes the tree so the run counts.
+could have read, leaves a session, writes a file beside each skill it is handed, and
+changes the tree so the run counts.
 """
 
 import json
@@ -21,11 +22,16 @@ sessions = args[args.index("--session-dir") + 1]
 os.makedirs(sessions, exist_ok=True)
 def git(*args):
     return subprocess.run(["git", *args], capture_output=True, text=True).stdout
+skills = [args[i + 1] for i, arg in enumerate(args) if arg == "--skill"]
 seen = {
     "sessions": sorted(os.listdir(sessions)),
     "commits": int(git("rev-list", "--all", "--count")),
     "files": git("ls-files").split(),
+    "skills": skills,
 }
+for skill in skills:
+    os.makedirs(os.path.join(skill, "references"), exist_ok=True)
+    open(os.path.join(skill, "references", "out.md"), "w").write("built\\n")
 with open(os.environ["SEEN"], "a") as f:
     f.write(json.dumps(seen) + "\\n")
 open(os.path.join(sessions, f"{uuid.uuid4()}.jsonl"), "w").write("{}\\n")

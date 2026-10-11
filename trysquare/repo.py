@@ -95,6 +95,9 @@ class Prepared:
     # that merged them would not say which of its files the agent could touch.
     given: list[str] = field(default_factory=list)
     agents: dict[str, dict] = field(default_factory=dict)
+    # Where each skill was copied. The agent loads these rather than the brick, so what
+    # a skill writes beside itself lands in this run's clone and never in the scenario.
+    skills: list[Path] = field(default_factory=list)
 
 
 def git(args: list[str], cwd: Path | None = None, check: bool = True) -> str:
@@ -341,6 +344,7 @@ def inject(
             shutil.copytree(source, target, dirs_exist_ok=True)
         else:
             shutil.copy2(source, target)
+        prepared.skills.append(target)
         _mark_pi(prepared)
 
     if prepared.injected:

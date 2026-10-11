@@ -498,6 +498,13 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
         for path in brick.get("paths", []):
             resolved = (base / path).resolve()
             if kind == "skills":
+                # Each skill is copied to `.pi/skills/<its name>`, so two of one name
+                # would land in one directory and the agent would load a mix of both.
+                if any(s.name == resolved.name for s in skills):
+                    raise RuntimeError(
+                        f"cell {cell.name!r} loads two skills named {resolved.name!r} - "
+                        f"the second is in {name!r}"
+                    )
                 skills.append(resolved)
             else:
                 agents.append(resolved)
@@ -823,7 +830,7 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
             thinking=thinking,
             session_dir=session_dir,
             extensions=bricks["extensions"],
-            skills=bricks["skills"],
+            skills=prepared.skills,
             has_context=context is not None,
         )
         timeout = plan.load("timeout")
@@ -836,11 +843,9 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         # The live entry exists only for as long as the agent does: what the run
         # produced is `measures.json`'s to say, and saying it twice is how two records
         # of one run come to disagree.
-        # The clone and the session are the run's own; a brick is read, never written.
-        scope = confine.Scope(
-            writable=(clone, session_dir),
-            readable=(*bricks["extensions"], *bricks["skills"]),
-        )
+        # The clone and the session are the run's own; a brick is read, never written. A
+        # skill is loaded from its copy in the clone, so it needs no mount of its own.
+        scope = confine.Scope(writable=(clone, session_dir), readable=tuple(bricks["extensions"]))
         run.isolation, run.image = plan.confinement.name, plan.confinement.image
         flows_before = combo.run_dirs(clone)
         run.agent_version = agent_mod.version(plan.confinement)

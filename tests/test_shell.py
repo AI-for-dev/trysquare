@@ -1594,6 +1594,49 @@ class TestSkillBricks:
         assert one["skills"] == [Path("/x/skills/tdd")]
         assert other["skills"] == [Path("/x/skills/research")]
 
+    def test_two_skills_of_one_name_are_refused(self):
+        """Both would be copied to one `.pi/skills/<name>`, and the agent load a mix."""
+        bricks = {
+            "skill-a": {"kind": "skills", "paths": ["a/tdd"]},
+            "skill-b": {"kind": "skills", "paths": ["b/tdd"]},
+        }
+        with pytest.raises(RuntimeError, match="two skills named 'tdd'"):
+            cell_bricks(bricks, {"harness": ["skill-a", "skill-b"]})
+
+
+class TestTheSkillARunLoads:
+    """A run loads its skills from their copy in its clone, never from the brick.
+
+    A skill may write beside itself - a script building a reference file next to its
+    `SKILL.md`. From the brick that write would fail, the brick being mounted read-only,
+    and mounted writable it would land in the scenario, where every later run reads it.
+    """
+
+    SCENARIO = (
+        SCENARIO_TOML
+        + '[harness.builder]\nkind = "skills"\npaths = ["skills/builder"]\n'
+        + '[variants.built]\nharness = ["builder"]\n'
+    )
+
+    @pytest.fixture
+    def seen(self, tmp_path, monkeypatch):
+        gitrepo.write(tmp_path, {"skills/builder/SKILL.md": "---\nname: builder\n---\n"})
+        return launch(tmp_path, monkeypatch, a_repo({"a.js": "one\n"}), self.SCENARIO)
+
+    def test_each_run_writes_beside_its_own_copy(self, seen):
+        loaded = [Path(p) for s in seen for p in s["skills"]]
+        assert len(set(loaded)) == 2
+        for skill in loaded:
+            assert skill.parent == skill.parents[2] / ".pi" / "skills"
+            assert (skill / "references" / "out.md").read_text() == "built\n"
+
+    def test_the_brick_is_left_as_the_scenario_wrote_it(self, seen, tmp_path):
+        assert sorted(p.name for p in (tmp_path / "skills" / "builder").iterdir()) == ["SKILL.md"]
+
+    def test_what_it_writes_there_is_not_the_agent_s_work(self, seen, tmp_path):
+        contexts = tmp_path.glob("out/*/runs/built/*/validation/script/context.json")
+        assert [json.loads(p.read_text())["touched"] for p in contexts] == [["a.js"]] * 2
+
 
 PROBE = {"probe": {"kind": "files", "files": {"game/probe.test.js": "bricks/probe.test.js"}}}
 

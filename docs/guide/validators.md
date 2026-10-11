@@ -139,7 +139,8 @@ wrote a given file.
 A skill needs **both** halves, because the two ways of loading one leave opposite traces.
 Loaded by name with a [`skills` brick](../reference/scenario-schema.md#harnessname),
 only its name and description enter the system prompt, so the agent has to `read` the
-`SKILL.md` itself - and may not. Referenced as `/skill:<name>` in the prompt, the agent
+`SKILL.md` itself - and may not. It reads the copy in its clone, under `.pi/skills/`, so
+match the call on the file name rather than on a path in the scenario. Referenced as `/skill:<name>` in the prompt, the agent
 expands it before the first turn and the whole body arrives in the message, so there is
 nothing left to read and no call to count. `run.skills_expanded` names the ones that
 arrived that way:
