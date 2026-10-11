@@ -627,6 +627,10 @@ def _check_artefacts(task: dict, where: str) -> None:
 
 BRICK_KINDS = ("skills", "agents", "files")
 
+# Which session loads an extension brick: the agent's own, or the sessions the agent
+# starts itself - a skill's script running `pi -p`. The first is the default.
+SESSIONS = ("main", "nested")
+
 # The one kind whose material is read by the *task* rather than by the agent library,
 # so it is declared as a mapping and not as a list of paths: the name a file takes in
 # the measured tree is a decision of the scenario, never of whoever named it on disk.
@@ -648,6 +652,7 @@ def _check_bricks(bricks: dict, where: str) -> None:
     `_check_files_brick`.
     """
     for name, brick in bricks.items():
+        _check_session(name, brick, where)
         kind = brick.get("kind")
         if kind is None:
             if brick.get(FILES_KIND):
@@ -674,6 +679,24 @@ def _check_bricks(bricks: dict, where: str) -> None:
                 f"{where}[harness.{name}] declares kind = {kind!r} but no paths: "
                 f"kind only says what the paths are"
             )
+
+
+def _check_session(name: str, brick: dict, where: str) -> None:
+    """Refuses a `session` that names no known session, or sits on a brick loading no
+    extension: either way the cell would load the brick somewhere nobody declared."""
+    if "session" not in brick:
+        return
+    session = brick["session"]
+    if session not in SESSIONS:
+        raise ScenarioError(
+            f"{where}[harness.{name}].session is {session!r}"
+            f"{closest(str(session), SESSIONS)}. Sessions: {', '.join(SESSIONS)}"
+        )
+    if "load" not in brick and "repo" not in brick:
+        raise ScenarioError(
+            f"{where}[harness.{name}] declares session = {session!r} but loads no "
+            f"extension: session only says which session loads one"
+        )
 
 
 def _check_files_brick(name: str, brick: dict, where: str) -> None:

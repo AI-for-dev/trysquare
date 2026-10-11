@@ -119,6 +119,15 @@ def resolve(
             f"[isolation] backend {confinement.name} runs the agent with this machine's tools"
         )
 
+    # A nested session reads its extensions from the home's settings, and only a sandbox
+    # seeds that home. Unconfined, it would read the operator's own and the cell would
+    # measure the brick's absence.
+    if confinement.name == confine.NONE and loads_nested(scenario):
+        raise RuntimeError(
+            'a brick declares session = "nested", which needs [isolation] backend docker '
+            "or bwrap: under none the nested session reads this machine's own settings"
+        )
+
     repo_path, repo_source = settle_repo(scenario, config)
     refuse_unmeasurable(scenario)
 
@@ -410,6 +419,15 @@ def settle_repo(scenario: Scenario, config: Config) -> tuple[Path, str]:
     return path, str(path)
 
 
+def loads_nested(scenario: Scenario) -> bool:
+    """Whether a cell loads a brick into the sessions its agent starts."""
+    return any(
+        brick and brick.get("session") == "nested"
+        for cell in scenario.cells
+        for brick in scenario.declared(cell)["harness"].values()
+    )
+
+
 def refuse_unmeasurable(scenario: Scenario) -> None:
     """The refusals that spend nothing, shared by `resolve` and `validate`.
 
@@ -457,6 +475,7 @@ AGENT_GATE = Path(__file__).resolve().parent / "agent-gate.ts"
 def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> dict:
     """The bricks one cell loads, resolved to real paths."""
     extensions: list[Path] = []
+    nested: list[Path] = []
     agents: list[Path] = []
     skills: list[Path] = []
     files: dict[str, Path] = {}
@@ -466,14 +485,17 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
         if brick is None:
             raise RuntimeError(f"cell {cell.name!r} wants brick {name!r}, which is not declared")
 
+        loaded = None
         if "repo" in brick:
             # A pinned repository: cloned once at its tag, so every cell loads the
             # same pinned state - an experiment that pins the measured repository
             # and lets the harness float is measuring the operator.
             clone_dir = prepare_harness(config, brick["repo"], brick["tag"])
-            extensions.append(clone_dir / brick.get("load", "."))
+            loaded = clone_dir / brick.get("load", ".")
         elif "load" in brick:
-            extensions.append((base / brick["load"]).resolve())
+            loaded = (base / brick["load"]).resolve()
+        if loaded:
+            (nested if brick.get("session") == "nested" else extensions).append(loaded)
 
         # `kind` says what the paths are; the name only decides for the historical
         # brick called `skills`, kept so existing scenarios keep meaning what they
@@ -529,6 +551,7 @@ def brick_paths(scenario: Scenario, config: Config, cell: Cell, base: Path) -> d
 
     return {
         "extensions": extensions,
+        "nested": nested,
         "agents": agents,
         "skills": skills,
         "files": files,
@@ -845,7 +868,11 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
         # of one run come to disagree.
         # The clone and the session are the run's own; a brick is read, never written. A
         # skill is loaded from its copy in the clone, so it needs no mount of its own.
-        scope = confine.Scope(writable=(clone, session_dir), readable=tuple(bricks["extensions"]))
+        scope = confine.Scope(
+            writable=(clone, session_dir),
+            readable=tuple(bricks["extensions"]),
+            nested=tuple(bricks["nested"]),
+        )
         run.isolation, run.image = plan.confinement.name, plan.confinement.image
         flows_before = combo.run_dirs(clone)
         run.agent_version = agent_mod.version(plan.confinement)

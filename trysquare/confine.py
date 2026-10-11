@@ -43,10 +43,21 @@ BWRAP = "bwrap"
 
 @dataclass(frozen=True)
 class Scope:
-    """What one run may touch: its own clone and session, and the bricks it loads."""
+    """What one run may touch: its own clone and session, and the bricks it loads.
+
+    `nested` are the extensions of the sessions the agent starts itself, such as a
+    skill's script running `pi -p`. Read-only like `readable`, and listed in the
+    `extensions` of the home's settings, which the agent's own session ignores under
+    `-ne` and a nested one reads.
+    """
 
     writable: tuple[Path, ...] = ()
     readable: tuple[Path, ...] = ()
+    nested: tuple[Path, ...] = ()
+
+    @property
+    def read_only(self) -> tuple[Path, ...]:
+        return (*self.readable, *self.nested)
 
 
 class Confinement(Protocol):
@@ -445,7 +456,7 @@ class Docker:
         for variable in (*self.env, *(TERMINAL if tty else ())):
             # By name only: docker copies the value, so a key never sits in an argv.
             args += ["--env", variable]
-        mounts = [(p, "rw") for p in scope.writable] + [(p, "ro") for p in scope.readable]
+        mounts = [(p, "rw") for p in scope.writable] + [(p, "ro") for p in scope.read_only]
         for path, mode in mounts:
             args += ["--volume", f"{path}:{path}:{mode}"]
         if cwd is not None:
@@ -556,7 +567,7 @@ class Bwrap:
             args += ["--ro-bind", str(path), str(path)]
         for path in scope.writable:
             args += ["--bind", str(path), str(path)]
-        for path in scope.readable:
+        for path in scope.read_only:
             args += ["--ro-bind", str(path), str(path)]
         if cwd is not None:
             args += ["--chdir", str(cwd)]
@@ -616,7 +627,8 @@ def _create(scope: Scope) -> None:
 
 @contextmanager
 def _home(files: dict[str, dict], scope: Scope) -> Iterator[Path]:
-    """A home for one container, owned by the operator, holding what `seed` decided.
+    """A home for one container, owned by the operator, holding what `seed` decided and
+    the scope's `nested` extensions.
 
     A directory of the operator's rather than files mounted into the image: docker creates
     the directories above a mounted file as root, and `pi` then cannot write its own.
@@ -626,6 +638,9 @@ def _home(files: dict[str, dict], scope: Scope) -> Iterator[Path]:
     clone as of "dubious ownership": every `git` the agent runs fails, and so does the
     `git diff` combo builds a node's `diff` read with.
     """
+    if scope.nested:
+        settings = files.get("settings.json", {}) | {"extensions": [str(p) for p in scope.nested]}
+        files = files | {"settings.json": settings}
     with tempfile.TemporaryDirectory(prefix="trysquare-home-") as home:
         agent_dir = Path(home) / ".pi" / "agent"
         agent_dir.mkdir(parents=True)

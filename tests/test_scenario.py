@@ -293,6 +293,24 @@ class TestBrickKind:
         assert set(parse(d).bricks) == {"skill-tdd", "subagents"}
 
 
+class TestTheSessionABrickLoadsInto:
+    """`session = "nested"` hands an extension to the sessions the agent starts itself."""
+
+    def test_a_nested_extension_loads(self):
+        d = MINIMAL | {"harness": {"stamp": {"load": "ext/stamp.ts", "session": "nested"}}}
+        assert parse(d).bricks["stamp"]["session"] == "nested"
+
+    def test_an_unknown_session_is_refused_with_a_suggestion(self):
+        d = MINIMAL | {"harness": {"stamp": {"load": "ext/stamp.ts", "session": "nestd"}}}
+        with pytest.raises(ScenarioError, match=re.escape("did you mean 'nested'")):
+            parse(d)
+
+    def test_a_session_on_a_brick_loading_no_extension_is_refused(self):
+        d = MINIMAL | {"harness": {"s": {"kind": "skills", "paths": ["s"], "session": "nested"}}}
+        with pytest.raises(ScenarioError, match="loads no extension"):
+            parse(d)
+
+
 def a_files_brick(**brick) -> dict:
     return MINIMAL | {"harness": {"probe": {"kind": "files"} | brick}}
 
