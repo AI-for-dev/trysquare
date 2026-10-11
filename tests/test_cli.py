@@ -2309,6 +2309,14 @@ class TestReplayRescore:
         assert Path(contexts["aaaaaaaa"]["skills"]) == (run_dir / "skills").resolve()
         assert "skills" not in contexts["bbbbbbbb"]
 
+    def test_a_validator_that_refuses_leaves_its_reason(self, capsys):
+        (self.home / "v.py").write_text(
+            "import sys\nsys.exit(print('could not score this run: why', file=sys.stderr) or 1)\n"
+        )
+        self.replay("--rescore")
+        assert self.measures()["aaaaaaaa"]["detail"].endswith("could not score this run: why")
+        assert "validator_failed: validator exited 1: could not score" in capsys.readouterr().out
+
     # --- what a re-scoring may and may not touch -------------------------
 
     def test_a_repaired_validator_makes_the_run_valid_again(self):

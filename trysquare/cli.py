@@ -1189,12 +1189,14 @@ def rescore_run(scored: Rescore, scenario, run_dir: Path, context: Path, base: P
         return "produced nothing, so nothing to score"
 
     results = []
+    failure = ""
     for validator in scenario.validators:
         if validator.mode == "script":
             result = validation_mod.run_script(
                 validator, context, scenario.protocol["timeout"], cwd=base
             )
             payload, stderr = result.payload, result.stderr
+            failure = failure or result.detail
         else:
             archived = run_dir / "validation" / f"{validator.mode}.json"
             if not archived.is_file():
@@ -1214,11 +1216,11 @@ def rescore_run(scored: Rescore, scenario, run_dir: Path, context: Path, base: P
     # Set unconditionally, in both directions. A run whose validator used to fail becomes
     # valid when the fix works - which is the whole point - and a run that used to score
     # must be allowed to stop scoring, or a broken validator would read as the old result.
-    run.state, run.detail = state, detail
+    run.state, run.detail = state, failure or detail
     scored.rescored.append(run.id)
 
     if state != VALID:
-        return f"{state}: {detail}"
+        return f"{state}: {run.detail}"
     return "re-scored" if was == VALID else f"re-scored, was {was}"
 
 

@@ -1395,6 +1395,35 @@ class TestTheArchivedDiffReplays:
             repo.apply_diff(self.a_clone_of(source), "not a patch at all\n", what="a7f3")
 
 
+REFUSING = (
+    "#!/usr/bin/env python3\n"
+    "import sys\n"
+    'sys.exit(print("could not score this run: no skills here", file=sys.stderr) or 1)\n'
+)
+
+
+class TestAFailedValidatorSaysWhy:
+    """The reason a validator gives is the run's detail, not a sentence naming it."""
+
+    def test_the_first_line_it_wrote_is_the_reason(self, tmp_path):
+        script = tmp_path / "v.py"
+        script.write_text(REFUSING)
+        context = tmp_path / "context.json"
+        context.write_text("{}")
+        validator = Validator(mode="script", config={"command": str(script)}, metrics=("ok",))
+        result = validation.run_script(validator, context, timeout=30)
+        assert result.detail == "validator exited 1: could not score this run: no skills here"
+
+    def test_the_run_keeps_it(self, tmp_path, monkeypatch):
+        from tests.test_confine import Talkative, measured_once
+
+        (tmp_path / "v.py").write_text(REFUSING)
+        scenario = parse(MINIMAL, path=tmp_path / "s.toml")
+        run, _ = measured_once(tmp_path, monkeypatch, scenario, Talkative())
+        assert run.state == VALIDATOR_FAILED
+        assert run.detail.endswith("could not score this run: no skills here")
+
+
 class TestScriptValidatorPaths:
     """A validator is run from the context's directory, so the context path must be
     absolute.
