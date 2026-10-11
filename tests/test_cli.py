@@ -2627,7 +2627,7 @@ class TestPi:
         argv, scope, cwd = backend.attached
         assert argv == [agent.PI, "--model", "m"]
         assert scope == confine.Scope(writable=(here.resolve(),)) and cwd == here.resolve()
-        assert backend.prepared[0] == "trysquare-agent"
+        assert backend.prepared[0] == agent.IMAGE
 
     @pytest.mark.parametrize(
         "where,refusal",

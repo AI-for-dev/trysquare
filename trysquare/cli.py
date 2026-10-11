@@ -254,8 +254,8 @@ def build_parser() -> argparse.ArgumentParser:
     pi.add_argument("--config", type=Path, help="config file (default: nearest trysquare.toml)")
     pi.add_argument(
         "--image",
-        default="trysquare-agent",
-        help="the image docker runs pi from (default: trysquare-agent)",
+        default=agent_mod.IMAGE,
+        help="the image docker runs pi from (default: the official pi image)",
     )
     pi.add_argument("args", nargs=argparse.REMAINDER, help="passed to pi, after --")
     pi.set_defaults(func=cmd_pi)

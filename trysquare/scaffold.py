@@ -11,7 +11,9 @@ until the experiment is yours.
 Pure: strings out. Writing them is `cli.cmd_init`'s job.
 """
 
-SCENARIO = """\
+from .agent import IMAGE
+
+SCENARIO = f"""\
 # The skeleton of an experiment. Anything reading like a placeholder is one, and
 # the harness never guesses: provider, model, thinking, etalon and repetitions
 # are mandatory here and inherited from nowhere.
@@ -30,7 +32,8 @@ prompt = "prompt.md"            # inline text works too
 provider = "your-provider"
 model = "your-model"
 thinking = "off"
-# image = "trysquare-agent"     # read when [isolation] runs each agent in docker
+# read when [isolation] runs each agent in docker
+# image = "{IMAGE}"
 
 [protocol]
 repetitions = 10                # declared in advance, never raised "to see"
@@ -56,7 +59,7 @@ metrics = ["in_scope", "delivered"]   # a contract: a validator omitting one
 
 [verdict]
 criterion = "in_scope"
-reference = { thinking = "off" }
+reference = {{ thinking = "off" }}
 validity = ["delivered"]
 """
 

@@ -313,8 +313,8 @@ tokens per model, and fails, naming the model and the provider's error, when one
 not answer:
 
 ```text
-    ilaas/gemma-4-31b in image 'trysquare-agent': ok
-  ! judging/judge-model in image 'trysquare-agent': 401: {"message":"bad key"}
+    ilaas/gemma-4-31b in image 'my-agent': ok
+  ! judging/judge-model in image 'my-agent': 401: {"message":"bad key"}
 error: 1 model did not answer
 ```
 
@@ -341,8 +341,8 @@ cd ~/my-project
 trysquare pi -- --provider ilaas --model gemma-4-31b
 ```
 
-`--image` is the image docker runs `pi` from, `trysquare-agent` by default; bwrap uses
-this machine's `pi`. It spends whatever you ask the model.
+`--image` is the image docker runs `pi` from, by default the official `sbx/pi-image`
+at the version trysquare pins; bwrap uses this machine's `pi`. It spends whatever you ask the model.
 
 It refuses, before anything starts, under `backend = "none"` (there is no sandbox: run
 `pi` itself), and from a directory that holds your home, `~/.pi` (where `pi` keeps the

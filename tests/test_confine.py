@@ -601,8 +601,8 @@ class TestWhatTheHomeStartsWith:
 
 IMAGE = "alpine:3"
 
-#: `image/Dockerfile`, under the tag its documentation builds it as.
-AGENT_IMAGE = "trysquare-agent"
+#: The image docker runs `pi` from when nothing names another.
+AGENT_IMAGE = agent.IMAGE
 
 
 def docker_runs(image: str = IMAGE) -> bool:
@@ -839,7 +839,7 @@ def running(command: str) -> bool:
 
 @pytest.mark.skipif(not docker_runs(AGENT_IMAGE), reason=f"no {AGENT_IMAGE} image built here")
 class TestInsideTheShippedImage:
-    """`image/Dockerfile` gives the agent a `pi` that runs. Nothing here calls a provider."""
+    """The default image gives the agent a `pi` that runs. Nothing here calls a provider."""
 
     @pytest.fixture
     def backend(self) -> confine.Docker:
@@ -872,6 +872,8 @@ class TestInsideTheShippedImage:
                     "docker",
                     "run",
                     "--rm",
+                    "--user",
+                    "0",
                     "-v",
                     f"{clone}:{clone}",
                     AGENT_IMAGE,
