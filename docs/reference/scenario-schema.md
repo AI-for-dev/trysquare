@@ -546,6 +546,12 @@ A `kind` outside the known values, or on a brick without `paths`, is refused at 
 time: a misspelled kind would silently fall back to agents, and the cell would measure
 subagents where its author declared skills.
 
+Each skill is copied to `.pi/skills/<name>/` in the run's clone, and the agent loads it
+from there. The copy belongs to the run, so a skill may write beside itself - a script
+that builds `references/` next to its `SKILL.md` - and the brick in the scenario is never
+written. What it writes stays out of `touched` and `diff.patch`, like the rest of `.pi/`.
+Two skills of one name in a cell would share that directory, so they are refused.
+
 ### The `files` kind
 
 The third kind, and the only one whose material lands in the **measured tree** rather
