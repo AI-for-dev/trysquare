@@ -385,6 +385,12 @@ class TestRunPlan:
         assert "repetitions 10 -> 3" in joined
         assert "concurrency 5 -> 10" in joined
 
+    def test_an_override_equal_to_the_scenario_is_none(self):
+        """`--repetitions 10` on a scenario declaring ten ran as declared."""
+        plan = self.plan(repetitions=10, concurrency=10)
+        assert plan.overrides == {"concurrency": 10}
+        assert not any("repetitions" in n for n in plan.notes)
+
     def test_only_marks_the_matrix_incomplete(self):
         from trysquare import config as config_mod
         from trysquare import runner

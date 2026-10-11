@@ -105,13 +105,16 @@ def resolve(
 ) -> Plan:
     """Turns a scenario into a concrete plan, refusing what cannot be measured."""
     overrides = overrides or {}
+    declared = {k: scenario.protocol.get(k, scenario.agent.get(k)) for k in overrides}
+    # One equal to what the scenario declares changes nothing, and recording it would put
+    # an override in the state and the synthesis of a matrix that ran as declared.
+    overrides = {k: v for k, v in overrides.items() if v != declared[k]}
     repetitions = overrides.get("repetitions") or scenario.protocol["repetitions"]
     output = Output(output_root, scenario, repetitions, grouped=grouped)
 
     notes = []
     for key, value in sorted(overrides.items()):
-        declared = scenario.protocol.get(key, scenario.agent.get(key))
-        notes.append(f"OVERRIDE: {key} {declared} -> {value}")
+        notes.append(f"OVERRIDE: {key} {declared[key]} -> {value}")
     confinement = confine.backend(config.isolation)
     if scenario.agent.get("image") and not confinement.takes_image:
         notes.append(
