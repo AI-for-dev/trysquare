@@ -174,6 +174,18 @@ class TestOneRun:
         assert scope.writable == (work / "repo", work / "session")
         assert kwargs["cwd"] == work / "repo"
 
+    def test_a_nested_extension_reaches_the_backend_and_not_the_argv(self, tmp_path, monkeypatch):
+        raw = MINIMAL | {
+            "harness": {"stamp": {"load": "stamp.ts", "session": "nested"}},
+            "variants": {"c": {"harness": ["stamp"]}},
+            "verdict": {"criterion": "overflow", "reference": "c"},
+        }
+        spy = Spy()
+        measured_once(tmp_path, monkeypatch, parse(raw, path=tmp_path / "s.toml"), spy)
+        argv, scope, _ = spy.calls[-1]
+        assert scope.nested == (tmp_path / "stamp.ts",)
+        assert str(tmp_path / "stamp.ts") not in argv
+
 
 class TestTheJudge:
     """The judge is an agent too, with tools, and it ran where the operator stands."""
@@ -298,6 +310,13 @@ class TestTheDockerCommand:
         assert f"{tmp_path}/brick.ts:{tmp_path}/brick.ts:ro" in args
         assert f"{tmp_path}/h:{confine.HOME}:rw" in args
 
+    def test_a_nested_extension_is_mounted_read_only(self, tmp_path):
+        backend = confine.Docker()
+        backend.image = "sha256:abc"
+        scope = confine.Scope(nested=(tmp_path / "stamp.ts",))
+        args = backend.argv(["pi"], scope, None, "trysquare-x", tmp_path / "h")
+        assert f"{tmp_path}/stamp.ts:{tmp_path}/stamp.ts:ro" in args
+
     def test_it_runs_from_the_image_id_as_the_operator(self, tmp_path):
         args = self.argv(tmp_path)
         assert args[-4:] == ["sha256:abc", "pi", "-p", "go"]
@@ -333,6 +352,26 @@ class TestTheDockerCommand:
         monkeypatch.delenv("SOME_KEY", raising=False)
         with pytest.raises(RuntimeError, match="names SOME_KEY, unset here"):
             confine.Docker(env=["SOME_KEY"]).prepare("alpine:3", ())
+
+
+class TestTheSettingsOfTheHome:
+    """A nested extension reaches the agent through `extensions`, beside the thinking level."""
+
+    def settings(self, files: dict, scope: confine.Scope) -> dict | None:
+        with confine._home(files, scope) as home:
+            written = home / ".pi" / "agent" / "settings.json"
+            return json.loads(written.read_text()) if written.is_file() else None
+
+    def test_a_nested_extension_is_listed_beside_what_the_seed_kept(self, tmp_path):
+        seeded = {"settings.json": {"defaultThinkingLevel": "low"}}
+        scope = confine.Scope(nested=(tmp_path / "stamp.ts",))
+        assert self.settings(seeded, scope) == {
+            "defaultThinkingLevel": "low",
+            "extensions": [str(tmp_path / "stamp.ts")],
+        }
+
+    def test_without_one_the_home_holds_only_the_seed(self):
+        assert self.settings({}, confine.Scope()) is None
 
 
 class TestWhatTheHomeStartsWith:
@@ -593,6 +632,14 @@ class TestInsideDocker:
             backend, work, "sh", "-c", f"cat {work}/neighbour/repo/secret.txt 2>&1"
         )
 
+    def test_a_nested_extension_is_in_the_settings_and_readable(self, backend, work):
+        stamp = work / "stamp.ts"
+        stamp.write_text("// stamp\n")
+        scope = confine.Scope(writable=(work / "mine" / "repo",), nested=(stamp,))
+        command = ["sh", "-c", f"cat ~/.pi/agent/settings.json {stamp}"]
+        done = backend.run(command, scope, capture_output=True, text=True)
+        assert str(stamp) in done.stdout and "// stamp" in done.stdout
+
     def test_the_agent_can_write_its_own_home(self, backend, work):
         """`pi` keeps its credential store there, and failed on every run when it could not."""
         said = self.inside(backend, work, "sh", "-c", "touch ~/.pi/agent/auth.json && echo ok")
@@ -670,6 +717,11 @@ class TestTheBwrapCommand:
         assert set(self.pairs(args, "--ro-bind-try")) == set(confine.SYSTEM)
         assert not {"/home", "/tmp", "/var", "/"} & set(self.pairs(args, "--ro-bind"))
 
+    def test_a_nested_extension_is_bound_read_only(self, tmp_path):
+        scope = confine.Scope(nested=(tmp_path / "stamp.ts",))
+        args = confine.Bwrap().argv(["pi"], scope, None, tmp_path / "h")
+        assert str(tmp_path / "stamp.ts") in self.pairs(args, "--ro-bind")
+
     def test_a_tool_installed_elsewhere_is_bound_read_only(self, tmp_path):
         args = self.argv(tmp_path, bind=["~/.nvm"])
         assert str(Path.home() / ".nvm") in self.pairs(args, "--ro-bind")
@@ -734,6 +786,14 @@ class TestInsideBwrap:
     def test_what_the_agent_writes_stays_the_operator_s(self, backend, work):
         self.inside(backend, work, "touch", "written")
         assert (work / "mine" / "repo" / "written").stat().st_uid == os.getuid()
+
+    def test_a_nested_extension_is_in_the_settings_and_readable(self, backend, work):
+        stamp = work / "stamp.ts"
+        stamp.write_text("// stamp\n")
+        scope = confine.Scope(writable=(work / "mine" / "repo",), nested=(stamp,))
+        command = ["sh", "-c", f"cat ~/.pi/agent/settings.json {stamp}"]
+        done = backend.run(command, scope, capture_output=True, text=True)
+        assert str(stamp) in done.stdout and "// stamp" in done.stdout
 
     def test_the_agent_can_write_its_own_home(self, backend, work):
         said = self.inside(backend, work, "sh", "-c", "touch ~/.pi/agent/auth.json && echo ok")

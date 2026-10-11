@@ -552,6 +552,33 @@ that builds `references/` next to its `SKILL.md` - and the brick in the scenario
 written. What it writes stays out of `touched` and `diff.patch`, like the rest of `.pi/`.
 Two skills of one name in a cell would share that directory, so they are refused.
 
+### Extensions for nested sessions
+
+An extension brick loads into the agent's own session. With `session = "nested"`, it
+loads into the sessions the agent starts itself instead, such as a skill's script running
+`pi -p` to search the web:
+
+```toml
+[harness.web]
+repo = "pi-web-access"
+tag = "v1"
+session = "nested"
+```
+
+The brick is cloned, pinned and installed like any other, then mounted read-only and
+listed in the `extensions` of the agent's seeded `settings.json` rather than passed with
+`-e`. The agent's own session runs with `-ne`, so it ignores that list, and a nested `pi`
+reads it. Only the docker and bwrap backends seed that home, so under `none` the scenario
+is refused: a nested session would read this machine's settings instead. A `session`
+other than `main` (the default) or `nested`, or one on a brick that loads no extension,
+is refused at load time.
+
+:::{warning}
+A nested session's tokens and cost are not counted. It is a `pi` of its own, outside
+the stream and the session the run is measured on, so the usage of a cell whose skill
+starts one is that of the agent's own session only.
+:::
+
 ### The `files` kind
 
 The third kind, and the only one whose material lands in the **measured tree** rather

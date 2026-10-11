@@ -1604,6 +1604,35 @@ class TestSkillBricks:
             cell_bricks(bricks, {"harness": ["skill-a", "skill-b"]})
 
 
+class TestANestedExtension:
+    """An extension the agent's own session never loads, and the sessions it starts do."""
+
+    STAMP = {"stamp": {"load": "ext/stamp.ts", "session": "nested"}}
+
+    def test_it_is_routed_away_from_the_agent_s_own_extensions(self):
+        got = cell_bricks(self.STAMP, {"harness": ["stamp"]})
+        assert got["nested"] == [Path("/x/ext/stamp.ts")]
+        assert got["extensions"] == []
+
+    def test_without_the_field_an_extension_is_the_agent_s_own(self):
+        got = cell_bricks({"stamp": {"load": "ext/stamp.ts"}}, {"harness": ["stamp"]})
+        assert got["extensions"] == [Path("/x/ext/stamp.ts")]
+        assert got["nested"] == []
+
+    def test_it_is_refused_where_no_sandbox_seeds_the_home(self, tmp_path):
+        """Unconfined, the nested session reads this machine's settings and not the brick."""
+        (tmp_path / "ext").mkdir()
+        (tmp_path / "ext" / "stamp.ts").write_text("")
+        raw = MINIMAL | {
+            "harness": self.STAMP,
+            "variants": {"none": {}, "c": {"harness": ["stamp"]}},
+            "verdict": {"criterion": "overflow", "reference": "none"},
+        }
+        scenario = parse(raw, path=tmp_path / "s.toml")
+        with pytest.raises(RuntimeError, match='session = "nested", which needs'):
+            runner.resolve(scenario, config.Config(path=tmp_path / "t.toml"), tmp_path / "out")
+
+
 class TestTheSkillARunLoads:
     """A run loads its skills from their copy in its clone, never from the brick.
 
