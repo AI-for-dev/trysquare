@@ -323,6 +323,15 @@ class TestTheDockerCommand:
         assert args[args.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
         assert args[args.index("--workdir") + 1] == str(tmp_path / "repo")
 
+    def test_the_agent_gains_no_privilege_past_the_operator_s(self, tmp_path):
+        args = self.argv(tmp_path)
+        assert args[args.index("--security-opt") + 1] == "no-new-privileges"
+
+    def test_the_agent_is_quiet_whatever_the_image(self, tmp_path):
+        args = self.argv(tmp_path)
+        passed = {args[i + 1] for i, a in enumerate(args) if a == "--env"}
+        assert {f"{k}={v}" for k, v in confine.QUIET.items()} <= passed
+
     def test_the_limits_hold_and_no_swap_gets_past_them(self, tmp_path):
         args = self.argv(tmp_path, cpus=1.5, memory="4g")
         assert args[args.index("--cpus") + 1] == "1.5"
@@ -737,7 +746,11 @@ class TestTheBwrapCommand:
         args = backend.argv(["pi"], confine.Scope(), None, tmp_path)
         assert not any("secret" in a for a in args)
         assert backend.environment()["SOME_KEY"] == "secret"
-        assert set(backend.environment()) == {"PATH", "HOME", "SOME_KEY"}
+        assert set(backend.environment()) == {"PATH", "HOME", "SOME_KEY", *confine.QUIET}
+
+    def test_a_variable_env_names_wins_over_the_quiet_default(self, monkeypatch):
+        monkeypatch.setenv("PI_TELEMETRY", "1")
+        assert confine.Bwrap(env=["PI_TELEMETRY"]).environment()["PI_TELEMETRY"] == "1"
 
     def test_an_attached_agent_gets_the_terminal_it_draws_in(self, monkeypatch):
         monkeypatch.setenv("TERM", "xterm-256color")
