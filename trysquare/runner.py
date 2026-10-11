@@ -975,13 +975,14 @@ def one_run(plan: Plan, run_id: str, meta: dict, board=None) -> Run:
                 )
             plan.output.write_validation(run_id, validator.mode, result.payload, result.stderr)
             results.append((validator.mode, result.payload))
-            if not result.ok and result.detail:
+            if not result.ok and not run.detail:
                 run.detail = result.detail
 
         metrics, reasons, state, detail = merge(results, scenario.declared_metrics)
         run.metrics, run.reasons = metrics, reasons
+        # The failed validator's own reason before `merge`'s, which only names it.
         if state != VALID:
-            run.state, run.detail = state, detail or run.detail
+            run.state, run.detail = state, run.detail or detail
 
         archive(plan, run_id, clone, prepared, cell, thinking)
     # Deliberately unable to reach `interrupt.Stopped`, which is a `KeyboardInterrupt`.

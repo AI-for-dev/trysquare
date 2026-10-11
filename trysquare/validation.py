@@ -248,11 +248,13 @@ def run_script(
         return Result(validator.mode, None, detail=f"validator could not run: {e}")
 
     if proc.returncode != 0:
+        # The first line is the sentence `trysquare.assay` ends on, the reason itself.
+        said = next((line for line in proc.stderr.splitlines() if line.strip()), "")
         return Result(
             validator.mode,
             None,
             stderr=proc.stderr,
-            detail=f"validator exited {proc.returncode}",
+            detail=f"validator exited {proc.returncode}" + (f": {said[:300]}" if said else ""),
         )
     try:
         payload = json.loads(proc.stdout)
