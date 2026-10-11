@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.12.0](https://github.com/AI-for-dev/trysquare/compare/v0.11.0...v0.12.0) (2026-10-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* run the agent in the official pi image by default ([#154](https://github.com/AI-for-dev/trysquare/issues/154))
+
+### Features
+
+* archive what a run wrote beside its skills ([#149](https://github.com/AI-for-dev/trysquare/issues/149)) ([d6716f6](https://github.com/AI-for-dev/trysquare/commit/d6716f632e785fdc086824da9b5b080fa5f94d0b))
+* let a brick declare extensions for nested sessions ([#148](https://github.com/AI-for-dev/trysquare/issues/148)) ([f4503bb](https://github.com/AI-for-dev/trysquare/commit/f4503bb2fdff1e333f7919bcd5b265dac87d94ee))
+* load each skill from its copy in the run's clone ([#147](https://github.com/AI-for-dev/trysquare/issues/147)) ([13df625](https://github.com/AI-for-dev/trysquare/commit/13df6251bc456f0396131ee5a7ac216d585cda3e))
+* quiet the agent and deny it privileges whatever its image ([#153](https://github.com/AI-for-dev/trysquare/issues/153)) ([d31cf5b](https://github.com/AI-for-dev/trysquare/commit/d31cf5bd1ca8859352247dcb90a844d90b316728))
+* run the agent in the official pi image by default ([#154](https://github.com/AI-for-dev/trysquare/issues/154)) ([356e380](https://github.com/AI-for-dev/trysquare/commit/356e380b654c828db5d7a441591a184a89128fce))
+
+
+### Bug Fixes
+
+* drop an override equal to what the scenario declares ([#151](https://github.com/AI-for-dev/trysquare/issues/151)) ([cce8359](https://github.com/AI-for-dev/trysquare/commit/cce8359350f272925230e6c617b11f6665a837c0))
+* keep a failed validator's own reason as the run's detail ([#150](https://github.com/AI-for-dev/trysquare/issues/150)) ([c78da3a](https://github.com/AI-for-dev/trysquare/commit/c78da3ab525bed0ce3150b52d5cdf3f285f76a84))
+
 ## [0.11.0](https://github.com/AI-for-dev/trysquare/compare/v0.10.1...v0.11.0) (2026-10-08)
 
 
