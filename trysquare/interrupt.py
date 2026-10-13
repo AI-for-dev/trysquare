@@ -158,22 +158,30 @@ def stop(signum: int | None = None) -> None:
 
 
 def _terminate(sig: int) -> None:
-    """Signals the whole group of every child still running.
+    """Signals the whole group of every child still running."""
+    with _lock:
+        live = list(_children)
+    for proc in live:
+        _signal(proc, sig)
+
+
+def _signal(proc: subprocess.Popen, sig: int) -> None:
+    """Signals the child's whole group, unless its leader has already been reaped.
 
     The group rather than the process, because a child is a session leader here and
     what has to go is its descendants too: an agent's tool subprocesses, a validator's
-    test runner. `poll` filters the ones already reaped, since a process group id is
-    free for reuse the moment its leader is waited on.
+    test runner. `returncode` rather than `poll`, because a process group id is free for
+    reuse the moment its leader is waited on, and `poll` is a wait: a leader that has
+    exited while its descendants run on would be reaped and its group left alive.
     """
-    with _lock:
-        live = [proc for proc in _children if proc.poll() is None]
-    for proc in live:
-        try:
-            os.killpg(proc.pid, sig)
-        except OSError:
-            # Gone between the poll and the signal, or never ours to signal. Either
-            # way there is nothing left to stop.
-            pass
+    if proc.returncode is not None:
+        return
+    try:
+        os.killpg(proc.pid, sig)
+    except OSError:
+        # Gone between the check and the signal, or never ours to signal. Either way
+        # there is nothing left to stop.
+        pass
 
 
 def run(
@@ -222,8 +230,9 @@ def run(
     again after the wait, because a child fast enough to overrun between two weighings
     would otherwise be accepted for having been quick about it.
 
-    The timeout branch does what `subprocess.run` does and nothing more. For a piped
-    caller the exception was built by `Popen._check_timeout` before `_communicate`
+    The timeout branch kills the group, since a runner under `npm test` loops on once
+    `npm` alone is gone, then does what `subprocess.run` does and nothing more. For a
+    piped caller the exception was built by `Popen._check_timeout` before `_communicate`
     reached its text-mode translation, so its partial output is bytes even under
     `text=True`. Collecting the streams again here would quietly break that.
     """
@@ -251,11 +260,11 @@ def run(
         try:
             out, err = proc.communicate(input, timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            _signal(proc, signal.SIGKILL)
             proc.wait()
             raise
         except BaseException:
-            proc.kill()
+            _signal(proc, signal.SIGKILL)
             raise
         finally:
             weighed.set()
@@ -288,9 +297,7 @@ def _weigh(proc: subprocess.Popen, written, ceiling: int | None) -> threading.Ev
     it rather than weighing a file nobody is writing.
 
     The group rather than the process, like `_terminate`: what has to stop writing is
-    the agent's own tool subprocesses too, which hold the same file. `poll` guards the
-    signal, since a process group id is free for reuse the moment its leader is waited
-    on.
+    the agent's own tool subprocesses too, which hold the same file.
     """
     done = threading.Event()
     if written is None or ceiling is None:
@@ -301,11 +308,7 @@ def _weigh(proc: subprocess.Popen, written, ceiling: int | None) -> threading.Ev
         while not done.wait(POLL):
             if not _overran(written, ceiling):
                 continue
-            if proc.poll() is None:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except OSError:
-                    pass
+            _signal(proc, signal.SIGKILL)
             return
 
     threading.Thread(target=watch, name="trysquare-ceiling", daemon=True).start()
