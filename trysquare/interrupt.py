@@ -29,6 +29,14 @@ A `kill`, a CI cancellation, a `docker stop` reached the harness alone and orpha
 agent to burn tokens for a full timeout with nobody watching. Now every route is the same
 route.
 
+**Sessions nest.** A validator is a child of `run`, and the probe it starts goes through
+`run` as well, so the probe leads a session of its own, outside the validator's group. A
+signal to that group reaches the validator and nothing it started: the validator is the
+only process that knows where its probe is. So nothing here takes a child outright. The
+child is asked first, and a process that answers signals with `handled` passes the ask
+down to its own sessions before it leaves. That is what `assay.main` does for every
+validator written with `trysquare.assay`.
+
 **Asking, then taking.** The first signal asks: the flag goes up, every child gets
 SIGTERM, and `Stopped` unwinds the main thread. A watchdog then guarantees an end even if
 a child ignores signals - SIGKILL at `GRACE`, and the process leaves at `DEADLINE`. A
@@ -230,8 +238,8 @@ def run(
     again after the wait, because a child fast enough to overrun between two weighings
     would otherwise be accepted for having been quick about it.
 
-    The timeout branch kills the group, since a runner under `npm test` loops on once
-    `npm` alone is gone, then does what `subprocess.run` does and nothing more. For a
+    The timeout branch ends the whole group, since a runner under `npm test` loops on
+    once `npm` alone is gone, then does what `subprocess.run` does and nothing more. For a
     piped caller the exception was built by `Popen._check_timeout` before `_communicate`
     reached its text-mode translation, so its partial output is bytes even under
     `text=True`. Collecting the streams again here would quietly break that.
@@ -259,12 +267,8 @@ def run(
         weighed = _weigh(proc, written, ceiling)
         try:
             out, err = proc.communicate(input, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _signal(proc, signal.SIGKILL)
-            proc.wait()
-            raise
         except BaseException:
-            _signal(proc, signal.SIGKILL)
+            _end(proc)
             raise
         finally:
             weighed.set()
@@ -277,6 +281,36 @@ def run(
     if _overran(written, ceiling):
         raise TooMuchOutput(str(argv[0]), ceiling)
     return subprocess.CompletedProcess(proc.args, code, out, err)
+
+
+def _end(proc: subprocess.Popen) -> None:
+    """Asks the child's group to stop, takes it at `GRACE`, and reaps the leader.
+
+    The same two steps as a stop, one level down. A SIGKILL sent straight away takes a
+    validator before it can pass anything on, and the probe it started loops on in a
+    session nobody else knows about. SIGTERM first gives the validator time to stop that
+    session itself. A child with nothing to pass on dies of it at once, so the wait is
+    only spent on one that ignores it.
+
+    SIGKILL follows either way, because a leader that left on the ask does not take the
+    rest of its group along. By number rather than through `_signal`, since the leader
+    may be reaped by then. That is safe here, where `_signal` refuses it: a group's id
+    stays taken while any member is alive, and this signal follows the wait at once, so
+    the id has no time to be given out again after the last member is gone.
+    """
+    if proc.returncode is not None:
+        return
+    _signal(proc, signal.SIGTERM)
+    try:
+        proc.wait(GRACE)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except OSError:
+        # The whole group answered the ask. Nothing is left to take.
+        pass
+    proc.wait()
 
 
 def _overran(written, ceiling: int | None) -> bool:

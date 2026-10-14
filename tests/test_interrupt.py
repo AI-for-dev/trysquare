@@ -194,6 +194,63 @@ class TestTimeout:
         assert outcome.usage["turns"] == 1
 
 
+def validating(pid_file: Path, context: Path) -> list[str]:
+    """A validator whose probe goes through `interrupt.run` too, and sleeps.
+
+    The probe therefore leads a session of its own, out of reach of a signal to the
+    validator's group. The validator is the only process that knows where it is.
+    """
+    probe = [
+        sys.executable,
+        "-c",
+        f"import os, pathlib, time\n"
+        f"pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+        f"time.sleep({FOREVER})\n",
+    ]
+    script = (
+        f"import sys\nsys.path.insert(0, {str(ROOT)!r})\n"
+        "from trysquare import interrupt\n"
+        "from trysquare.assay import validator\n"
+        "@validator\n"
+        f"def evaluate(run):\n    interrupt.run({probe!r})\n    return {{}}\n"
+        "raise SystemExit(evaluate.cli())\n"
+    )
+    context.write_text("{}")
+    return [sys.executable, "-c", script, str(context)]
+
+
+class TestNestedSessions:
+    """A child of `run` that calls `run` in turn: a validator and its probe."""
+
+    def test_a_probe_does_not_survive_its_validator_timing_out(self, tmp_path):
+        """Taking the validator outright left its probe looping with nobody to stop it."""
+        pid_file = tmp_path / "probe"
+        with pytest.raises(subprocess.TimeoutExpired):
+            interrupt.run(validating(pid_file, tmp_path / "context.json"), timeout=1)
+        assert pid_file.is_file(), "the probe never started"
+        probe = int(pid_file.read_text())
+
+        assert until(lambda: not alive(probe)), f"probe {probe} outlived its validator"
+
+    def test_a_probe_does_not_survive_the_harness_being_stopped(self, tmp_path):
+        """A `kill`, a CI cancellation: the signal reaches the harness and only it."""
+        pid_file = tmp_path / "probe"
+
+        def stop_once_the_probe_runs():
+            if until(pid_file.is_file):
+                os.kill(os.getpid(), signal.SIGTERM)
+
+        threading.Thread(target=stop_once_the_probe_runs, daemon=True).start()
+        with pytest.raises(interrupt.Stopped):
+            with interrupt.handled(signal.SIGTERM):
+                interrupt.run(validating(pid_file, tmp_path / "context.json"), timeout=FOREVER)
+        # The signal armed the watchdog, which would end pytest itself at `DEADLINE`.
+        interrupt.reset()
+        probe = int(pid_file.read_text())
+
+        assert until(lambda: not alive(probe)), f"probe {probe} outlived the stop"
+
+
 class TestRetrying:
     """A run that produced nothing is retried. A run something else ended is not."""
 
