@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/AI-for-dev/trysquare/compare/v0.12.0...v0.12.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* kill the whole process group of a child that times out ([#155](https://github.com/AI-for-dev/trysquare/issues/155)) ([3fc76d7](https://github.com/AI-for-dev/trysquare/commit/3fc76d75389ef4cc37423ea4ab705c9626e19ab5))
+
 ## [0.12.0](https://github.com/AI-for-dev/trysquare/compare/v0.11.0...v0.12.0) (2026-10-11)
 
 
