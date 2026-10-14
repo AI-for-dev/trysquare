@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.2](https://github.com/AI-for-dev/trysquare/compare/v0.12.1...v0.12.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* stop a probe when its validator is stopped or times out ([#157](https://github.com/AI-for-dev/trysquare/issues/157)) ([5ca9a3b](https://github.com/AI-for-dev/trysquare/commit/5ca9a3baa4076fa0a85ffe3c628669b64b767e52))
+
 ## [0.12.1](https://github.com/AI-for-dev/trysquare/compare/v0.12.0...v0.12.1) (2026-10-14)
 
 
