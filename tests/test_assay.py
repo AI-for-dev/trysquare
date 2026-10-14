@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 from tests.gitrepo import a_repo
+from tests.test_interrupt import alive, until
 import pytest
 
 from trysquare import assay
@@ -878,6 +879,21 @@ class TestTheProbe:
                 write={"probe.py": "import time\ntime.sleep(30)\n"},
                 timeout=1,
             )
+
+    def test_a_timeout_leaves_nothing_running(self, tmp_path):
+        """The probe is often `npm test` or `node --test`, whose workers loop on."""
+        pid_file = tmp_path / "worker"
+        spawn = (
+            "import subprocess, sys, time\n"
+            "worker = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+            f"open({str(pid_file)!r}, 'w').write(str(worker.pid))\n"
+            "time.sleep(30)\n"
+        )
+        with pytest.raises(ProbeTimeout):
+            self.tree().probe([sys.executable, "probe.py"], write={"probe.py": spawn}, timeout=1)
+        worker = int(pid_file.read_text())
+
+        assert until(lambda: not alive(worker)), f"worker {worker} outlived the probe"
 
     def test_but_a_domain_may_catch_it_and_score_a_failure(self):
         """A probe is milliseconds, so a slow one usually means the **agent's** fix loops

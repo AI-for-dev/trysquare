@@ -58,7 +58,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 
-from . import repo
+from . import interrupt, repo
 from .measure import events
 from .scenario import split_command
 
@@ -662,7 +662,7 @@ class Assay:
 
         def launch(argv, timeout: int):
             try:
-                return subprocess.run(
+                return interrupt.run(
                     list(argv),
                     cwd=directory,
                     capture_output=True,
@@ -772,7 +772,7 @@ class Assay:
                     target.write_text(target.read_text(errors="replace") + text)
 
                 try:
-                    done = subprocess.run(
+                    done = interrupt.run(
                         list(command),
                         cwd=root,
                         capture_output=True,

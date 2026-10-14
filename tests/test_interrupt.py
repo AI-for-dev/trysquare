@@ -37,6 +37,17 @@ def sleeper(marker: Path, extra: str = "") -> list[str]:
     ]
 
 
+def spawning(pid_file: Path) -> str:
+    """Code that starts a grandchild sleeping and writes down its pid."""
+    return (
+        "import subprocess\n"
+        f"child = subprocess.Popen([{sys.executable!r}, '-c', 'import time; "
+        f"time.sleep({FOREVER})'])\n"
+        f"pathlib = __import__('pathlib')\n"
+        f"pathlib.Path({str(pid_file)!r}).write_text(str(child.pid))\n"
+    )
+
+
 def until(condition, limit: float = 5.0) -> bool:
     """Polls rather than sleeps, so a slow machine costs nothing and a fast one waits."""
     deadline = time.monotonic() + limit
@@ -107,14 +118,9 @@ class TestKillingWhatIsRunning:
         child alone leaves those running, and they are most of what is being paid for.
         """
         marker, pid_file = tmp_path / "up", tmp_path / "grandchild"
-        spawn = (
-            "import subprocess\n"
-            f"child = subprocess.Popen([{sys.executable!r}, '-c', 'import time; "
-            f"time.sleep({FOREVER})'])\n"
-            f"pathlib = __import__('pathlib')\n"
-            f"pathlib.Path({str(pid_file)!r}).write_text(str(child.pid))\n"
+        thread, _ = calling(
+            sleeper(marker, extra=spawning(pid_file)), capture_output=True, text=True
         )
-        thread, _ = calling(sleeper(marker, extra=spawn), capture_output=True, text=True)
         assert until(marker.is_file), "the child never started"
         grandchild = int(pid_file.read_text())
 
@@ -160,6 +166,15 @@ class TestTimeout:
                 [sys.executable, "-c", script], capture_output=True, text=True, timeout=0.5
             )
         assert caught.value.stdout, "the partial output was dropped on the way out"
+
+    def test_a_grandchild_does_not_survive_a_timeout(self, tmp_path):
+        """A test runner under `npm test` keeps looping once `npm` is killed alone."""
+        marker, pid_file = tmp_path / "up", tmp_path / "grandchild"
+        with pytest.raises(subprocess.TimeoutExpired):
+            interrupt.run(sleeper(marker, extra=spawning(pid_file)), capture_output=True, timeout=1)
+        grandchild = int(pid_file.read_text())
+
+        assert until(lambda: not alive(grandchild)), f"grandchild {grandchild} outlived the timeout"
 
     def test_a_timed_out_agent_keeps_what_it_streamed(self, monkeypatch, tmp_path):
         """A timed-out run is read from its trace, not from the exception.
