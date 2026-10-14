@@ -50,6 +50,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -974,6 +975,11 @@ def main(fn, argv=None, write=None, warn=None) -> int:
     session to throw away, and `run_script` captures stderr separately for exactly
     that. The fix for "a traceback reads as a broken validator" is the order, not the
     suppression.
+
+    The operator's signals are answered for the whole scoring, because a probe or a
+    suite runs in a session of its own that the harness cannot reach. When the harness
+    stops this validator, or its timeout ends it, the SIGTERM it sends first is passed
+    on to them here, before this process leaves.
     """
     write = write or sys.stdout.write
     warn = warn or sys.stderr.write
@@ -990,7 +996,8 @@ def main(fn, argv=None, write=None, warn=None) -> int:
 
     run = Assay(context)
     try:
-        payload = report(fn(run))
+        with interrupt.handled(signal.SIGINT, signal.SIGTERM):
+            payload = report(fn(run))
         missing = [
             name
             for name in run.declared
