@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.1](https://github.com/AI-for-dev/trysquare/compare/v0.13.0...v0.13.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* render a session without reading the operator's provider files ([#161](https://github.com/AI-for-dev/trysquare/issues/161)) ([6914ab3](https://github.com/AI-for-dev/trysquare/commit/6914ab330cee2b0df9c8bef9b00f8c7b98b5da13))
+* show the message the agent is still writing in watch's session page ([#163](https://github.com/AI-for-dev/trysquare/issues/163)) ([c76ab6c](https://github.com/AI-for-dev/trysquare/commit/c76ab6cd3c879c0ad22ebfa56aa5fb355e35844d))
+
 ## [0.13.0](https://github.com/AI-for-dev/trysquare/compare/v0.12.2...v0.13.0) (2026-10-17)
 
 
