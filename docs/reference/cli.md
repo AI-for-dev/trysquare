@@ -283,6 +283,13 @@ draws a copy, never the file the agent is writing. When the run ends, an open pa
 reloads once to show its final state, then stops. An ended run is `render --html`'s to
 draw from its archive.
 
+Each run in flight shows two rates. `tok/s` is what the agent writes now: the stream
+updates of the last ten seconds, counted one token each until the run's finished turns
+measure their own ratio, since a provider may send several tokens in one chunk. The sum
+next to **In flight** compares with the generation rate a vLLM server reports. `last
+turn` is exact: the output tokens billed for the last turn, over the time from its first
+update to its end, which leaves out the queue, prompt processing and tool execution.
+
 A combo `/run` adds no message to the agent's session, so that session stays empty. The
 run's page lists the flow's subagents instead, as the flow reaches them, and each one
 links to its own session, drawn the same way. Once the run ends, an open page reads them

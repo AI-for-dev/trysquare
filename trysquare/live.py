@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections import deque
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -40,6 +41,18 @@ from .measure import Fold, plus
 #: what the write costs: a matrix of 180 runs writes a few kilobytes a second for two
 #: hours, against agent runs that each hold megabytes in flight.
 INTERVAL = 1.0
+
+#: Seconds the live rate is measured over. Ten snapshots: one would swing with every
+#: pause between two stream chunks, a minute would still show a turn that ended.
+WINDOW = 10.0
+
+#: Tokens and updates a run's ratio starts with: one token per update, which is what `pi`
+#: streams from a vLLM server, counted as if this many tokens had measured it. Tool call
+#: arguments arrive several tokens per chunk, so a short first turn of tool calls
+#: measures 1.5 to 6 on its own, and that ratio applied to the thinking that followed
+#: made one run sum to 27% more than it was billed. With 200, every run measured on
+#: such a server summed within 7%.
+PRIOR = 200
 
 RUNNING = "running"
 STOPPED = "stopped"
@@ -63,12 +76,18 @@ def _model_of(event: dict) -> str | None:
 class Watch:
     """One run's live entry, and the only thing the agent module ever touches.
 
-    The counters are split because they answer different questions and only one of
-    them is honest about tokens. `turns`, `input` and `output` come off `message_end`
-    and are exact, but arrive once a turn - a minute apart on a real run, which is a
-    minute of a dashboard sitting still. `updates` counts the stream updates the sieve
-    throws away, each carrying a delta of about two characters, and says only that the
-    agent is writing. It is a pulse, not a rate, and nothing may present it as tokens.
+    The counters are split because they answer different questions. `turns`, `input`
+    and `output` come off `message_end` and are exact, but arrive once a turn - minutes
+    apart on a thinking model, minutes of a dashboard sitting still. `updates` counts
+    the stream updates the sieve throws away, one per chunk the provider sends, and
+    moves as the agent writes.
+
+    Two rates are derived from them. `turn_rate` is exact: the last turn's output
+    tokens over the time from its first update to its end, so the queue, the prompt
+    processing and the tools are left out. `rate` is the updates of the last `WINDOW`
+    seconds, converted to tokens at the ratio this attempt's finished turns measured,
+    starting from `PRIOR`. The ratio is measured because a provider may send several
+    tokens in one chunk.
 
     Plain attribute assignment throughout, and no lock. The keys of the published
     entry are fixed when it is built, so a snapshot taken mid-update sees one field
@@ -82,12 +101,22 @@ class Watch:
         self._fold = Fold()
         self._flow = None
         self._spent: dict = {}
+        self._rates()
+
+    def _rates(self) -> None:
+        # (time, updates) at each snapshot of the window; the first update of the turn
+        # being written; tokens and updates of the turns already finished.
+        self._readings: deque = deque()
+        self._began: tuple[float, int] | None = None
+        self._streamed = [PRIOR, PRIOR]
+        self._entry.update(rate=None, turn_rate=None)
 
     def attempt(self, n: int) -> None:
         """A new attempt truncates the trace, so the fold starts over with it."""
         self._fold = Fold()
         self._flow, self._spent = None, {}
         self._entry.update(combo=None, attempt=n, started=time.time(), updates=0)
+        self._rates()
         self._numbers()
 
     def follow(self, flow) -> None:
@@ -112,12 +141,27 @@ class Watch:
             }
             self._entry["model_id"] = read["model"] or self._entry["model_id"]
             self._numbers()
+        self._entry["rate"] = self._rate()
         return dict(self._entry)
+
+    def _rate(self) -> float | None:
+        now, updates = time.time(), self._entry["updates"]
+        self._readings.append((now, updates))
+        while now - self._readings[0][0] > WINDOW:
+            self._readings.popleft()
+        then, before = self._readings[0]
+        if now <= then:
+            return None
+        tokens, chunks = self._streamed
+        return round((updates - before) / (now - then) * tokens / chunks, 1)
 
     def update(self) -> None:
         """One stream update seen and dropped. The hot path: 16 679 of them per run."""
+        now = time.time()
+        if self._began is None:
+            self._began = (now, self._entry["updates"])
         self._entry["updates"] += 1
-        self._entry["seen"] = time.time()
+        self._entry["seen"] = now
 
     def kept(self, line: bytes) -> None:
         """One event the sieve kept, folded as `measure.read` would fold it."""
@@ -129,7 +173,21 @@ class Watch:
         if model := _model_of(event):
             self._entry["model_id"] = model
         self._entry["seen"] = time.time()
+        if event.get("type") == "message_end":
+            self._turn(event.get("message") or {})
         self._numbers()
+
+    def _turn(self, message: dict) -> None:
+        """A message ended: if the agent streamed it and was billed for it, a turn to time."""
+        began, self._began = self._began, None
+        output = (message.get("usage") or {}).get("output") or 0
+        if message.get("role") != "assistant" or began is None or not output:
+            return
+        then, before = began
+        self._streamed[0] += output
+        self._streamed[1] += self._entry["updates"] - before
+        seconds = self._entry["seen"] - then
+        self._entry["turn_rate"] = round(output / seconds, 1) if seconds > 0 else None
 
     def _numbers(self) -> None:
         usage = plus(self._fold.usage, {"flow": self._spent})
