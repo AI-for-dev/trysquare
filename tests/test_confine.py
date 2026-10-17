@@ -598,6 +598,11 @@ class TestWhatTheHomeStartsWith:
         files, _ = self.seed(relays, ["ilaas"], (), self.agent_dir(tmp_path, settings=settings))
         assert files == {"settings.json": {"defaultThinkingLevel": "high"}}
 
+    def test_settings_that_are_not_json_set_no_level(self, tmp_path, relays):
+        """As `ambient_thinking` reads them, which the scenario is checked against."""
+        (tmp_path / "settings.json").write_text('{"defaultThinkingLevel": "high",}')
+        assert self.seed(relays, (), (), tmp_path) == ({}, [])
+
 
 IMAGE = "alpine:3"
 
@@ -991,6 +996,15 @@ class TestWhatRebuildsABackend:
         assert getattr(rebuilt, "env", ()) == ()
         assert rebuilt.limits == {}
         assert rebuilt.settings == confine.backend(settings).settings
+
+    @pytest.mark.parametrize("backend", ["docker", "bwrap"])
+    def test_the_operator_s_files_cannot_refuse_one(
+        self, backend, unreadable_operator_files, machine_answers
+    ):
+        """The run read the `models.json` its config named, and the render reads none."""
+        exporter = agent.exporter({"backend": backend, "models": "bench-models.json"})
+        exporter.prepare(IMAGE, ())
+        assert exporter._seed == {}
 
     def test_bwrap_keeps_the_paths_it_binds(self):
         assert confine.Bwrap(bind=["/opt/node"]).settings["bind"] == ["/opt/node"]

@@ -14,7 +14,6 @@ subprocess.
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import threading
@@ -405,6 +404,10 @@ def exporter(isolation: dict) -> Confinement:
     return confine.backend({k: v for k, v in isolation.items() if k not in ("env", "models")})
 
 
+class Refused(RuntimeError):
+    """What `pi` said when it would not export a session."""
+
+
 def export_html(
     session: Path, target: Path, confinement: Confinement = UNCONFINED, timeout: int = 120
 ) -> Path:
@@ -425,7 +428,8 @@ def export_html(
     that wrote it.
 
     Raises `RuntimeError` on anything that went wrong, so a caller has one exception to
-    catch and one session's failure need not cost the others.
+    catch and one session's failure need not cost the others: `Refused` when it is `pi`
+    that would not.
     """
     target = target.resolve()
     target.mkdir(parents=True, exist_ok=True)
@@ -444,13 +448,13 @@ def export_html(
     except OSError as e:
         raise RuntimeError(str(e)) from e
     if proc.returncode != 0:
-        raise RuntimeError((proc.stderr or proc.stdout).strip()[:300] or f"exit {proc.returncode}")
+        raise Refused((proc.stderr or proc.stdout).strip()[:300] or f"exit {proc.returncode}")
     if not destination.is_file():
         raise RuntimeError(f"reported success but wrote no {destination.name}")
     return destination
 
 
-def ambient_thinking(settings: Path | None = None) -> str | None:
+def ambient_thinking() -> str | None:
     """The thinking level a subagent will actually run at.
 
     A subagent's level cannot be declared: the frontmatter has no field for it and
@@ -458,13 +462,7 @@ def ambient_thinking(settings: Path | None = None) -> str | None:
     Read here so the harness can check a scenario against it and refuse rather
     than produce a matrix whose cells claim one level and ran another.
     """
-    settings = settings or Path.home() / ".pi" / "agent" / "settings.json"
-    if not settings.is_file():
-        return None
-    try:
-        return json.loads(settings.read_text()).get("defaultThinkingLevel")
-    except (json.JSONDecodeError, OSError):
-        return None
+    return confine.ambient(Path.home() / ".pi" / "agent").get("defaultThinkingLevel")
 
 
 def unrunnable(
