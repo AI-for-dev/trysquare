@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/AI-for-dev/trysquare/compare/v0.12.2...v0.13.0) (2026-10-17)
+
+
+### Features
+
+* show the live token rate of each run in watch ([#159](https://github.com/AI-for-dev/trysquare/issues/159)) ([69af850](https://github.com/AI-for-dev/trysquare/commit/69af8509b2d22fa2c9c65403a01617dd509219c2))
+
 ## [0.12.2](https://github.com/AI-for-dev/trysquare/compare/v0.12.1...v0.12.2) (2026-10-14)
 
 
