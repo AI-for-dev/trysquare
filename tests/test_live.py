@@ -99,6 +99,96 @@ class TestWhatIsPublished:
             assert b.snapshot()["runs"]["abc"]["turns"] == 0
 
 
+class Clock:
+    """`time.time` as `live` reads it, moved by hand."""
+
+    def __init__(self, monkeypatch) -> None:
+        self.now = 1000.0
+        monkeypatch.setattr(live.time, "time", lambda: self.now)
+
+
+def streamed(watch, clock, chunks: int, seconds: float, output: int) -> None:
+    """One turn: `chunks` updates spread over `seconds`, then its end, billed `output`."""
+    for _ in range(chunks):
+        watch.update()
+        clock.now += seconds / chunks
+    event = json.loads(message("done"))
+    event["message"]["usage"]["output"] = output
+    watch.kept(json.dumps(event).encode())
+
+
+class TestTheRates:
+    def test_the_last_turn_is_timed_from_its_first_update_to_its_end(self, monkeypatch):
+        """Not from the start of the run: the time spent running tools between two
+        turns is not time the model spent writing."""
+        clock, b = Clock(monkeypatch), board()
+        with b.watching("abc", "none / off", 0) as watch:
+            clock.now += 600
+            streamed(watch, clock, chunks=300, seconds=10, output=300)
+            assert b.snapshot()["runs"]["abc"]["turn_rate"] == 30.0
+
+    def test_before_any_turn_ends_an_update_counts_as_a_token(self, monkeypatch):
+        clock, b = Clock(monkeypatch), board()
+        with b.watching("abc", "none / off", 0) as watch:
+            b.snapshot()
+            for _ in range(50):
+                watch.update()
+            clock.now += 5
+            entry = b.snapshot()["runs"]["abc"]
+        assert entry["rate"] == 10.0
+        assert entry["turn_rate"] is None
+
+    def test_the_rate_moves_during_a_turn_at_the_measured_tokens_per_update(self, monkeypatch):
+        """A long turn of thinking reaches `message_end` minutes later, and the rate
+        must not wait for it. Here the provider sends three tokens per update, and the
+        first turn measured enough of them to bring the ratio from 1 to 2."""
+        clock, b = Clock(monkeypatch), board()
+        with b.watching("abc", "none / off", 0) as watch:
+            streamed(watch, clock, chunks=live.PRIOR, seconds=10, output=3 * live.PRIOR)
+            for _ in range(12):
+                for _ in range(15):
+                    watch.update()
+                clock.now += 1
+                entry = b.snapshot()["runs"]["abc"]
+        assert entry["rate"] == 30.0
+        assert entry["output"] == 3 * live.PRIOR, "the exact counters wait for the turn's end"
+
+    def test_a_run_that_stopped_writing_falls_back_to_zero(self, monkeypatch):
+        clock, b = Clock(monkeypatch), board()
+        with b.watching("abc", "none / off", 0) as watch:
+            streamed(watch, clock, chunks=10, seconds=1, output=10)
+            b.snapshot()
+            for _ in range(int(live.WINDOW) + 1):
+                clock.now += 1
+                entry = b.snapshot()["runs"]["abc"]
+            assert entry["rate"] == 0.0
+
+    def test_a_message_the_agent_did_not_stream_is_not_a_turn(self, monkeypatch):
+        """A tool result ends too, but nothing streamed it, so it leaves the last turn alone."""
+        clock, b = Clock(monkeypatch), board()
+        with b.watching("abc", "none / off", 0) as watch:
+            streamed(watch, clock, chunks=4, seconds=2, output=8)
+            clock.now += 30
+            watch.kept(
+                json.dumps({"type": "message_end", "message": {"role": "toolResult"}}).encode()
+            )
+            assert b.snapshot()["runs"]["abc"]["turn_rate"] == 4.0
+
+    def test_a_new_attempt_measures_afresh(self, monkeypatch):
+        clock, b = Clock(monkeypatch), board()
+        with b.watching("abc", "none / off", 0) as watch:
+            watch.attempt(1)
+            streamed(watch, clock, chunks=live.PRIOR, seconds=10, output=3 * live.PRIOR)
+            watch.attempt(2)
+            b.snapshot()
+            for _ in range(50):
+                watch.update()
+            clock.now += 5
+            entry = b.snapshot()["runs"]["abc"]
+        assert entry["rate"] == 10.0, "the abandoned attempt's ratio of 2 is gone"
+        assert entry["turn_rate"] is None
+
+
 class TestTheFileSaysWhenItStopped:
     def test_the_last_write_stamps_the_end(self):
         written = []
