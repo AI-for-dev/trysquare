@@ -29,10 +29,11 @@ record; this holds what has no other home, and a run that ends leaves it.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from collections import deque
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from .measure import Fold, plus
@@ -57,6 +58,12 @@ PRIOR = 200
 RUNNING = "running"
 STOPPED = "stopped"
 
+#: The file beside a run's session directory that holds the message the agent is writing.
+DRAFT = "draft.json"
+
+#: The stream updates that carry a piece of a message, by the block they grow.
+GROWS = {"thinking_delta": "thinking", "text_delta": "text"}
+
 
 def _model_of(event: dict) -> str | None:
     """The model an event says answered, from either shape the agent writes.
@@ -71,6 +78,69 @@ def _model_of(event: dict) -> str | None:
     if model := message.get("model"):
         return model
     return event.get("model") if event.get("type") == "model_change" else None
+
+
+class Draft:
+    """The message the agent is writing, gathered from the updates the sieve drops.
+
+    `pi` adds a message to its session once the message has ended, and a thinking model
+    can take minutes to end one: the session says nothing new all that time, while the
+    stream carries every chunk. So the chunks are gathered here and written to `path` at
+    each snapshot, for `peek` to draw under the session. Thinking and text only: the
+    arguments of a tool call are JSON cut anywhere until the call ends.
+
+    `grow` is on the drain of the stream and takes no lock. `write` and `close` take one
+    between themselves, so a snapshot in progress cannot put back a draft the end of
+    the run has just removed.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._blocks: dict[int, tuple[str, list[str]]] = {}
+        self._grown = self._written = 0
+        self._closed = False
+        self._lock = threading.Lock()
+        self.clear()
+
+    def grow(self, line: bytes) -> None:
+        """One stream update, added to the block it continues."""
+        try:
+            said = json.loads(line).get("assistantMessageEvent") or {}
+        except (ValueError, AttributeError):
+            return
+        if kind := GROWS.get(said.get("type")):
+            block = self._blocks.setdefault(said.get("contentIndex", 0), (kind, []))
+            block[1].append(said.get("delta") or "")
+            self._grown += 1
+
+    def clear(self) -> None:
+        """Between two messages: the one that ended is the session's to show now."""
+        self._blocks = {}
+        self._grown += 1
+
+    def write(self) -> None:
+        """The message as it stands, written whole, or removed between two messages."""
+        with self._lock:
+            if self._closed or self._written == self._grown:
+                return
+            self._written, blocks = self._grown, self._blocks
+            if not blocks:
+                self.path.unlink(missing_ok=True)
+                return
+            content = [
+                {"type": kind, kind: "".join(parts)}
+                for kind, parts in map(blocks.get, sorted(blocks))
+            ]
+            temporary = self.path.with_name(self.path.name + ".writing")
+            temporary.write_text(json.dumps(content, ensure_ascii=False))
+            os.replace(temporary, self.path)
+
+    def close(self) -> None:
+        """The run ended: its session holds everything it wrote."""
+        with self._lock:
+            self._closed = True
+            with suppress(OSError):
+                self.path.unlink(missing_ok=True)
 
 
 class Watch:
@@ -96,8 +166,9 @@ class Watch:
     carries a gigabyte.
     """
 
-    def __init__(self, entry: dict) -> None:
+    def __init__(self, entry: dict, draft: Draft | None = None) -> None:
         self._entry = entry
+        self._draft = draft
         self._fold = Fold()
         self._flow = None
         self._spent: dict = {}
@@ -117,6 +188,8 @@ class Watch:
         self._flow, self._spent = None, {}
         self._entry.update(combo=None, attempt=n, started=time.time(), updates=0)
         self._rates()
+        if self._draft:
+            self._draft.clear()
         self._numbers()
 
     def follow(self, flow) -> None:
@@ -142,6 +215,9 @@ class Watch:
             self._entry["model_id"] = read["model"] or self._entry["model_id"]
             self._numbers()
         self._entry["rate"] = self._rate()
+        if self._draft:
+            with suppress(OSError):
+                self._draft.write()
         return dict(self._entry)
 
     def _rate(self) -> float | None:
@@ -155,13 +231,15 @@ class Watch:
         tokens, chunks = self._streamed
         return round((updates - before) / (now - then) * tokens / chunks, 1)
 
-    def update(self) -> None:
+    def update(self, line: bytes) -> None:
         """One stream update seen and dropped. The hot path: 16 679 of them per run."""
         now = time.time()
         if self._began is None:
             self._began = (now, self._entry["updates"])
         self._entry["updates"] += 1
         self._entry["seen"] = now
+        if self._draft:
+            self._draft.grow(line)
 
     def kept(self, line: bytes) -> None:
         """One event the sieve kept, folded as `measure.read` would fold it."""
@@ -173,6 +251,8 @@ class Watch:
         if model := _model_of(event):
             self._entry["model_id"] = model
         self._entry["seen"] = time.time()
+        if self._draft and event.get("type") in ("message_start", "message_end"):
+            self._draft.clear()
         if event.get("type") == "message_end":
             self._turn(event.get("message") or {})
         self._numbers()
@@ -226,12 +306,15 @@ class Board:
 
         `session` is the directory the agent writes its session into, named so a reader
         can render what the agent is doing. A pointer rather than a copy: the archive
-        takes the session when the run ends, and the entry goes with the run.
+        takes the session when the run ends, and the entry goes with the run. `draft`
+        names the message the agent is writing, beside it.
         """
+        draft = Draft(Path(session).parent / DRAFT) if session else None
         entry = {
             "cell": cell,
             "repetition": repetition,
             "session": str(session) if session else None,
+            "draft": str(draft.path) if draft else None,
             "attempt": 0,
             "state": RUNNING,
             "started": time.time(),
@@ -245,7 +328,7 @@ class Board:
             "updates": 0,
             "combo": None,
         }
-        watch = Watch(entry)
+        watch = Watch(entry, draft)
         with self._lock:
             self._runs[run_id] = watch
         try:
@@ -253,6 +336,8 @@ class Board:
         finally:
             with self._lock:
                 self._runs.pop(run_id, None)
+            if draft:
+                draft.close()
 
     def snapshot(self) -> dict:
         """What is in flight, stamped with the moment the launch last said so.

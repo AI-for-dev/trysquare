@@ -170,9 +170,10 @@ def argv(
     return args
 
 
-#: The one event kind a trace does not keep. Nothing reads it: every measurement comes
+#: The one event kind a trace does not keep. No measurement reads it: every one comes
 #: off `message_end`, and the validator that once parsed these was reworked to read the
-#: session because parsing them was the defect. Since `pi` 1.0 an update carries only
+#: session because parsing them was the defect. Only the live view looks at it on its
+#: way past, to show the message the agent is still writing. Since `pi` 1.0 an update carries only
 #: its delta. Before, it carried the whole message accumulated so far, twice, so a
 #: stream cost the square of what the agent said - and an older `pi` on PATH still does.
 #:
@@ -223,7 +224,7 @@ class _Sieve:
             for line in bounded(stream):
                 if line.startswith(DISCARDED):
                     if watch:
-                        watch.update()
+                        watch.update(line)
                     continue
                 self._kept += len(line)
                 self._keep.write(line)

@@ -8,6 +8,7 @@ Nothing here spends a token: the agent that draws is a fake.
 """
 
 import json
+import os
 import sys
 import threading
 import time
@@ -59,6 +60,7 @@ def entry(session: Path) -> dict:
 
 
 LINE = b'{"type":"message"}\n'
+MESSAGE = b'{"type":"message","id":"m1","parentId":"s1"}\n'
 
 
 class TestTheSessionIsTheOneTheLaunchNamed:
@@ -108,6 +110,54 @@ class TestTheAgentsFileIsOnlyRead:
         assert b"1 lines" in page
         assert ((d / "s.jsonl").read_bytes(), (d / "s.jsonl").stat().st_mtime_ns) == before
         assert all(Path(src).parent != d for src in fake_pi())
+
+
+class TestTheMessageBeingWritten:
+    """Drawn under the session's last line, until the session holds it."""
+
+    def drafted(self, tmp_path: Path, *ahead: int) -> tuple[Path, Path]:
+        """A session, and a draft written `ahead` nanoseconds after it."""
+        d = session_dir(tmp_path, ("s.jsonl", b'{"type":"session","id":"s1"}\n' + MESSAGE))
+        draft = d.parent / live.DRAFT
+        draft.write_text(json.dumps([{"type": "thinking", "thinking": "hmm"}]))
+        at = (d / "s.jsonl").stat().st_mtime_ns + (ahead[0] if ahead else 1)
+        os.utime(draft, ns=(at, at))
+        return d, draft
+
+    def test_it_ends_the_copy_as_the_line_pi_will_write(self, tmp_path):
+        d, draft = self.drafted(tmp_path)
+        *_, last = peek.snapshot(d / "s.jsonl", tmp_path, draft).read_text().splitlines()
+        line = json.loads(last)
+        assert line["parentId"] == "m1"
+        assert line["message"]["role"] == "assistant"
+        assert line["message"]["content"] == [{"type": "thinking", "thinking": "hmm"}]
+
+    def test_one_the_session_caught_up_with_is_left_out(self, tmp_path):
+        """The message ended: its line is in the session, and drawing the draft would
+        show it twice."""
+        d, draft = self.drafted(tmp_path, -1)
+        copy = peek.snapshot(d / "s.jsonl", tmp_path, draft)
+        assert copy.read_bytes() == (d / "s.jsonl").read_bytes()
+        assert peek.stamp(d / "s.jsonl", draft) == peek.stamp(d / "s.jsonl")
+
+    def test_one_that_vanished_is_left_out(self, tmp_path):
+        d, draft = self.drafted(tmp_path)
+        assert peek.pending((d / "s.jsonl").read_bytes(), draft.with_name("gone")) == b""
+
+    def test_the_page_moves_while_the_message_grows(self, tmp_path, fake_pi):
+        d, draft = self.drafted(tmp_path)
+        e = entry(d) | {"draft": str(draft)}
+        sessions = peek.Sessions()
+        before = sessions.state("abc", e)
+        assert b"3 lines" in sessions.page("abc", e, {})
+        self.drafted(tmp_path, 2)
+        assert sessions.state("abc", e) != before
+        sessions.page("abc", e, {})
+        assert len(fake_pi()) == 2
+
+    def test_a_subagent_is_drawn_without_it(self, tmp_path):
+        assert peek.draft({"draft": "/w/draft.json"}, "sub") is None
+        assert peek.draft({"draft": "/w/draft.json"}, None) == Path("/w/draft.json")
 
 
 class TestThePage:

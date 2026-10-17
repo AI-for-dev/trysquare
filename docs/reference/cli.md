@@ -275,8 +275,10 @@ opens in the browser unless `--no-open` is given. A matrix directory holds promp
 diffs and session transcripts, which have no business on a network interface.
 
 The cell name of each run in flight opens its session in a new tab: the page
-`pi --export` draws of the current attempt, redrawn a few seconds after each message the
-agent writes. A reader at the bottom stays at the bottom. `pi` draws it inside the
+`pi --export` draws of the current attempt, redrawn a few seconds after the agent
+writes. The page also shows the thinking and text of the message the agent is still
+writing, so a model that thinks for minutes does not leave it unchanged. A tool call's
+arguments appear once the call ends. A reader at the bottom stays at the bottom. `pi` draws it inside the
 backend and from the image the launch recorded in `live.json`, so the agent that writes
 a session also draws it, whatever the config says now. The view is read-only: `pi`
 draws a copy, never the file the agent is writing. When the run ends, an open page

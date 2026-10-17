@@ -12,6 +12,7 @@ Nothing here spends a token.
 import json
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,17 @@ from tests.test_stream import fake_agent, message, update, writing  # noqa: F401
 
 def board() -> live.Board:
     return live.Board({"scenario": "t", "started": 0.0, "finished": None})
+
+
+#: A stream update that carries no piece of a message.
+PULSE = update("xy").encode()
+
+
+def delta(kind: str, text: str, index: int = 0) -> bytes:
+    """A piece of a message, as `pi` 1.x streams it."""
+    said = {"type": f"{kind}_delta", "contentIndex": index, "delta": text}
+    event = {"type": "message_update", "assistantMessageEvent": said}
+    return json.dumps(event, separators=(",", ":")).encode()
 
 
 class TestWhatIsPublished:
@@ -58,7 +70,7 @@ class TestWhatIsPublished:
         b = board()
         with b.watching("abc", "none / off", 0) as watch:
             for _ in range(5):
-                watch.update()
+                watch.update(PULSE)
             entry = b.snapshot()["runs"]["abc"]
         assert entry["updates"] == 5
         assert entry["output"] == 0, "an update carries no usage, so it is not a token"
@@ -110,7 +122,7 @@ class Clock:
 def streamed(watch, clock, chunks: int, seconds: float, output: int) -> None:
     """One turn: `chunks` updates spread over `seconds`, then its end, billed `output`."""
     for _ in range(chunks):
-        watch.update()
+        watch.update(PULSE)
         clock.now += seconds / chunks
     event = json.loads(message("done"))
     event["message"]["usage"]["output"] = output
@@ -132,7 +144,7 @@ class TestTheRates:
         with b.watching("abc", "none / off", 0) as watch:
             b.snapshot()
             for _ in range(50):
-                watch.update()
+                watch.update(PULSE)
             clock.now += 5
             entry = b.snapshot()["runs"]["abc"]
         assert entry["rate"] == 10.0
@@ -147,7 +159,7 @@ class TestTheRates:
             streamed(watch, clock, chunks=live.PRIOR, seconds=10, output=3 * live.PRIOR)
             for _ in range(12):
                 for _ in range(15):
-                    watch.update()
+                    watch.update(PULSE)
                 clock.now += 1
                 entry = b.snapshot()["runs"]["abc"]
         assert entry["rate"] == 30.0
@@ -182,7 +194,7 @@ class TestTheRates:
             watch.attempt(2)
             b.snapshot()
             for _ in range(50):
-                watch.update()
+                watch.update(PULSE)
             clock.now += 5
             entry = b.snapshot()["runs"]["abc"]
         assert entry["rate"] == 10.0, "the abandoned attempt's ratio of 2 is gone"
@@ -267,6 +279,61 @@ class TestTheSieveFeedsTheBoard:
             agent.run(tmp_path, writing(update("xy"), 6), timeout=60, trace=trace, watch=watch)
             assert b.snapshot()["runs"]["abc"]["updates"] == 6
         assert trace.stat().st_size == 0, "counted, and still not kept"
+
+
+class TestTheMessageBeingWritten:
+    """`pi` adds a message to its session once it ends: until then, only the stream says
+    what a thinking model is writing."""
+
+    def test_it_is_written_beside_the_session_at_each_snapshot(self, tmp_path):
+        b = board()
+        with b.watching("abc", "none / off", 0, tmp_path / "session") as watch:
+            draft = Path(b.snapshot()["runs"]["abc"]["draft"])
+            assert draft == tmp_path / live.DRAFT
+            assert not draft.exists(), "nothing written yet"
+            for line in [delta("thinking", "Let me "), delta("thinking", "think."), PULSE]:
+                watch.update(line)
+            watch.update(delta("text", "Done", 1))
+            b.snapshot()
+            assert json.loads(draft.read_text()) == [
+                {"type": "thinking", "thinking": "Let me think."},
+                {"type": "text", "text": "Done"},
+            ]
+
+    def test_it_is_removed_once_the_message_ended(self, tmp_path):
+        b = board()
+        with b.watching("abc", "none / off", 0, tmp_path / "session") as watch:
+            watch.update(delta("thinking", "hmm"))
+            b.snapshot()
+            watch.kept(message("done").encode())
+            b.snapshot()
+            assert not (tmp_path / live.DRAFT).exists()
+
+    def test_it_leaves_with_the_run(self, tmp_path):
+        b = board()
+        with b.watching("abc", "none / off", 0, tmp_path / "session") as watch:
+            watch.update(delta("thinking", "hmm"))
+            b.snapshot()
+        assert not (tmp_path / live.DRAFT).exists()
+
+    def test_one_a_previous_launch_left_is_removed(self, tmp_path):
+        (tmp_path / live.DRAFT).write_text("[]")
+        b = board()
+        with b.watching("abc", "none / off", 0, tmp_path / "session"):
+            b.snapshot()
+            assert not (tmp_path / live.DRAFT).exists()
+
+    def test_a_write_that_fails_costs_the_draft_and_nothing_else(self, tmp_path):
+        b = board()
+        with b.watching("abc", "none / off", 0, tmp_path / "gone" / "session") as watch:
+            watch.update(delta("thinking", "hmm"))
+            assert b.snapshot()["runs"]["abc"]["updates"] == 1
+
+    def test_a_run_that_names_no_session_has_none(self):
+        b = board()
+        with b.watching("abc", "none / off", 0) as watch:
+            watch.update(delta("thinking", "hmm"))
+            assert b.snapshot()["runs"]["abc"]["draft"] is None
 
 
 class TestWithNobodyLooking:

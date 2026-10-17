@@ -11,6 +11,11 @@ halfway through writing one: rendering it in place would write into the middle o
 next message of a run being measured. So the complete lines are copied out and `pi`
 renders the copy, in a directory of this process's own.
 
+**The message being written is drawn too.** `pi` adds a message to its session once it
+has ended, which on a thinking model is minutes of a page standing still. The launch
+writes what the agent has streamed of it so far beside the session, and the copy ends
+with it, as the line `pi` will write once the message ends.
+
 **A combo flow is shown by its subagents.** A `/run` adds no message to the run's own
 session, so pi never writes it: the run's page lists the sessions combo writes for the
 subagents in the clone, each drawn like a session, then their archived copies once the
@@ -30,6 +35,7 @@ import json
 import re
 import tempfile
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -67,21 +73,58 @@ def latest(session_dir: Path) -> Path | None:
         return None
 
 
-def stamp(session: Path | None) -> str | None:
-    """What changes when the session does, or None while there is none."""
+def drafted(session: Path, draft: Path | None) -> int | None:
+    """When the message being written was last written, or None when the session holds
+    everything: no draft, or one older than the session, whose message has ended."""
+    try:
+        written = draft.stat().st_mtime_ns if draft else None
+        return written if written and written >= session.stat().st_mtime_ns else None
+    except OSError:
+        return None
+
+
+def stamp(session: Path | None, draft: Path | None = None) -> str | None:
+    """What changes when the session or the message being written does, or None while
+    there is no session."""
     try:
         st = session.stat() if session else None
     except OSError:
         return None
-    return f"{session.name}:{st.st_mtime_ns}:{st.st_size}" if st else None
+    if not st:
+        return None
+    current = f"{session.name}:{st.st_mtime_ns}:{st.st_size}"
+    written = drafted(session, draft)
+    return f"{current}:{written}" if written else current
 
 
-def snapshot(session: Path, into: Path) -> Path | None:
-    """The complete lines of `session`, copied into `into`, or None when there are none."""
+def pending(lines: bytes, draft: Path) -> bytes:
+    """The message being written, as the line `pi` will add under `lines` once it ends,
+    or nothing when the draft is gone or cut."""
+    try:
+        content = json.loads(draft.read_bytes())
+        written = draft.stat().st_mtime
+        parent = json.loads(lines[lines.rfind(b"\n", 0, -1) + 1 :]).get("id")
+    except (OSError, ValueError):
+        return b""
+    line = {
+        "type": "message",
+        "id": "in-flight",
+        "parentId": parent,
+        "timestamp": datetime.fromtimestamp(written, UTC).isoformat(timespec="milliseconds"),
+        "message": {"role": "assistant", "content": content, "timestamp": int(written * 1000)},
+    }
+    return json.dumps(line, ensure_ascii=False).encode() + b"\n"
+
+
+def snapshot(session: Path, into: Path, draft: Path | None = None) -> Path | None:
+    """The complete lines of `session`, then the message being written when `draft` is
+    newer, copied into `into`, or None when there are none."""
     data = session.read_bytes()
     whole = data[: data.rfind(b"\n") + 1]
     if not whole:
         return None
+    if drafted(session, draft):
+        whole += pending(whole, draft)
     copy = into / session.name
     copy.write_bytes(whole)
     return copy
@@ -125,7 +168,7 @@ class Sessions:
             target = self._target(run_id, subagent, entry, ended=False)
         except KeyError:
             return None
-        return listed(target) if isinstance(target, list) else stamp(target)
+        return listed(target) if isinstance(target, list) else stamp(target, draft(entry, subagent))
 
     def forget(self, keep) -> None:
         """Drops the pages kept for runs no longer in flight."""
@@ -171,11 +214,14 @@ class Sessions:
                     for s in target
                 ],
             )
-        return self._draw((run_id, subagent), target, live, ended)
+        return self._draw((run_id, subagent), target, draft(entry, subagent), live, ended)
 
-    def _draw(self, at: tuple, session: Path | None, live: dict, ended: bool) -> bytes:
-        """`session` drawn for the page `at`, (run id, subagent), or why it cannot be."""
-        current = stamp(session)
+    def _draw(
+        self, at: tuple, session: Path | None, written: Path | None, live: dict, ended: bool
+    ) -> bytes:
+        """`session` and the message being `written` drawn for the page `at`, (run id,
+        subagent), or why they cannot be."""
+        current = stamp(session, written)
         refresh = (address(*at), current, ended, at[1] is not None)
         if current is None:
             said = NO_SESSION if ended else WAITING
@@ -185,7 +231,7 @@ class Sessions:
             if kept and kept[0] == (current, ended):
                 return kept[1]
             with self._slots:
-                body = self._render(session, live, refresh)
+                body = self._render(session, written, live, refresh)
             self._pages[at] = ((current, ended), body)
         return body
 
@@ -205,7 +251,7 @@ class Sessions:
                 self._backends[key] = confinement
             return self._backends[key]
 
-    def _render(self, session: Path, live: dict, refresh: tuple) -> bytes:
+    def _render(self, session: Path, written: Path | None, live: dict, refresh: tuple) -> bytes:
         """The exported page with the refresher in it, or a page saying why there is none.
 
         A failure is kept like a page, under the same stamp, so a session `pi` cannot
@@ -213,7 +259,7 @@ class Sessions:
         """
         try:
             with tempfile.TemporaryDirectory(prefix="trysquare-peek-") as tmp:
-                copy = snapshot(session, Path(tmp))
+                copy = snapshot(session, Path(tmp), written)
                 if copy is None:
                     return status(*WAITING, refresh=refresh)
                 page = agent.export_html(copy, Path(tmp), self._backend(live), TIMEOUT)
@@ -223,6 +269,12 @@ class Sessions:
             return status("This session could not be rendered", said, refresh=refresh)
         head, end, tail = body.rpartition(b"</body>")
         return (head + refresher(*refresh) + end + tail) if end else body
+
+
+def draft(entry: dict, subagent: str | None) -> Path | None:
+    """The message the run's agent is writing, as the launch named it. A subagent's
+    session is combo's, which streams nothing the launch sees."""
+    return Path(entry["draft"]) if subagent is None and entry.get("draft") else None
 
 
 def address(run_id: str, subagent: str | None = None) -> str:
