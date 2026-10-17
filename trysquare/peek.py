@@ -219,11 +219,8 @@ class Sessions:
                 page = agent.export_html(copy, Path(tmp), self._backend(live), TIMEOUT)
                 body = page.read_bytes()
         except (OSError, RuntimeError, ValueError) as e:
-            return status(
-                "This session could not be rendered",
-                f"pi said: {e}",
-                refresh=refresh,
-            )
+            said = f"pi said: {e}" if isinstance(e, agent.Refused) else str(e)
+            return status("This session could not be rendered", said, refresh=refresh)
         head, end, tail = body.rpartition(b"</body>")
         return (head + refresher(*refresh) + end + tail) if end else body
 

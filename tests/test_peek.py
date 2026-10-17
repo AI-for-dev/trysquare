@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from trysquare import agent, confine, live, peek
+from trysquare import agent, live, peek
 
 #: Draws a page saying how many lines it was given, and repairs a cut last line the way
 #: `pi` does, by appending a newline to the file it was handed.
@@ -129,13 +129,15 @@ class TestThePage:
         d = session_dir(tmp_path, ("s.jsonl", LINE))
         page = peek.Sessions().page("abc", entry(d), {})
         assert b"could not be rendered" in page
-        assert b"cannot read this session" in page
+        assert b"pi said: cannot read this session" in page
 
     def test_a_backend_that_cannot_run_says_so(self, tmp_path, fake_pi):
         """Docker without an image to run, as a launch from before the header named it."""
         d = session_dir(tmp_path, ("s.jsonl", LINE))
         page = peek.Sessions().page("abc", entry(d), {"isolation": {"backend": "docker"}})
         assert b"could not be rendered" in page
+        assert b"declares no image" in page
+        assert b"pi said" not in page
 
     def test_a_run_never_drawn_here_has_no_last_state(self, tmp_path, fake_pi):
         """The id would otherwise be the only thing naming where to look."""
@@ -156,7 +158,7 @@ class TestThePage:
 
 class TestDrawnWithWhatRan:
     @pytest.fixture
-    def drawn_in(self, monkeypatch):
+    def drawn_in(self, monkeypatch, machine_answers):
         """The backend each render was handed."""
         backends = []
 
@@ -166,8 +168,6 @@ class TestDrawnWithWhatRan:
             return target / "page.html"
 
         monkeypatch.setattr(agent, "export_html", export)
-        # Whether bwrap runs on this machine is not what these ask.
-        monkeypatch.setattr(confine.Bwrap, "prepare", lambda *_: None)
         return backends
 
     def test_the_backend_is_the_one_the_launch_recorded(self, tmp_path, drawn_in):
@@ -186,6 +186,15 @@ class TestDrawnWithWhatRan:
     def test_a_launch_that_predates_the_header_ran_here(self, tmp_path, drawn_in):
         peek.Sessions().page("abc", entry(session_dir(tmp_path, ("s.jsonl", LINE))), {})
         assert drawn_in[0].name == "none"
+
+    def test_the_operator_s_files_cannot_stop_a_render(
+        self, tmp_path, drawn_in, unreadable_operator_files
+    ):
+        d = session_dir(tmp_path, ("s.jsonl", LINE))
+        header = {"isolation": {"backend": "docker"}, "image": "sha256:0"}
+        page = peek.Sessions().page("abc", entry(d), header)
+        assert b"could not be rendered" not in page
+        assert drawn_in[0].name == "docker"
 
     def test_a_backend_it_cannot_build_says_so(self, tmp_path, drawn_in):
         d = session_dir(tmp_path, ("s.jsonl", LINE))

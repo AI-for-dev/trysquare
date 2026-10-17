@@ -167,7 +167,7 @@ def seed(
     found: dict[str, dict] = {}
     kept: dict[str, dict] = {}
     relays: list[Relay] = []
-    models = _read(models_file).get("providers", {})
+    models = _read(models_file).get("providers", {}) if providers else {}
     try:
         for provider in providers:
             if provider not in models:
@@ -192,10 +192,19 @@ def seed(
         raise
     if kept:
         found["models.json"] = {"providers": kept}
-    settings = _read(agent_dir / "settings.json")
-    if thinking := {k: settings[k] for k in SETTINGS if k in settings}:
+    if thinking := ambient(agent_dir):
         found["settings.json"] = thinking
     return found, relays
+
+
+def ambient(agent_dir: Path) -> dict:
+    """The `SETTINGS` the operator's `settings.json` in `agent_dir` holds. A file that is
+    not a JSON object holds none, rather than refusing a launch, or a render, over it."""
+    try:
+        settings = json.loads((agent_dir / "settings.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: settings[k] for k in SETTINGS if k in settings} if isinstance(settings, dict) else {}
 
 
 def _relayed(entry: dict, values: dict[str, str], where: str, reach: Reach) -> tuple[dict, Relay]:

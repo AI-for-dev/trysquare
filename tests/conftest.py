@@ -6,6 +6,7 @@ directory is made somewhere a fixture cannot reach - a helper method called twic
 test, a module-level factory - and the guarantee that a call added later is swept up too.
 """
 
+import subprocess
 import tempfile
 
 import pytest
@@ -49,3 +50,24 @@ def no_test_inherits_a_stop():
     interrupt.reset()
     yield
     interrupt.reset()
+
+
+@pytest.fixture
+def unreadable_operator_files(tmp_path, monkeypatch):
+    """A home whose `~/.pi/agent/models.json` and `settings.json` are not JSON, as a
+    comment left in either makes them."""
+    agent_dir = tmp_path / "operator" / ".pi" / "agent"
+    agent_dir.mkdir(parents=True)
+    for name in ("models.json", "settings.json"):
+        (agent_dir / name).write_text('{\n  "providers": {\n    // mine\n  }\n}\n')
+    monkeypatch.setenv("HOME", str(tmp_path / "operator"))
+
+
+@pytest.fixture
+def machine_answers(monkeypatch):
+    """Every probe a backend makes of this machine succeeds, whether docker or bwrap
+    runs here or not."""
+    from trysquare import confine
+
+    answer = lambda *argv: subprocess.CompletedProcess(argv, 0, "sha256:0\n", "")  # noqa: E731
+    monkeypatch.setattr(confine, "_run", answer)
